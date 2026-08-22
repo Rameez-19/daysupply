@@ -1,0 +1,8 @@
+country_code: IN
+languages: [hi, en]
+admin_labels: {l1: State, l2: District, l3: Subdistrict}
+facility_label: "Primary Health Centre"
+data_sources: ["NHM Health Centres Directory", "HMIS 2019-20", "NLEM 2022"]
+stockout_threshold_days: 14
+transfer_max_km: 150
+demo_admin_l2: ["Mahbubnagar", "Ranga Reddy"]

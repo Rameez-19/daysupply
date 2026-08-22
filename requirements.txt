@@ -5,3 +5,6 @@ pyarrow
 openpyxl
 python-dotenv
 google-cloud-bigquery
+lxml
+pyyaml
+beautifulsoup4

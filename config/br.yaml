@@ -1,0 +1,8 @@
+country_code: BR
+languages: [pt]
+admin_labels: {l1: UF, l2: Município}
+facility_label: "Unidade Básica de Saúde"
+data_sources: ["CNES", "IBGE 2022", "RENAME 2022"]
+stockout_threshold_days: 21
+transfer_max_km: 300
+demo_admin_l2: ["Conselheiro Lafaiete", "Pará de Minas"]
