@@ -1,0 +1,21 @@
+# === Raw data (files exceed 100 MB — GitHub rejects them) ===
+Data/
+
+# === Environment / secrets ===
+.env
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# === IDE ===
+.vscode/
+.idea/
+
+# === OS ===
+.DS_Store
+Thumbs.db
