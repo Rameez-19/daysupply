@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DaySupply</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <header>
+      <h1>DaySupply</h1>
+      <div id="sync-status" class="status-online">Online</div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="capture-view">Capture</button>
+      <button class="tab-btn" data-tab="review-view">Review</button>
+      <button class="tab-btn" data-tab="transfer-view">Transfers</button>
+    </nav>
+
+    <main id="capture-view" class="view active-view">
+      <div class="capture-container">
+        <h2>Record Stock Event</h2>
+        <p>Press and hold to record</p>
+        <button id="mic-btn" class="mic-btn">🎙️</button>
+        <p id="mic-status">Ready</p>
+      </div>
+    </main>
+
+    <main id="review-view" class="view hidden-view">
+      <h2>Review Queue</h2>
+      <div id="review-list" class="list-container"></div>
+    </main>
+
+    <main id="transfer-view" class="view hidden-view">
+      <h2>Transfer Recommendations</h2>
+      <div id="map-container">
+        <div class="map-placeholder">
+          <p>Regional Map View</p>
+          <div id="transfer-arrows" class="transfer-arrows-container"></div>
+        </div>
+      </div>
+      <div id="transfer-list" class="list-container"></div>
+    </main>
+  </div>
+  
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').then(reg => {
+        console.log('Service Worker Registered!', reg);
+      }).catch(err => console.error('Service Worker registration failed', err));
+    }
+  </script>
+</body>
+</html>

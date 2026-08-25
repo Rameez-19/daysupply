@@ -8,3 +8,7 @@ google-cloud-bigquery
 lxml
 pyyaml
 beautifulsoup4
+google-generativeai
+google-cloud-firestore
+python-multipart
+thefuzz
