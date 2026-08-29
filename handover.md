@@ -1,0 +1,289 @@
+# StockPulse — Project Handover
+
+> Supersedes the agent-written handover. Place at `docs/HANDOVER.md`.
+> Read alongside `docs/MASTER_PROMPT.md` (governing spec) and
+> `BUILD_PROMPT_BLOCKS_A-E.md` (the work queue).
+>
+> **Naming:** the project was renamed mid-build. **StockPulse** is current.
+> "DaySupply" survives in the repo name and the Cloud Run URL. See §9.
+
+---
+
+## 1. Read this first — what is real and what is not
+
+This section matters more than anything else in this document. The product looks
+substantially more complete than it is, and anyone continuing without knowing the
+difference will overclaim in the submission.
+
+| Component | Status | Notes |
+|---|---|---|
+| Gemini voice extraction | **REAL** | Live Gemini API calls, audio → structured JSON |
+| Offline queue + sync | **REAL** | Service Worker + IndexedDB, genuinely works offline |
+| PWA / dashboard UI | **REAL** | Vanilla JS, Chart.js, deployed and functional |
+| Barcode scanning | **REAL** | `html5-qrcode` |
+| Review queue | **REAL** | Confidence-threshold routing implemented |
+| Cloud Run deployment | **REAL** | Live, containerised, `asia-south1` |
+| Haversine distance maths | **REAL** | Correct calculation |
+| **Facility data** | **GENERATED** | `app/demo_data.py`, ~229 facilities across 5 states, seeded |
+| **All KPI figures** | **GENERATED** | Active facilities, captures today, alerts, transfers, % deltas |
+| **Demand forecast** | **GENERATED** | Backend logic imitating ARIMA_PLUS. **No BigQuery ML model exists** |
+| **Stock levels** | **GENERATED** | Network stock health, critical shortages |
+| **Expiry data** | **GENERATED** | No expiry data source exists anywhere |
+| **Transfer recommendations** | **PARTLY REAL** | Real algorithm, generated inputs |
+
+**There is currently no BigQuery in the stack.** No dataset, no tables, no
+trained model. The 200,438 real Indian facilities on disk have never been loaded.
+
+Closing this gap is Blocks A and B and is the top priority. Until it is closed,
+the words "real data" and "AI forecasting" must not appear in the deck, the video
+or the README.
+
+---
+
+## 2. What the product is
+
+**StockPulse** — a voice-first medicine stock reporting and redistribution system
+for Primary Health Centres in India.
+
+**The problem.** Public health systems know what they hold in aggregate and
+almost nothing about where it is right now. A district warehouse can hold six
+months of a drug while a PHC 40 km away turns patients away. Evidence: overall
+essential-medicine availability measured at 45.2% in Punjab and 51.1% in Haryana;
+41.3% in Delhi; one survey found 13% of PHCs had no essential medicines and
+insufficient stock in 75% of those surveyed.
+
+**The root cause is capture, not analytics.** The person expected to record stock
+is a pharmacist or ANM running a clinic alone, often without connectivity, for
+whom data entry is unpaid overtime. Entries are late, batched at month-end, or
+fabricated. Every dashboard above them inherits that.
+
+**The thesis.** Existing systems start at the dashboard and hope data arrives.
+StockPulse starts at the person holding the register and works upward.
+
+**Design precedent.** Tamil Nadu's TNMSC — India's best-functioning public health
+supply chain — succeeded partly on a "passbook" system, explicitly modelled on
+banking, because it borrowed a mental model people already had. The voice
+interface is the same move applied to the last mile.
+
+---
+
+## 3. Hackathon context
+
+**Build with AI: Code for Communities, 2nd Edition** (hack2skill + Google Cloud).
+Track 3: **Smart Health & Supply Chain Resilience**.
+
+- **Submission closes 30 September 2026** (extended from 24 August; confirmed by
+  email from the Google DevRel program manager). Personal target: **20 September**.
+- Solo entry. Registered.
+
+**⚠️ Scope changed mid-build:** the BRICS/global framing was removed. The event is
+now India-only. The criterion **"Cross-Border Applicability" no longer exists** —
+it is now **"Depth & Reach Across India"** at the same ~20% weight.
+
+Consequences:
+- Do not build a Brazil config. Brazilian data stays unused on disk.
+- Federated exchange becomes **cross-district within India**.
+- Remove "Global South" and similar phrasing from all copy.
+
+**Judging weights:** Technical Execution 25%, Deployability & Scalability 20%,
+Depth & Reach Across India ~20%, Problem–Solution Fit 20%, Impact 10%,
+Presentation 5%.
+
+**Submission package:** source code (GitHub, private with access granted), demo
+video 3–5 min, pitch deck 10–12 slides, 2–3 line description, live deployed link.
+
+**Known competitor in the same cohort:** "Sanjeevani Grid" — same core idea
+(ASHA worker voice → Gemini extraction → transfer recommendation), India-only,
+and its own description says its forecasting is *simulated via Vertex AI*. Our
+differentiation must therefore be: real national-scale government data, a really
+trained model, offline-first capture, and consultant-grade supply chain logic.
+
+---
+
+## 4. Architecture
+
+```
+Health worker (PWA, offline-first)
+   │  voice note | barcode scan | chat text
+   ▼
+Cloud Run — FastAPI (asia-south1)
+   ├─► Gemini API           audio/text → structured JSON   [REAL]
+   ├─► app/demo_data.py     seeded generator               [TO BE REPLACED]
+   └─► BigQuery             does not exist yet             [BLOCK A/B]
+   ▼
+Dashboard — Chart.js, cascading state/district/PHC filters
+```
+
+**Target architecture after Blocks A–B:** the same, with `app/demo_data.py`
+removed and BigQuery as the single source of truth for facilities, stock events,
+forecasts and recommendations.
+
+### Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Vanilla HTML5/CSS3/JS, PWA (`sw.js` + IndexedDB), Chart.js, `html5-qrcode` |
+| Backend | Python, FastAPI, containerised |
+| AI | Google Gemini (extraction). BigQuery ML ARIMA_PLUS **planned, not built** |
+| Hosting | Google Cloud Run, region `asia-south1` |
+
+**Deliberately not used:** Vertex AI AutoML (credit-hungry, no gain over
+ARIMA_PLUS here), Dialogflow (Gemini does it in one call), separate
+Speech-to-Text + Translation chain (three failure points instead of one).
+
+---
+
+## 5. Repo structure
+
+```
+daysupply/
+├── app/
+│   ├── main.py          FastAPI, all /api/v1/... endpoints
+│   ├── capture.py       Gemini audio → structured JSON
+│   ├── demo_data.py     ⚠️ seeded generator — TO BE REPLACED by BigQuery
+│   └── ...
+├── web/
+│   ├── index.html       SPA: dashboard, filters, charts
+│   ├── app.js           views, Chart.js, MediaRecorder, IndexedDB queue
+│   ├── styles.css       "Deep Blue" NHM-style design system
+│   └── sw.js            Service Worker, offline cache
+├── ingestion/           ⚠️ EMPTY — Block A lives here
+├── config/              country abstraction (India only in use)
+├── docs/
+│   ├── MASTER_PROMPT.md governing spec
+│   ├── HANDOVER.md      this file
+│   ├── PROGRESS.md      one line per session
+│   ├── pitch_deck.md    ⚠️ currently OUTSIDE the repo — move it in
+│   └── video_script.md  ⚠️ currently OUTSIDE the repo — move it in
+├── Data/                ⚠️ GITIGNORED — see §6
+├── Dockerfile
+└── .gitignore
+```
+
+`ingestion/` is named that way deliberately: Windows treats `Data/` and `data/`
+as the same folder, so raw data and ingestion code cannot share a name.
+
+---
+
+## 6. Data inventory
+
+All under `Data/` — **gitignored**, not in the repo. `cnes_estabelecimentos.csv`
+alone is 229 MB and GitHub rejects files over 100 MB.
+
+### India — `Data/India/` (all currently unused by the application)
+
+| File | Contents | Gotchas |
+|---|---|---|
+| `geocode_health_centre.csv` | **200,438 facilities**, 37 states, 668 districts. 29,733 PHCs, 5,389 CHCs, 163,131 sub-centres | Only 15 rows lack coordinates. Columns: State Name, District Name, Subdistrict Name, Facility Type, Facility Name, Latitude, Longitude, ActiveFlag_C, Location Type, Type Of Facility |
+| `<State>.xls` × 36 + `All_India.xls` | HMIS 2019-20 monthly data, ~120 MB each | **NOT Excel.** SAS-generated HTML with `.xls` extension, `latin-1`. Parse with `pandas.read_html` / BeautifulSoup. Districts × data items × 12 months, split Public/Private and Urban/Rural |
+| `rural-population-centre_2017.xls` | Population covered per centre | Verify whether rows are facility-level or state-level |
+| `pharmacists-PHCS-CHCS_2017.xls` | Pharmacist counts and vacancies | Deck evidence only |
+| `facilities-PHCS_2017.xls` | PHC infrastructure/functioning | Deck evidence only |
+| `nlem2022.pdf` | National List of Essential Medicines 2022 | Source for the 15-item master |
+
+**Usable HMIS indicators:** `Outpatient - Diabetes`, `- Hypertension`,
+`- Epilepsy`, `- Mental illness`, `- Dental`, `- Ophthalmic Related`,
+`- Acute Heart Diseases`, `- Stroke (Paralysis)`; Malaria microscopy and RDT
+positives by species; Childhood Diseases; Inpatient counts.
+
+These map to drug categories — hypertension outpatients drive antihypertensive
+demand, malaria positives drive antimalarial demand. **This is the real
+seasonality signal.**
+
+⚠️ 2019-20 = April 2019 to March 2020. Feb–Mar 2020 is COVID-affected. Use
+April–December or smooth explicitly.
+
+### Brazil — `Data/Brazil/` (**no longer in scope**, retain on disk)
+
+CNES establishments (632,726 rows, semicolon-delimited, `latin-1`), CNES
+coordinates, IBGE municipality population 1970–2022, RENAME 2022. Keep for one
+scalability slide; do not build against it.
+
+### Sources
+
+- India facilities: Kaggle — All India Health Centres Directory
+- India primary health care data: Kaggle — India Primary Health Care Data
+- HMIS: `hmis.mohfw.gov.in` → Standard Reports → C2 → All States and Districts
+  Across Months → 2019-20
+- NLEM 2022: MoHFW
+- Brazil: CNES via `dadosabertos.saude.gov.br`; population via Kaggle; RENAME
+  2022 via `gov.br/saude` publications
+
+---
+
+## 7. Environment and deployment
+
+| Item | Value |
+|---|---|
+| GCP project | `daysupply` |
+| Region | `asia-south1` (Mumbai) |
+| Live URL | `https://daysupply-898541549182.asia-south1.run.app/` |
+| Billing | Free trial, ₹28,694 credit, expires 21 Nov 2026, plus $30 Developer Program credits |
+| APIs enabled | Cloud Run, BigQuery, Firestore, Generative Language (Gemini), Maps JavaScript |
+
+**Environment variables** (`.env`, gitignored; `.env.example` in repo):
+- `GEMINI_API_KEY`
+- `GCP_PROJECT`
+
+**Deploy:**
+```
+gcloud run deploy daysupply --source . --region asia-south1 \
+  --min-instances 0 --allow-unauthenticated
+```
+
+**Run locally:**
+```
+uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+```
+Hard-refresh (`Ctrl+Shift+R`) when testing frontend changes — the Service Worker
+caches aggressively.
+
+**Cost rules:** never `SELECT *` on the facility table; flag before any query
+scanning >10 GB or training >5,000 series; keep `--min-instances 0`.
+
+---
+
+## 8. Work queue
+
+Full detail in `BUILD_PROMPT_BLOCKS_A-E.md`. Summary:
+
+- **Block A — real data.** Load all 200,438 facilities into BigQuery, populate
+  `population_served`, rewire dashboard filters and counts to query BigQuery,
+  delete `app/demo_data.py`. Assert row counts and fail loudly. *Serves "Depth &
+  Reach Across India" (~20%).*
+- **Block B — real forecasting.** Generate `stock_events` for demo facilities
+  only (partitioned by date, clustered by facility), train a real ARIMA_PLUS
+  model, serve via `ML.FORECAST`, purge the word "simulated". *Serves Technical
+  Execution (25%).*
+- **Block C — supply-chain logic.** Lead-time-aware reorder points
+  (`avg_daily_demand × lead_time + safety_stock`), VEN classification weighting
+  alerts, FEFO in redistribution, therapeutic substitution via ATC codes,
+  reporting-consistency score per facility.
+- **Block D — positioning.** Cross-district pattern exchange; an export endpoint
+  and architecture diagram showing StockPulse as a capture/intelligence layer
+  **above** existing DVDMS/e-Aushadhi systems rather than a replacement.
+
+**If time runs short, protect in this order:** deployed URL, voice capture, a
+specific transfer recommendation, review queue. Then real BigQuery data, then
+real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
+
+---
+
+## 9. Open issues
+
+1. **Naming inconsistency.** UI says StockPulse; repo, GCP project and URL say
+   daysupply. Either redeploy under a `stockpulse` service name or add a line to
+   the README explaining the rename. A judge will notice the mismatch.
+2. **Expiry tracker has no data source.** Either drop it or implement FEFO
+   (Block C) so it becomes part of the logic rather than decoration.
+3. **Scope items not in the original spec** — barcode scanning, expiry tracking,
+   five-state filter — were added during the UI sprint. Barcode is justified
+   (degradation hierarchy: barcode → voice → chat). Expiry needs Block C to earn
+   its place.
+4. **Deck and video script live outside the repo.** Move to `docs/`.
+5. **"India and the Global South"** copy predates the scope change. Remove.
+6. **Lead-time data does not exist publicly.** Block C derives it from distance
+   to district HQ. This is a proxy and must be labelled as an assumption in
+   `Data/README.md`, never presented as measured.
+7. **`Data/README.md` does not exist yet.** It should record provenance and every
+   real-vs-generated decision. It is a credibility asset for judging.

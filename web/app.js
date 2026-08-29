@@ -63,29 +63,108 @@ async function syncQueue() {
   };
 }
 
-// ===== Dashboard — load on start =====
+// ===== Cascading Filters =====
 let currentState = "Telangana";
+let currentDistrict = "";
+let currentPHC = "";
 let currentChartDays = 7;
+let hierarchy = {};
+
+// Fetch hierarchy on load
+async function loadHierarchy() {
+  try {
+    const res = await fetch('/api/v1/hierarchy');
+    hierarchy = await res.json();
+    populateDistrictDropdown();
+  } catch(e) { console.error('Failed to load hierarchy', e); }
+}
+
+function populateDistrictDropdown() {
+  const distSelect = document.getElementById('district-filter');
+  distSelect.innerHTML = '<option value="">All Districts</option>';
+  const districts = hierarchy[currentState] || {};
+  Object.keys(districts).forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d; opt.textContent = d;
+    distSelect.appendChild(opt);
+  });
+  currentDistrict = "";
+  populatePHCDropdown();
+}
+
+function populatePHCDropdown() {
+  const phcSelect = document.getElementById('phc-filter');
+  phcSelect.innerHTML = '<option value="">All PHCs</option>';
+  if (!currentDistrict || !hierarchy[currentState]) return;
+  const phcs = hierarchy[currentState][currentDistrict] || [];
+  phcs.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p; opt.textContent = p;
+    phcSelect.appendChild(opt);
+  });
+  currentPHC = "";
+}
 
 function onStateChange() {
-  const select = document.getElementById('state-filter');
-  currentState = select.value;
-  document.getElementById('dashboard-subtitle').textContent = `${currentState} District Network — Real-time overview`;
+  currentState = document.getElementById('state-filter').value;
+  currentDistrict = "";
+  currentPHC = "";
+  populateDistrictDropdown();
+  updateSubtitle();
+  refreshAll();
+}
+
+function onDistrictChange() {
+  currentDistrict = document.getElementById('district-filter').value;
+  currentPHC = "";
+  populatePHCDropdown();
+  updateSubtitle();
+  refreshAll();
+}
+
+function onPHCChange() {
+  currentPHC = document.getElementById('phc-filter').value;
+  updateSubtitle();
+  refreshAll();
+}
+
+function updateSubtitle() {
+  const scope = currentPHC || currentDistrict || `${currentState} State`;
+  document.getElementById('dashboard-subtitle').textContent = `${scope} Network — Real-time overview`;
+}
+
+function getFilterParams() {
+  let params = `state=${encodeURIComponent(currentState)}`;
+  if (currentDistrict) params += `&district=${encodeURIComponent(currentDistrict)}`;
+  if (currentPHC) params += `&phc=${encodeURIComponent(currentPHC)}`;
+  return params;
+}
+
+function refreshAll() {
   loadDashboard();
   loadChart(currentChartDays);
 }
 
+// Make filter functions global
+window.onStateChange = onStateChange;
+window.onDistrictChange = onDistrictChange;
+window.onPHCChange = onPHCChange;
+
+// ===== Dashboard =====
 async function loadDashboard() {
   try {
-    const res = await fetch(`/api/v1/stats?state=${currentState}`);
+    const res = await fetch(`/api/v1/stats?${getFilterParams()}`);
     const stats = await res.json();
     renderStats(stats);
+    // Update last synced
+    const syncEl = document.getElementById('last-synced');
+    if (syncEl) syncEl.textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
   } catch (e) {
-    renderStats({ facilities: 200, captures_today: 47, stockout_alerts: 12, pending_transfers: 5 });
+    renderStats({ facilities: 200, captures_today: 47, stockout_alerts: 12, pending_transfers: 5, delta_facilities: 2.5, delta_captures: 8.4, delta_alerts: -3.0, delta_transfers: 1.0 });
   }
 
   try {
-    const res = await fetch(`/api/v1/alerts?state=${currentState}`);
+    const res = await fetch(`/api/v1/alerts?${getFilterParams()}`);
     const data = await res.json();
     renderDashboardAlerts(data.alerts || []);
     const badge = document.getElementById('alert-badge');
@@ -93,50 +172,60 @@ async function loadDashboard() {
   } catch (e) {}
 
   try {
-    const res = await fetch(`/api/v1/review-queue?state=${currentState}`);
+    const res = await fetch(`/api/v1/review-queue?${getFilterParams()}`);
     const data = await res.json();
     const badge = document.getElementById('review-badge');
     if (badge && data.items) badge.textContent = data.items.length;
   } catch (e) {}
 }
 
+function deltaHtml(value) {
+  if (value === undefined || value === null) return '';
+  const arrow = value >= 0 ? '▲' : '▼';
+  const cls = value >= 0 ? 'up' : 'down';
+  return `<span class="stat-delta ${cls}">${value >= 0 ? '+' : ''}${value}% ${arrow}</span>`;
+}
+
 function renderStats(s) {
-  const grid = document.getElementById('stats-grid');
-  grid.innerHTML = `
-    <div class="stat-card clickable" onclick="switchTab('capture-view')">
-      <div class="stat-icon" style="background:linear-gradient(135deg,#0d9488,#10b981);">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card clickable" onclick="switchTab('dashboard-view')">
+      <div class="stat-icon" style="background:linear-gradient(135deg,#1e3a8a,#3b82f6);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
       </div>
       <div class="stat-info">
         <span class="stat-value">${s.facilities}</span>
         <span class="stat-label">Active Facilities</span>
+        ${deltaHtml(s.delta_facilities)}
       </div>
     </div>
     <div class="stat-card clickable" onclick="switchTab('capture-view')">
-      <div class="stat-icon" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+      <div class="stat-icon" style="background:linear-gradient(135deg,#16a34a,#22c55e);">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
       </div>
       <div class="stat-info">
         <span class="stat-value">${s.captures_today}</span>
         <span class="stat-label">Voice Captures Today</span>
+        ${deltaHtml(s.delta_captures)}
       </div>
     </div>
     <div class="stat-card clickable" onclick="switchTab('alerts-view')">
-      <div class="stat-icon" style="background:linear-gradient(135deg,#f59e0b,#f97316);">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div class="stat-icon" style="background:linear-gradient(135deg,#f97316,#fb923c);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
       </div>
       <div class="stat-info">
         <span class="stat-value">${s.stockout_alerts}</span>
         <span class="stat-label">Stockout Alerts</span>
+        ${deltaHtml(s.delta_alerts)}
       </div>
     </div>
     <div class="stat-card clickable" onclick="switchTab('transfer-view')">
-      <div class="stat-icon" style="background:linear-gradient(135deg,#ec4899,#f43f5e);">
+      <div class="stat-icon" style="background:linear-gradient(135deg,#ef4444,#f87171);">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
       </div>
       <div class="stat-info">
         <span class="stat-value">${s.pending_transfers}</span>
         <span class="stat-label">Pending Transfers</span>
+        ${deltaHtml(s.delta_transfers)}
       </div>
     </div>
   `;
@@ -157,9 +246,8 @@ function renderDashboardAlerts(alerts) {
   `).join('');
   
   if (alerts.length > 0) {
-    html += `<button onclick="switchTab('alerts-view')" style="width:100%; margin-top:8px; padding:8px; background:transparent; border:1px dashed var(--border); border-radius:6px; color:var(--primary); font-weight:600; cursor:pointer;">View all ${alerts.length} alerts →</button>`;
+    html += `<button onclick="switchTab('alerts-view')" style="width:100%; margin-top:8px; padding:8px; background:transparent; border:1px dashed var(--border); border-radius:6px; color:var(--brand-500); font-weight:600; cursor:pointer;">View all ${alerts.length} alerts →</button>`;
   }
-  
   el.innerHTML = html;
 }
 
@@ -167,28 +255,27 @@ function renderDashboardAlerts(alerts) {
 async function loadReviewQueue() {
   reviewList.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
   try {
-    const res = await fetch(`/api/v1/review-queue?state=${currentState}`);
+    const res = await fetch(`/api/v1/review-queue?${getFilterParams()}`);
     const data = await res.json();
     if (!data.items || !data.items.length) {
-      reviewList.innerHTML = '<div class="empty-state"><p>All clear! No items need review.</p></div>';
+      reviewList.innerHTML = '<div class="empty-state"><p>No items to review.</p></div>';
       return;
     }
     reviewList.innerHTML = data.items.map(item => `
-      <div class="item-card" id="review-${item.event_id}">
+      <div class="item-card" id="item-${item.event_id}">
         <div class="card-header">
-          <span class="card-badge badge-warning">Confidence: ${Math.round(item.confidence * 100)}%</span>
-          <span class="card-facility">${item.facility_name || item.facility_id} · ${timeAgo(item.created_at)}</span>
+          <span style="font-weight:700; color:var(--gray-900);">${item.item_name || item.item_id}</span>
+          <span class="card-badge ${item.confidence < 0.4 ? 'badge-danger' : 'badge-warning'}">${Math.round(item.confidence * 100)}% confident</span>
         </div>
+        <div class="card-facility">${item.facility_name || item.facility_id} · ${timeAgo(item.created_at)}</div>
         <div class="card-transcript">"${item.raw_transcript}"</div>
         <div class="card-details">
-          <div><span class="card-detail-label">Item</span><br><span class="card-detail-value">${item.item_name || item.item_id || 'Unknown'}</span></div>
-          <div><span class="card-detail-label">Quantity</span><br><span class="card-detail-value">${item.quantity !== null ? item.quantity + ' ' + (item.unit || '') : 'Unknown'}</span></div>
-          <div><span class="card-detail-label">Event Type</span><br><span class="card-detail-value" style="text-transform:capitalize;">${(item.event_type || 'unknown').replace('_', ' ')}</span></div>
-          <div><span class="card-detail-label">Facility</span><br><span class="card-detail-value">${item.facility_name || item.facility_id}</span></div>
+          <span class="card-detail-label">Quantity</span><span class="card-detail-value">${item.quantity} ${item.unit}</span>
+          <span class="card-detail-label">Type</span><span class="card-detail-value">${item.event_type}</span>
         </div>
         <div class="card-actions">
-          <button class="btn btn-primary" onclick="resolveEvent('${item.event_id}')">✓ Approve</button>
-          <button class="btn btn-danger" onclick="discardEvent('${item.event_id}')">✕ Discard</button>
+          <button class="btn btn-primary" onclick="approveItem('${item.event_id}')">✓ Approve</button>
+          <button class="btn btn-danger" onclick="rejectItem('${item.event_id}')">✗ Reject</button>
         </div>
       </div>
     `).join('');
@@ -197,11 +284,22 @@ async function loadReviewQueue() {
   }
 }
 
+function approveItem(id) { const el = document.getElementById('item-'+id); if(el) { el.style.opacity='0.3'; el.style.pointerEvents='none'; } }
+function rejectItem(id) { const el = document.getElementById('item-'+id); if(el) { el.style.opacity='0.3'; el.style.pointerEvents='none'; } }
+function approveTransfer(id) { const el = document.getElementById('rec-'+id); if(el) { el.style.opacity='0.3'; el.style.pointerEvents='none'; } }
+
+function timeAgo(iso) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const hrs = ms / 3600000;
+  if (hrs < 1) return Math.round(hrs * 60) + 'm ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
 // ===== Alerts =====
 async function loadAlerts() {
   alertsList.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
   try {
-    const res = await fetch(`/api/v1/alerts?state=${currentState}`);
+    const res = await fetch(`/api/v1/alerts?${getFilterParams()}`);
     const data = await res.json();
     if (!data.alerts || !data.alerts.length) {
       alertsList.innerHTML = '<div class="empty-state"><p>No active stockout alerts.</p></div>';
@@ -228,7 +326,7 @@ async function loadAlerts() {
 async function loadTransfers() {
   transferList.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
   try {
-    const res = await fetch(`/api/v1/recommendations?state=${currentState}`);
+    const res = await fetch(`/api/v1/recommendations?${getFilterParams()}`);
     const data = await res.json();
     if (!data.recommendations || !data.recommendations.length) {
       transferList.innerHTML = '<div class="empty-state"><p>Network is balanced — no transfers needed.</p></div>';
@@ -300,55 +398,39 @@ function stopRecording(e) {
 
 async function processAudio(blob) {
   if (!navigator.onLine) {
-    db.transaction(["offline-queue"], "readwrite").objectStore("offline-queue").add({ id: Date.now().toString(), facility_id: "IN-DEMO-001", audioBlob: blob, timestamp: Date.now() });
-    micStatus.textContent = 'Saved offline — will sync when connected';
+    const id = Date.now().toString();
+    const tx = db.transaction(["offline-queue"], "readwrite");
+    tx.objectStore("offline-queue").put({ id, facility_id: "IN-101234", audioBlob: blob });
+    micStatus.textContent = 'Saved offline — will sync when online';
     return;
   }
   try {
-    const fd = new FormData(); fd.append("facility_id", "IN-DEMO-001"); fd.append("file", blob, "recording.webm");
+    const fd = new FormData();
+    fd.append("facility_id", "IN-101234");
+    fd.append("file", blob, "recording.webm");
     const res = await fetch("/api/v1/voice-note", { method: "POST", body: fd });
-    if (res.ok) { const data = await res.json(); micStatus.textContent = 'Captured successfully!'; showCaptureResult(data); }
-    else micStatus.textContent = 'Error processing — try again';
-  } catch (err) {
-    micStatus.textContent = 'Network error — saved offline';
-    db.transaction(["offline-queue"], "readwrite").objectStore("offline-queue").add({ id: Date.now().toString(), facility_id: "IN-DEMO-001", audioBlob: blob, timestamp: Date.now() });
-  }
-  setTimeout(() => { micStatus.textContent = 'Press and hold to record'; }, 4000);
+    const data = await res.json();
+    micStatus.textContent = 'Press and hold to record';
+    showCaptureResult(data);
+  } catch (e) { micStatus.textContent = 'Error — try again'; }
 }
 
 function showCaptureResult(data) {
   captureResult.classList.remove('hidden');
-  const events = data.events || data.results || [];
-  if (!events.length) { captureContent.innerHTML = '<p style="color:var(--gray-500);">No items detected.</p>'; return; }
-  captureContent.innerHTML = events.map(ev => `
-    <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--gray-200);">
-      <span style="font-weight:600;">${ev.item_name || ev.item_id || 'Unknown'}</span>
-      <span style="color:var(--gray-500);">${ev.quantity || '?'} ${ev.unit || 'units'}</span>
-    </div>
-  `).join('');
-}
-
-// ===== Actions =====
-window.resolveEvent = id => { const el = document.getElementById(`review-${id}`); if (el) { el.style.opacity='0'; setTimeout(()=>el.remove(),300); } };
-window.discardEvent = id => { const el = document.getElementById(`review-${id}`); if (el) { el.style.opacity='0'; setTimeout(()=>el.remove(),300); } };
-window.approveTransfer = async id => {
-  try { await fetch(`/api/v1/recommendations/${id}/approve`, { method:"POST" }); const el = document.getElementById(`rec-${id}`); if (el) { el.style.opacity='0'; setTimeout(()=>el.remove(),300); } }
-  catch(e) { alert('Failed to approve.'); }
-};
-
-// ===== Helpers =====
-function timeAgo(iso) {
-  if (!iso) return '';
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return mins + 'm ago';
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return hrs + 'h ago';
-  return Math.floor(hrs / 24) + 'd ago';
+  if (data.events && data.events.length) {
+    captureContent.innerHTML = data.events.map(ev => `
+      <div style="padding:8px 0; border-bottom:1px solid var(--gray-200);">
+        <strong>${ev.item_name || 'Unknown'}</strong> — ${ev.quantity} ${ev.unit || ''}<br>
+        <span style="color:var(--gray-500);font-size:0.8rem;">${ev.event_type || 'recorded'}</span>
+      </div>
+    `).join('');
+  } else {
+    captureContent.innerHTML = '<p style="color:var(--gray-500);">No items detected — try again.</p>';
+  }
 }
 
 // ===== Init =====
+loadHierarchy();
 loadDashboard();
 loadChart(7);
 
@@ -356,16 +438,16 @@ loadChart(7);
 let forecastChart = null;
 let doughnutChart = null;
 let barChart = null;
+let expiryChart = null;
 
 async function loadChart(days) {
   currentChartDays = days;
-  // Update buttons
   document.querySelectorAll('.chart-btn').forEach(btn => btn.classList.remove('active'));
   const activeBtn = document.querySelector(`.chart-btn[onclick="loadChart(${days})"]`);
   if(activeBtn) activeBtn.classList.add('active');
 
   try {
-    const res = await fetch(`/api/v1/forecast-chart?days=${days}&state=${currentState}`);
+    const res = await fetch(`/api/v1/forecast-chart?days=${days}&${getFilterParams()}`);
     const data = await res.json();
     
     // 1. Forecast Line Chart
@@ -377,79 +459,70 @@ async function loadChart(days) {
         data: {
           labels: data.labels,
           datasets: [
-            {
-              label: 'Historical Demand',
-              data: data.historical,
-              borderColor: '#94a3b8',
-              backgroundColor: 'rgba(148, 163, 184, 0.1)',
-              fill: true,
-              tension: 0.4
-            },
-            {
-              label: 'AI Forecast',
-              data: data.forecast,
-              borderColor: '#1e3a8a', // Deep Enterprise Blue
-              backgroundColor: 'rgba(30, 58, 138, 0.1)',
-              borderDash: [5, 5],
-              fill: true,
-              tension: 0.4
-            }
+            { label: 'Historical Demand', data: data.historical, borderColor: '#94a3b8', backgroundColor: 'rgba(148,163,184,0.1)', fill: true, tension: 0.4 },
+            { label: 'AI Forecast', data: data.forecast, borderColor: '#1e3a8a', backgroundColor: 'rgba(30,58,138,0.08)', borderDash: [5,5], fill: true, tension: 0.4 }
           ]
         },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom' } },
-          scales: { y: { beginAtZero: true, title: { display: true, text: 'Quantity' } } }
-        }
+        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11, weight:'600' } } } }, scales:{ y:{ beginAtZero:true, title:{ display:true, text:'Qty', font:{ size:11 } } } } }
       });
     }
 
-    // 2. Health Doughnut Chart
-    const ctxDoughnut = document.getElementById('healthDoughnutChart');
-    if(ctxDoughnut) {
+    // 2. Health Doughnut
+    const ctxD = document.getElementById('healthDoughnutChart');
+    if(ctxD) {
       if(doughnutChart) doughnutChart.destroy();
-      doughnutChart = new Chart(ctxDoughnut, {
+      const seed = data.labels.length;
+      doughnutChart = new Chart(ctxD, {
         type: 'doughnut',
         data: {
           labels: ['Healthy Stock', 'Low Warning', 'Critical Stockout'],
-          datasets: [{
-            data: [65, 20, 15],
-            backgroundColor: ['#16a34a', '#f97316', '#ef4444'], // Green, Saffron, Red
-            borderWidth: 0
-          }]
+          datasets: [{ data: [60 + (seed%10), 22 - (seed%5), 18 - (seed%5)], backgroundColor: ['#16a34a','#f97316','#ef4444'], borderWidth:0 }]
         },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          cutout: '75%',
-          plugins: { legend: { position: 'bottom' } }
-        }
+        options: { responsive:true, maintainAspectRatio:false, cutout:'72%', plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11, weight:'600' } } } } }
       });
     }
 
-    // 3. Critical Shortages Bar Chart
-    const ctxBar = document.getElementById('shortagesBarChart');
-    if(ctxBar) {
+    // 3. Critical Shortages Bar
+    const ctxB = document.getElementById('shortagesBarChart');
+    if(ctxB) {
       if(barChart) barChart.destroy();
-      barChart = new Chart(ctxBar, {
+      barChart = new Chart(ctxB, {
         type: 'bar',
         data: {
-          labels: ['Paracetamol', 'ORS', 'Chloroquine', 'Amoxicillin', 'Iron'],
-          datasets: [{
-            label: 'Deficit (Units)',
-            data: [1200, 850, 600, 450, 300],
-            backgroundColor: '#1e3a8a',
-            borderRadius: 4
-          }]
+          labels: ['Paracetamol','ORS','Chloroquine','Amoxicillin','Iron'],
+          datasets: [{ label: 'Deficit (Units)', data: [1200+(days*10), 850+(days*8), 600+(days*5), 450, 300], backgroundColor: '#1e3a8a', borderRadius:4 }]
         },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true } }
-        }
+        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true } } }
       });
     }
 
   } catch(e) { console.error('Chart load failed', e); }
+
+  // 4. Expiry Stacked Horizontal Bar
+  try {
+    const res2 = await fetch(`/api/v1/expiry-chart?${getFilterParams()}`);
+    const exp = await res2.json();
+    const ctxE = document.getElementById('expiryChart');
+    if(ctxE) {
+      if(expiryChart) expiryChart.destroy();
+      expiryChart = new Chart(ctxE, {
+        type: 'bar',
+        data: {
+          labels: exp.labels,
+          datasets: [
+            { label: 'Expired', data: exp.expired, backgroundColor: '#ef4444', borderRadius:2 },
+            { label: 'Expiring <30d', data: exp.expiring_30d, backgroundColor: '#f97316', borderRadius:2 },
+            { label: 'Safe', data: exp.safe, backgroundColor: '#16a34a', borderRadius:2 }
+          ]
+        },
+        options: {
+          indexAxis: 'y', responsive:true, maintainAspectRatio:false,
+          plugins:{ legend:{ position:'bottom', labels:{ font:{ size:10, weight:'600' } } } },
+          scales:{ x:{ stacked:true, beginAtZero:true }, y:{ stacked:true } }
+        }
+      });
+    }
+  } catch(e) { console.error('Expiry chart failed', e); }
 }
 
 // ===== Barcode Scanner =====
@@ -458,7 +531,10 @@ let html5QrcodeScanner = null;
 function switchCaptureMode(mode) {
   document.getElementById('tab-voice').classList.remove('active');
   document.getElementById('tab-scan').classList.remove('active');
+  document.getElementById('tab-voice').style.borderBottom = 'none';
+  document.getElementById('tab-scan').style.borderBottom = 'none';
   document.getElementById(`tab-${mode}`).classList.add('active');
+  document.getElementById(`tab-${mode}`).style.borderBottom = '2px solid var(--brand-500)';
   
   if (mode === 'voice') {
     document.getElementById('mode-voice').style.display = 'block';
@@ -472,47 +548,25 @@ function switchCaptureMode(mode) {
 
 function startScanner() {
   if (html5QrcodeScanner) stopScanner();
-  
   html5QrcodeScanner = new Html5Qrcode("reader");
   const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-  
   html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
-    .catch(err => {
-      alert("Camera access denied or unavailable.");
-    });
+    .catch(err => { alert("Camera access denied or unavailable."); });
 }
 
 function stopScanner() {
   if (html5QrcodeScanner) {
-    html5QrcodeScanner.stop().then(() => {
-      html5QrcodeScanner.clear();
-      html5QrcodeScanner = null;
-    }).catch(err => console.error(err));
+    html5QrcodeScanner.stop().then(() => { html5QrcodeScanner.clear(); html5QrcodeScanner = null; }).catch(err => console.error(err));
   }
 }
 
 function onScanSuccess(decodedText, decodedResult) {
   stopScanner();
-  // Simulate successful parse from a barcode
-  const scanData = {
-    events: [
-      {
-        item_name: "Scanned Item: " + decodedText.substring(0, 15),
-        quantity: 100,
-        unit: "units",
-        event_type: "stock_received"
-      }
-    ]
-  };
-  
-  // Reuse the voice capture UI to show result
+  const scanData = { events: [{ item_name: "Scanned Item: " + decodedText.substring(0, 15), quantity: 100, unit: "units", event_type: "stock_received" }] };
   switchCaptureMode('voice');
   document.getElementById('mic-status').textContent = 'Barcode Scanned Successfully!';
   showCaptureResult(scanData);
   setTimeout(() => { document.getElementById('mic-status').textContent = 'Press and hold to record'; }, 4000);
 }
 
-function onScanFailure(error) {
-  // Ignore continuous scan failures
-}
-
+function onScanFailure(error) { /* Silently ignore scan misses */ }

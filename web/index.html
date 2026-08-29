@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#064e3b">
+  <meta name="theme-color" content="#1e3a8a">
   <meta name="description" content="StockPulse — Voice-first medicine stock tracking and redistribution for primary health centres.">
-  <title>StockPulse</title>
+  <title>StockPulse — PHC Supply Chain Intelligence</title>
   <link rel="icon" href="logo.jpg" type="image/jpeg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://unpkg.com/html5-qrcode"></script>
@@ -20,7 +21,10 @@
     <aside class="sidebar">
       <div class="sidebar-brand">
         <img src="logo.jpg" alt="StockPulse" class="brand-logo">
-        <span class="brand-name">StockPulse</span>
+        <div>
+          <span class="brand-name">StockPulse</span>
+          <span class="brand-subtitle">PHC Supply Chain</span>
+        </div>
       </div>
       <nav class="sidebar-nav">
         <button class="nav-item active" data-tab="dashboard-view">
@@ -74,10 +78,16 @@
         <div class="view-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
           <div>
             <h2>Dashboard</h2>
-            <p class="view-subtitle" id="dashboard-subtitle">Telangana District Network — Real-time overview</p>
+            <p class="view-subtitle" id="dashboard-subtitle">Telangana State Network — Real-time overview</p>
           </div>
-          <div>
-            <select id="state-filter" onchange="onStateChange()" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 500; cursor: pointer; outline: none;">
+          <div class="last-synced" id="last-synced">Last synced: just now</div>
+        </div>
+
+        <!-- ── Cascading Filter Bar ── -->
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label class="filter-label">State</label>
+            <select id="state-filter" onchange="onStateChange()">
               <option value="Telangana">Telangana</option>
               <option value="Maharashtra">Maharashtra</option>
               <option value="Rajasthan">Rajasthan</option>
@@ -85,14 +95,28 @@
               <option value="Assam">Assam</option>
             </select>
           </div>
+          <div class="filter-group">
+            <label class="filter-label">District</label>
+            <select id="district-filter" onchange="onDistrictChange()">
+              <option value="">All Districts</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label">PHC</label>
+            <select id="phc-filter" onchange="onPHCChange()">
+              <option value="">All PHCs</option>
+            </select>
+          </div>
         </div>
+
         <div class="stats-grid" id="stats-grid">
           <!-- Populated by JS -->
         </div>
 
-        <div class="dashboard-row" style="margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+        <!-- ── 4 Charts Grid ── -->
+        <div class="charts-grid">
           <div class="dashboard-section chart-section">
-            <div class="chart-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div class="chart-header">
               <h3>📈 AI Demand Forecast</h3>
               <div class="chart-controls">
                 <button class="chart-btn active" onclick="loadChart(7)">7D</button>
@@ -100,27 +124,22 @@
                 <button class="chart-btn" onclick="loadChart(30)">30D</button>
               </div>
             </div>
-            <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
-              <canvas id="forecastChart"></canvas>
-            </div>
+            <div class="chart-container"><canvas id="forecastChart"></canvas></div>
           </div>
 
           <div class="dashboard-section chart-section">
-            <div class="chart-header" style="margin-bottom: 12px;">
-              <h3>🏥 Network Stock Health</h3>
-            </div>
-            <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
-              <canvas id="healthDoughnutChart"></canvas>
-            </div>
+            <div class="chart-header"><h3>🏥 Network Stock Health</h3></div>
+            <div class="chart-container"><canvas id="healthDoughnutChart"></canvas></div>
           </div>
 
           <div class="dashboard-section chart-section">
-            <div class="chart-header" style="margin-bottom: 12px;">
-              <h3>⚠️ Critical Shortages (Top 5)</h3>
-            </div>
-            <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
-              <canvas id="shortagesBarChart"></canvas>
-            </div>
+            <div class="chart-header"><h3>⚠️ Critical Shortages (Top 5)</h3></div>
+            <div class="chart-container"><canvas id="shortagesBarChart"></canvas></div>
+          </div>
+
+          <div class="dashboard-section chart-section">
+            <div class="chart-header"><h3>💊 Medicine Expiry Tracker</h3></div>
+            <div class="chart-container"><canvas id="expiryChart"></canvas></div>
           </div>
         </div>
 
@@ -157,8 +176,8 @@
         </div>
         
         <div class="capture-tabs" style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 1px solid var(--border);">
-          <button class="capture-tab-btn active" id="tab-voice" onclick="switchCaptureMode('voice')" style="padding: 12px 24px; background: none; border: none; border-bottom: 2px solid var(--primary); color: var(--primary); font-weight: 600; cursor: pointer;">🎙️ Voice</button>
-          <button class="capture-tab-btn" id="tab-scan" onclick="switchCaptureMode('scan')" style="padding: 12px 24px; background: none; border: none; color: var(--text-muted); font-weight: 500; cursor: pointer;">📷 Scan Barcode</button>
+          <button class="capture-tab-btn active" id="tab-voice" onclick="switchCaptureMode('voice')" style="padding: 12px 24px; background: none; border: none; border-bottom: 2px solid var(--brand-500); color: var(--brand-500); font-weight: 600; cursor: pointer;">🎙️ Voice</button>
+          <button class="capture-tab-btn" id="tab-scan" onclick="switchCaptureMode('scan')" style="padding: 12px 24px; background: none; border: none; color: var(--gray-400); font-weight: 500; cursor: pointer;">📷 Scan Barcode</button>
         </div>
 
         <div class="capture-card" id="mode-voice">
@@ -183,7 +202,7 @@
           </div>
           <div id="reader" style="width: 100%; max-width: 500px; margin: 0 auto; border-radius: 12px; overflow: hidden; border: 2px solid var(--border);"></div>
           <div style="text-align: center; margin-top: 16px;">
-             <button onclick="startScanner()" style="padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">Start Camera</button>
+             <button onclick="startScanner()" style="padding: 12px 24px; background: var(--brand-500); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">Start Camera</button>
              <button onclick="stopScanner()" style="padding: 12px 24px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-left: 8px;">Stop</button>
           </div>
         </div>

@@ -1,22 +1,43 @@
 """
 Demo data for hackathon presentation.
 Provides realistic sample data so every screen looks populated.
+Supports cascading filters: State → District → PHC.
 """
 
+import hashlib
+import math
 import random
 import uuid
 from datetime import datetime, timedelta
 
-DEMO_FACILITIES = [
-    {"id": "IN-101234", "name": "PHC Shadnagar", "district": "Ranga Reddy", "lat": 17.0712, "lon": 78.1448},
-    {"id": "IN-101891", "name": "PHC Jadcherla", "district": "Mahbubnagar", "lat": 16.7667, "lon": 78.1333},
-    {"id": "IN-102455", "name": "PHC Kalwakurthy", "district": "Mahbubnagar", "lat": 16.6667, "lon": 78.5000},
-    {"id": "IN-103012", "name": "PHC Makthal", "district": "Mahbubnagar", "lat": 16.5167, "lon": 77.5833},
-    {"id": "IN-103678", "name": "PHC Shamshabad", "district": "Ranga Reddy", "lat": 17.2833, "lon": 78.3667},
-    {"id": "IN-104201", "name": "PHC Tandur", "district": "Ranga Reddy", "lat": 17.2500, "lon": 77.5833},
-    {"id": "IN-104890", "name": "PHC Chevella", "district": "Ranga Reddy", "lat": 17.3167, "lon": 78.1500},
-    {"id": "IN-105543", "name": "PHC Wanaparthy", "district": "Mahbubnagar", "lat": 16.3636, "lon": 78.0650},
-]
+# ── Hierarchical geography: State → District → PHC ──────────────────
+STATE_HIERARCHY = {
+    "Telangana": {
+        "Ranga Reddy": ["PHC Shadnagar", "PHC Shamshabad", "PHC Chevella"],
+        "Mahbubnagar": ["PHC Jadcherla", "PHC Kalwakurthy", "PHC Makthal"],
+        "Warangal": ["PHC Hanamkonda", "PHC Jangaon"],
+    },
+    "Maharashtra": {
+        "Pune": ["PHC Baramati", "PHC Junnar", "PHC Bhor"],
+        "Nagpur": ["PHC Kamptee", "PHC Hingna", "PHC Ramtek"],
+        "Nashik": ["PHC Sinnar", "PHC Igatpuri"],
+    },
+    "Rajasthan": {
+        "Jaipur": ["PHC Amber", "PHC Sanganer", "PHC Chaksu"],
+        "Jodhpur": ["PHC Osian", "PHC Bilara"],
+        "Udaipur": ["PHC Salumber", "PHC Gogunda"],
+    },
+    "Delhi": {
+        "North Delhi": ["PHC Narela", "PHC Alipur", "PHC Bawana"],
+        "South Delhi": ["PHC Mehrauli", "PHC Saket"],
+        "East Delhi": ["PHC Shahdara", "PHC Vivek Vihar"],
+    },
+    "Assam": {
+        "Kamrup": ["PHC Mirza", "PHC Sonapur", "PHC Boko"],
+        "Nagaon": ["PHC Raha", "PHC Dhing"],
+        "Dibrugarh": ["PHC Naharkatia", "PHC Lahowal"],
+    },
+}
 
 DEMO_ITEMS = [
     {"id": "PARA-500", "name": "Paracetamol 500mg",  "unit": "tablets"},
@@ -29,176 +50,159 @@ DEMO_ITEMS = [
     {"id": "DICLOF-50","name": "Diclofenac 50mg",     "unit": "tablets"},
 ]
 
-def get_demo_stats(state: str = "Telangana"):
-    import hashlib
-    seed = int(hashlib.md5(state.encode()).hexdigest(), 16) % 100 if state != "Telangana" else 0
+
+def _seed_from(state: str, district: str = "", phc: str = "") -> int:
+    """Deterministic seed from filter combination for consistent demo data."""
+    key = f"{state}:{district}:{phc}"
+    return int(hashlib.md5(key.encode()).hexdigest(), 16) % 1000
+
+
+def get_hierarchy():
+    """Returns full State -> District -> PHC hierarchy for the frontend."""
+    return STATE_HIERARCHY
+
+
+def get_demo_stats(state: str = "Telangana", district: str = "", phc: str = ""):
+    seed = _seed_from(state, district, phc)
+    base_facilities = 200 if not district else (50 if not phc else 1)
+    base_captures = 47 if not district else (18 if not phc else 6)
+    base_alerts = 12 if not district else (5 if not phc else 2)
+    base_transfers = 5 if not district else (2 if not phc else 1)
     return {
-        "facilities": 200 + seed,
-        "captures_today": 47 + (seed % 20),
-        "stockout_alerts": 12 + (seed % 10),
-        "pending_transfers": 5 + (seed % 5),
+        "facilities": base_facilities + (seed % 30),
+        "captures_today": base_captures + (seed % 15),
+        "stockout_alerts": base_alerts + (seed % 8),
+        "pending_transfers": base_transfers + (seed % 4),
         "items_tracked": 15,
         "last_sync": datetime.utcnow().isoformat() + "Z",
+        "delta_facilities": round(((seed % 7) - 3) * 0.5, 1),
+        "delta_captures": round(((seed % 13) - 5) * 1.2, 1),
+        "delta_alerts": round(((seed % 9) - 4) * -1.5, 1),
+        "delta_transfers": round(((seed % 5) - 2) * 2.0, 1),
     }
 
-def get_demo_review_queue(state: str = "Telangana"):
-    items = [
-        {
-            "event_id": "evt-" + uuid.uuid4().hex[:8],
-            "facility_id": "IN-101234",
-            "facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Shadnagar",
-            "raw_transcript": "Paracetamol ke do sau tablet aaye hain aur ORS ke pachaas packet bhi",
-            "item_id": "PARA-500",
-            "item_name": "Paracetamol 500mg",
-            "quantity": 200,
-            "unit": "tablets",
-            "event_type": "received",
-            "confidence": 0.52,
-            "created_at": (datetime.utcnow() - timedelta(minutes=12)).isoformat() + "Z",
-        },
-        {
-            "event_id": "evt-" + uuid.uuid4().hex[:8],
-            "facility_id": "IN-102455",
-            "facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Kalwakurthy",
-            "raw_transcript": "Amoxicillin teen sau capsule dispense kiye hain is mahine",
-            "item_id": "AMOX-250",
-            "item_name": "Amoxicillin 250mg",
-            "quantity": 300,
-            "unit": "capsules",
-            "event_type": "dispensed",
-            "confidence": 0.41,
-            "created_at": (datetime.utcnow() - timedelta(minutes=45)).isoformat() + "Z",
-        },
-        {
-            "event_id": "evt-" + uuid.uuid4().hex[:8],
-            "facility_id": "IN-103678",
-            "facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Shamshabad",
-            "raw_transcript": "Iron folic acid ki ginti... lagbhag ek sau tablet bachi hain",
-            "item_id": "IRON-TAB",
-            "item_name": "Iron + Folic Acid",
-            "quantity": 100,
-            "unit": "tablets",
-            "event_type": "stock_count",
-            "confidence": 0.38,
-            "created_at": (datetime.utcnow() - timedelta(hours=2)).isoformat() + "Z",
-        },
+
+def _get_phcs_for_filter(state, district, phc):
+    """Get the list of PHC names based on active filters."""
+    hierarchy = STATE_HIERARCHY.get(state, {})
+    if phc:
+        return [phc]
+    if district:
+        return hierarchy.get(district, ["PHC Default"])
+    all_phcs = []
+    for d_phcs in hierarchy.values():
+        all_phcs.extend(d_phcs)
+    return all_phcs
+
+
+def get_demo_review_queue(state: str = "Telangana", district: str = "", phc: str = ""):
+    phcs = _get_phcs_for_filter(state, district, phc)
+    items = []
+    transcripts = [
+        ("PARA-500", "Paracetamol 500mg", "Paracetamol ke do sau tablet aaye hain", 200, "tablets", "received", 0.52),
+        ("AMOX-250", "Amoxicillin 250mg", "Amoxicillin teen sau capsule dispense kiye", 300, "capsules", "dispensed", 0.41),
+        ("IRON-TAB", "Iron + Folic Acid", "Iron folic acid ki ginti lagbhag ek sau", 100, "tablets", "stock_count", 0.38),
     ]
+    for i, (item_id, item_name, transcript, qty, unit, etype, conf) in enumerate(transcripts):
+        fac = phcs[i % len(phcs)]
+        items.append({
+            "event_id": "evt-" + uuid.uuid4().hex[:8],
+            "facility_id": f"IN-10{1000+i}",
+            "facility_name": fac,
+            "raw_transcript": transcript,
+            "item_id": item_id, "item_name": item_name,
+            "quantity": qty, "unit": unit, "event_type": etype,
+            "confidence": conf,
+            "created_at": (datetime.utcnow() - timedelta(minutes=12 * (i + 1))).isoformat() + "Z",
+        })
     return items
 
-def get_demo_recommendations(state: str = "Telangana"):
-    return [
-        {
-            "recommendation_id": "rec-" + uuid.uuid4().hex[:8],
-            "item_id": "PARA-500",
-            "item_name": "Paracetamol 500mg",
-            "from_facility_id": "IN-101234",
-            "from_facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Shadnagar",
-            "to_facility_id": "IN-102455",
-            "to_facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Kalwakurthy",
-            "quantity": 500,
-            "unit": "tablets",
-            "distance_km": 38.2,
-            "donor_cover_before": 52,
-            "donor_post_cover": 28,
-            "receiver_cover_before": 3,
-            "receiver_post_cover": 18,
-            "urgency": "high",
-        },
-        {
-            "recommendation_id": "rec-" + uuid.uuid4().hex[:8],
-            "item_id": "ORS-PKT",
-            "item_name": "ORS Sachets",
-            "from_facility_id": "IN-103678",
-            "from_facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Shamshabad",
-            "to_facility_id": "IN-103012",
-            "to_facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Makthal",
-            "quantity": 200,
-            "unit": "sachets",
-            "distance_km": 22.7,
-            "donor_cover_before": 45,
-            "donor_post_cover": 25,
-            "receiver_cover_before": 5,
-            "receiver_post_cover": 19,
-            "urgency": "high",
-        },
-        {
-            "recommendation_id": "rec-" + uuid.uuid4().hex[:8],
-            "item_id": "CHLOR-Q",
-            "item_name": "Chloroquine 250mg",
-            "from_facility_id": "IN-104201",
-            "from_facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Tandur",
-            "to_facility_id": "IN-104890",
-            "to_facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Chevella",
-            "quantity": 150,
-            "unit": "tablets",
-            "distance_km": 47.1,
-            "donor_cover_before": 38,
-            "donor_post_cover": 22,
-            "receiver_cover_before": 2,
-            "receiver_post_cover": 14,
-            "urgency": "critical",
-        },
-        {
-            "recommendation_id": "rec-" + uuid.uuid4().hex[:8],
-            "item_id": "IRON-TAB",
-            "item_name": "Iron + Folic Acid",
-            "from_facility_id": "IN-101891",
-            "from_facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Jadcherla",
-            "to_facility_id": "IN-105543",
-            "to_facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Wanaparthy",
-            "quantity": 300,
-            "unit": "tablets",
-            "distance_km": 31.5,
-            "donor_cover_before": 60,
-            "donor_post_cover": 35,
-            "receiver_cover_before": 4,
-            "receiver_post_cover": 16,
-            "urgency": "medium",
-        },
-    ]
 
-def get_demo_alerts(state: str = "Telangana"):
-    return [
-        {"facility_id": "IN-102455", "facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Kalwakurthy", "item_id": "PARA-500", "item_name": "Paracetamol 500mg", "days_of_cover": 3, "status": "active", "severity": "critical"},
-        {"facility_id": "IN-103012", "facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Makthal",     "item_id": "ORS-PKT",  "item_name": "ORS Sachets",        "days_of_cover": 5, "status": "active", "severity": "high"},
-        {"facility_id": "IN-104890", "facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Chevella",    "item_id": "CHLOR-Q",  "item_name": "Chloroquine 250mg",  "days_of_cover": 2, "status": "active", "severity": "critical"},
-        {"facility_id": "IN-105543", "facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Wanaparthy",  "item_id": "IRON-TAB", "item_name": "Iron + Folic Acid",  "days_of_cover": 4, "status": "active", "severity": "high"},
+def get_demo_recommendations(state: str = "Telangana", district: str = "", phc: str = ""):
+    phcs = _get_phcs_for_filter(state, district, phc)
+    transfers = [
+        ("PARA-500", "Paracetamol 500mg", 500, "tablets", 38.2, 52, 28, 3, 18, "high"),
+        ("ORS-PKT", "ORS Sachets", 200, "sachets", 22.7, 45, 25, 5, 19, "high"),
+        ("CHLOR-Q", "Chloroquine 250mg", 150, "tablets", 47.1, 38, 22, 2, 14, "critical"),
+        ("IRON-TAB", "Iron + Folic Acid", 300, "tablets", 31.5, 60, 35, 4, 16, "medium"),
     ]
+    recs = []
+    for i, (iid, iname, qty, unit, dist, db, da, rb, ra, urgency) in enumerate(transfers):
+        from_phc = phcs[i % len(phcs)]
+        to_phc = phcs[(i + 1) % len(phcs)]
+        recs.append({
+            "recommendation_id": "rec-" + uuid.uuid4().hex[:8],
+            "item_id": iid, "item_name": iname,
+            "from_facility_id": f"IN-10{2000+i}", "from_facility_name": from_phc,
+            "to_facility_id": f"IN-10{3000+i}", "to_facility_name": to_phc,
+            "quantity": qty, "unit": unit, "distance_km": dist,
+            "donor_cover_before": db, "donor_post_cover": da,
+            "receiver_cover_before": rb, "receiver_post_cover": ra,
+            "urgency": urgency,
+        })
+    return recs
 
-def get_demo_forecast_chart(days: int = 7, state: str = "Telangana"):
-    import math
-    import random
-    from datetime import datetime, timedelta
-    
+
+def get_demo_alerts(state: str = "Telangana", district: str = "", phc: str = ""):
+    phcs = _get_phcs_for_filter(state, district, phc)
+    alert_items = [
+        ("PARA-500", "Paracetamol 500mg", 3, "critical"),
+        ("ORS-PKT", "ORS Sachets", 5, "high"),
+        ("CHLOR-Q", "Chloroquine 250mg", 2, "critical"),
+        ("IRON-TAB", "Iron + Folic Acid", 4, "high"),
+    ]
+    alerts = []
+    for i, (iid, iname, days, sev) in enumerate(alert_items):
+        fac = phcs[i % len(phcs)]
+        alerts.append({
+            "facility_id": f"IN-10{4000+i}", "facility_name": fac,
+            "item_id": iid, "item_name": iname,
+            "days_of_cover": days, "status": "active", "severity": sev,
+        })
+    return alerts
+
+
+def get_demo_forecast_chart(days: int = 7, state: str = "Telangana", district: str = "", phc: str = ""):
+    seed = _seed_from(state, district, phc)
+    random.seed(seed)
     today = datetime.now()
-    labels = []
-    historical = []
-    forecast = []
-    
-    # 30 days of historical data for smoothing
+    labels, historical, forecast = [], [], []
+    base_demand = 50 + (seed % 30)
+
     for i in range(30, 0, -1):
         d = today - timedelta(days=i)
         labels.append(d.strftime("%b %d"))
-        base_val = 50 + 20 * math.sin(i * 0.5)
-        historical.append(round(base_val + random.uniform(-10, 10)))
+        val = base_demand + 20 * math.sin(i * 0.5)
+        historical.append(round(val + random.uniform(-10, 10)))
         forecast.append(None)
-        
-    current_val = round(50 + random.uniform(-10, 10))
+
+    current_val = round(base_demand + random.uniform(-10, 10))
     labels.append("Today")
     historical.append(current_val)
     forecast.append(current_val)
-    
+
     for i in range(1, days + 1):
         d = today + timedelta(days=i)
         labels.append(d.strftime("%b %d"))
         historical.append(None)
-        trend = 50 + 20 * math.sin(-i * 0.5) + (i * 0.5)
+        trend = base_demand + 20 * math.sin(-i * 0.5) + (i * 0.5)
         forecast.append(round(trend + random.uniform(-5, 5)))
-        
+
+    random.seed()
+    scope = phc if phc else (district if district else f"{state} State")
     return {
-        "item_name": "Paracetamol 500mg",
-        "facility_name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC District Aggregate",
-        "labels": labels,
-        "historical": historical,
-        "forecast": forecast
+        "item_name": "Paracetamol 500mg", "facility_name": scope,
+        "labels": labels, "historical": historical, "forecast": forecast,
     }
+
+
+def get_demo_expiry_chart(state: str = "Telangana", district: str = "", phc: str = ""):
+    """Returns medicine expiry data for the horizontal bar chart."""
+    seed = _seed_from(state, district, phc)
+    random.seed(seed)
+    medicines = ["Paracetamol", "Amoxicillin", "Chloroquine", "ORS", "Iron Tab", "Metronidazole"]
+    expired = [random.randint(50, 300) for _ in medicines]
+    expiring_30d = [random.randint(100, 500) for _ in medicines]
+    safe = [random.randint(500, 2000) for _ in medicines]
+    random.seed()
+    return {"labels": medicines, "expired": expired, "expiring_30d": expiring_30d, "safe": safe}

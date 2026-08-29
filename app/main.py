@@ -11,10 +11,11 @@ from app.redistribute import get_recommendations
 from app.patterns import get_local_patterns, ingest_peer_pattern, PatternNode
 from app.demo_data import (
     get_demo_stats, get_demo_review_queue, get_demo_recommendations,
-    get_demo_alerts,
+    get_demo_alerts, get_demo_forecast_chart, get_demo_expiry_chart,
+    get_hierarchy,
 )
 
-app = FastAPI(title="StockPulse", version="0.2.0")
+app = FastAPI(title="StockPulse", version="0.3.0")
 
 
 @app.get("/healthz")
@@ -23,11 +24,18 @@ async def healthz():
     return {"status": "ok"}
 
 
+# ── Hierarchy (for cascading filters) ────────────────────────────────
+@app.get("/api/v1/hierarchy")
+async def fetch_hierarchy():
+    """Returns State → District → PHC hierarchy for filter dropdowns."""
+    return get_hierarchy()
+
+
 # ── Dashboard stats ──────────────────────────────────────────────────
 @app.get("/api/v1/stats")
-async def get_stats(state: str = "Telangana"):
+async def get_stats(state: str = "Telangana", district: str = "", phc: str = ""):
     """Returns dashboard summary stats."""
-    return get_demo_stats(state)
+    return get_demo_stats(state, district, phc)
 
 
 # ── Voice capture ────────────────────────────────────────────────────
@@ -45,7 +53,7 @@ async def post_voice_note(
 
 # ── Review queue ─────────────────────────────────────────────────────
 @app.get("/api/v1/review-queue")
-async def get_review_queue(state: str = "Telangana"):
+async def get_review_queue(state: str = "Telangana", district: str = "", phc: str = ""):
     """Returns items that need manual review. Falls back to demo data."""
     from google.cloud import firestore
     try:
@@ -55,8 +63,7 @@ async def get_review_queue(state: str = "Telangana"):
             return {"items": [doc.to_dict() for doc in docs]}
     except Exception:
         pass
-    # Fallback: demo data
-    return {"items": get_demo_review_queue(state)}
+    return {"items": get_demo_review_queue(state, district, phc)}
 
 
 # ── Forecasting ──────────────────────────────────────────────────────
@@ -73,7 +80,7 @@ async def get_forecast(facility_id: str, item_id: str):
 
 # ── Alerts ───────────────────────────────────────────────────────────
 @app.get("/api/v1/alerts")
-async def get_alerts(state: str = "Telangana"):
+async def get_alerts(state: str = "Telangana", district: str = "", phc: str = ""):
     """Returns active stock-out warnings. Falls back to demo data."""
     from google.cloud import firestore
     try:
@@ -83,12 +90,12 @@ async def get_alerts(state: str = "Telangana"):
             return {"alerts": [doc.to_dict() for doc in docs]}
     except Exception:
         pass
-    return {"alerts": get_demo_alerts(state)}
+    return {"alerts": get_demo_alerts(state, district, phc)}
 
 
 # ── Transfer recommendations ────────────────────────────────────────
 @app.get("/api/v1/recommendations")
-async def fetch_recommendations(threshold_days: int = 14, transfer_max_km: float = 50.0, state: str = "Telangana"):
+async def fetch_recommendations(threshold_days: int = 14, transfer_max_km: float = 50.0, state: str = "Telangana", district: str = "", phc: str = ""):
     """Returns transfer recommendations. Falls back to demo data."""
     from google.cloud import firestore
     try:
@@ -105,7 +112,7 @@ async def fetch_recommendations(threshold_days: int = 14, transfer_max_km: float
             return {"recommendations": recs}
     except Exception:
         pass
-    return {"recommendations": get_demo_recommendations(state)}
+    return {"recommendations": get_demo_recommendations(state, district, phc)}
 
 
 @app.post("/api/v1/recommendations/{rec_id}/approve")
@@ -126,10 +133,14 @@ async def post_patterns(pattern: PatternNode):
     return ingest_peer_pattern(pattern)
 
 @app.get("/api/v1/forecast-chart")
-async def get_forecast_chart(days: int = 7, state: str = "Telangana"):
+async def get_forecast_chart_endpoint(days: int = 7, state: str = "Telangana", district: str = "", phc: str = ""):
     """Returns historical and forecast trend data for plotting."""
-    from app.demo_data import get_demo_forecast_chart
-    return get_demo_forecast_chart(days, state)
+    return get_demo_forecast_chart(days, state, district, phc)
+
+@app.get("/api/v1/expiry-chart")
+async def get_expiry_chart_endpoint(state: str = "Telangana", district: str = "", phc: str = ""):
+    """Returns medicine expiry data for the horizontal bar chart."""
+    return get_demo_expiry_chart(state, district, phc)
 
 
 # ── Static files (must be last) ─────────────────────────────────────
