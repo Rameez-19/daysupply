@@ -8,14 +8,14 @@ import uuid
 from datetime import datetime, timedelta
 
 DEMO_FACILITIES = [
-    {"id": "IN-101234", "name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Shadnagar", "district": "Ranga Reddy", "lat": 17.0712, "lon": 78.1448},
-    {"id": "IN-101891", "name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Jadcherla", "district": "Mahbubnagar", "lat": 16.7667, "lon": 78.1333},
-    {"id": "IN-102455", "name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Kalwakurthy", "district": "Mahbubnagar", "lat": 16.6667, "lon": 78.5000},
-    {"id": "IN-103012", "name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Makthal", "district": "Mahbubnagar", "lat": 16.5167, "lon": 77.5833},
-    {"id": "IN-103678", "name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Shamshabad", "district": "Ranga Reddy", "lat": 17.2833, "lon": 78.3667},
-    {"id": "IN-104201", "name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Tandur", "district": "Ranga Reddy", "lat": 17.2500, "lon": 77.5833},
-    {"id": "IN-104890", "name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Chevella", "district": "Ranga Reddy", "lat": 17.3167, "lon": 78.1500},
-    {"id": "IN-105543", "name": f"{state[:2].upper() + ' ' if state != 'Telangana' else ''}PHC Wanaparthy", "district": "Mahbubnagar", "lat": 16.3636, "lon": 78.0650},
+    {"id": "IN-101234", "name": "PHC Shadnagar", "district": "Ranga Reddy", "lat": 17.0712, "lon": 78.1448},
+    {"id": "IN-101891", "name": "PHC Jadcherla", "district": "Mahbubnagar", "lat": 16.7667, "lon": 78.1333},
+    {"id": "IN-102455", "name": "PHC Kalwakurthy", "district": "Mahbubnagar", "lat": 16.6667, "lon": 78.5000},
+    {"id": "IN-103012", "name": "PHC Makthal", "district": "Mahbubnagar", "lat": 16.5167, "lon": 77.5833},
+    {"id": "IN-103678", "name": "PHC Shamshabad", "district": "Ranga Reddy", "lat": 17.2833, "lon": 78.3667},
+    {"id": "IN-104201", "name": "PHC Tandur", "district": "Ranga Reddy", "lat": 17.2500, "lon": 77.5833},
+    {"id": "IN-104890", "name": "PHC Chevella", "district": "Ranga Reddy", "lat": 17.3167, "lon": 78.1500},
+    {"id": "IN-105543", "name": "PHC Wanaparthy", "district": "Mahbubnagar", "lat": 16.3636, "lon": 78.0650},
 ]
 
 DEMO_ITEMS = [
