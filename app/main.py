@@ -125,6 +125,12 @@ async def post_patterns(pattern: PatternNode):
     """Ingest peer coefficients as a prior."""
     return ingest_peer_pattern(pattern)
 
+@app.get("/api/v1/forecast-chart")
+async def get_forecast_chart(days: int = 7):
+    """Returns historical and forecast trend data for plotting."""
+    from app.demo_data import get_demo_forecast_chart
+    return get_demo_forecast_chart(days)
+
 
 # ── Static files (must be last) ─────────────────────────────────────
 app.mount("/", StaticFiles(directory="web", html=True), name="web")

@@ -136,7 +136,32 @@ button { font-family: inherit; cursor: pointer; }
 .btn-danger:hover { background:#fee2e2; }
 .btn-full { width:100%; }
 
-/* Alert card */
+/* ═══ Analytics Chart ═══ */
+.chart-controls {
+  display: flex;
+  gap: 8px;
+}
+.chart-btn {
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.chart-btn:hover {
+  background: var(--bg);
+}
+.chart-btn.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* ═══ Alerts ═══ */
 .alert-card { background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px 20px; display:flex; align-items:center; gap:16px; border-left:4px solid var(--danger); }
 .alert-card.severity-high { border-left-color:var(--warning); }
 .alert-card.severity-medium { border-left-color:var(--info); }

@@ -332,3 +332,124 @@ function timeAgo(iso) {
 
 // ===== Init =====
 loadDashboard();
+loadChart(7);
+
+// ===== Analytics Chart =====
+let forecastChart = null;
+async function loadChart(days) {
+  // Update buttons
+  document.querySelectorAll('.chart-btn').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = document.querySelector(`.chart-btn[onclick="loadChart(${days})"]`);
+  if(activeBtn) activeBtn.classList.add('active');
+
+  try {
+    const res = await fetch(`/api/v1/forecast-chart?days=${days}`);
+    const data = await res.json();
+    
+    const ctx = document.getElementById('forecastChart');
+    if(!ctx) return;
+
+    if(forecastChart) forecastChart.destroy();
+    
+    forecastChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: [
+          {
+            label: 'Historical Demand',
+            data: data.historical,
+            borderColor: '#94a3b8',
+            backgroundColor: 'rgba(148, 163, 184, 0.1)',
+            fill: true,
+            tension: 0.4
+          },
+          {
+            label: 'AI Forecast',
+            data: data.forecast,
+            borderColor: '#0d9488',
+            backgroundColor: 'rgba(13, 148, 136, 0.1)',
+            borderDash: [5, 5],
+            fill: true,
+            tension: 0.4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' }
+        },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: 'Quantity' } }
+        }
+      }
+    });
+  } catch(e) { console.error('Chart load failed', e); }
+}
+
+// ===== Barcode Scanner =====
+let html5QrcodeScanner = null;
+
+function switchCaptureMode(mode) {
+  document.getElementById('tab-voice').classList.remove('active');
+  document.getElementById('tab-scan').classList.remove('active');
+  document.getElementById(`tab-${mode}`).classList.add('active');
+  
+  if (mode === 'voice') {
+    document.getElementById('mode-voice').style.display = 'block';
+    document.getElementById('mode-scan').style.display = 'none';
+    stopScanner();
+  } else {
+    document.getElementById('mode-voice').style.display = 'none';
+    document.getElementById('mode-scan').style.display = 'block';
+  }
+}
+
+function startScanner() {
+  if (html5QrcodeScanner) stopScanner();
+  
+  html5QrcodeScanner = new Html5Qrcode("reader");
+  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+  
+  html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
+    .catch(err => {
+      alert("Camera access denied or unavailable.");
+    });
+}
+
+function stopScanner() {
+  if (html5QrcodeScanner) {
+    html5QrcodeScanner.stop().then(() => {
+      html5QrcodeScanner.clear();
+      html5QrcodeScanner = null;
+    }).catch(err => console.error(err));
+  }
+}
+
+function onScanSuccess(decodedText, decodedResult) {
+  stopScanner();
+  // Simulate successful parse from a barcode
+  const scanData = {
+    events: [
+      {
+        item_name: "Scanned Item: " + decodedText.substring(0, 15),
+        quantity: 100,
+        unit: "units",
+        event_type: "stock_received"
+      }
+    ]
+  };
+  
+  // Reuse the voice capture UI to show result
+  switchCaptureMode('voice');
+  document.getElementById('mic-status').textContent = 'Barcode Scanned Successfully!';
+  showCaptureResult(scanData);
+  setTimeout(() => { document.getElementById('mic-status').textContent = 'Press and hold to record'; }, 4000);
+}
+
+function onScanFailure(error) {
+  // Ignore continuous scan failures
+}
+

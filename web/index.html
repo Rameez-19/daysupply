@@ -9,8 +9,9 @@
   <link rel="icon" href="logo.jpg" type="image/jpeg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -78,6 +79,22 @@
           <!-- Populated by JS -->
         </div>
 
+        <div class="dashboard-row" style="margin-top: 24px;">
+          <div class="dashboard-section flex-1 chart-section">
+            <div class="chart-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3>📈 AI Demand Forecast</h3>
+              <div class="chart-controls">
+                <button class="chart-btn active" onclick="loadChart(7)">7D</button>
+                <button class="chart-btn" onclick="loadChart(15)">15D</button>
+                <button class="chart-btn" onclick="loadChart(30)">30D</button>
+              </div>
+            </div>
+            <div class="chart-container" style="position: relative; height: 300px; width: 100%;">
+              <canvas id="forecastChart"></canvas>
+            </div>
+          </div>
+        </div>
+
         <div class="dashboard-row">
           <div class="dashboard-section flex-1">
             <h3>🚨 Urgent Alerts</h3>
@@ -106,10 +123,16 @@
       <!-- ═══ Voice Capture ═══ -->
       <section id="capture-view" class="view hidden-view">
         <div class="view-header">
-          <h2>Voice Capture</h2>
-          <p class="view-subtitle">Record a stock update in Hindi or English</p>
+          <h2>Stock Capture</h2>
+          <p class="view-subtitle">Record a stock update via Voice or Barcode Scan</p>
         </div>
-        <div class="capture-card">
+        
+        <div class="capture-tabs" style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 1px solid var(--border);">
+          <button class="capture-tab-btn active" id="tab-voice" onclick="switchCaptureMode('voice')" style="padding: 12px 24px; background: none; border: none; border-bottom: 2px solid var(--primary); color: var(--primary); font-weight: 600; cursor: pointer;">🎙️ Voice</button>
+          <button class="capture-tab-btn" id="tab-scan" onclick="switchCaptureMode('scan')" style="padding: 12px 24px; background: none; border: none; color: var(--text-muted); font-weight: 500; cursor: pointer;">📷 Scan Barcode</button>
+        </div>
+
+        <div class="capture-card" id="mode-voice">
           <div class="capture-visual">
             <div class="mic-ring" id="mic-ring">
               <button id="mic-btn" class="mic-btn" aria-label="Hold to record">
@@ -122,6 +145,17 @@
           <div class="capture-result hidden" id="capture-result">
             <h4>✅ Extracted Data</h4>
             <div id="capture-result-content"></div>
+          </div>
+        </div>
+        
+        <div class="capture-card hidden" id="mode-scan" style="display: none;">
+          <div style="text-align: center; margin-bottom: 16px;">
+            <p class="mic-hint">Scan a medicine's QR code or Barcode to instantly log it.</p>
+          </div>
+          <div id="reader" style="width: 100%; max-width: 500px; margin: 0 auto; border-radius: 12px; overflow: hidden; border: 2px solid var(--border);"></div>
+          <div style="text-align: center; margin-top: 16px;">
+             <button onclick="startScanner()" style="padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">Start Camera</button>
+             <button onclick="stopScanner()" style="padding: 12px 24px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-left: 8px;">Stop</button>
           </div>
         </div>
 

@@ -162,3 +162,41 @@ def get_demo_alerts():
         {"facility_id": "IN-104890", "facility_name": "PHC Chevella",    "item_id": "CHLOR-Q",  "item_name": "Chloroquine 250mg",  "days_of_cover": 2, "status": "active", "severity": "critical"},
         {"facility_id": "IN-105543", "facility_name": "PHC Wanaparthy",  "item_id": "IRON-TAB", "item_name": "Iron + Folic Acid",  "days_of_cover": 4, "status": "active", "severity": "high"},
     ]
+
+def get_demo_forecast_chart(days: int = 7):
+    import math
+    import random
+    from datetime import datetime, timedelta
+    
+    today = datetime.now()
+    labels = []
+    historical = []
+    forecast = []
+    
+    # 30 days of historical data for smoothing
+    for i in range(30, 0, -1):
+        d = today - timedelta(days=i)
+        labels.append(d.strftime("%b %d"))
+        base_val = 50 + 20 * math.sin(i * 0.5)
+        historical.append(round(base_val + random.uniform(-10, 10)))
+        forecast.append(None)
+        
+    current_val = round(50 + random.uniform(-10, 10))
+    labels.append("Today")
+    historical.append(current_val)
+    forecast.append(current_val)
+    
+    for i in range(1, days + 1):
+        d = today + timedelta(days=i)
+        labels.append(d.strftime("%b %d"))
+        historical.append(None)
+        trend = 50 + 20 * math.sin(-i * 0.5) + (i * 0.5)
+        forecast.append(round(trend + random.uniform(-5, 5)))
+        
+    return {
+        "item_name": "Paracetamol 500mg",
+        "facility_name": "PHC District Aggregate",
+        "labels": labels,
+        "historical": historical,
+        "forecast": forecast
+    }
