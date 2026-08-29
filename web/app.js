@@ -352,8 +352,11 @@ function timeAgo(iso) {
 loadDashboard();
 loadChart(7);
 
-// ===== Analytics Chart =====
+// ===== Analytics Charts =====
 let forecastChart = null;
+let doughnutChart = null;
+let barChart = null;
+
 async function loadChart(days) {
   currentChartDays = days;
   // Update buttons
@@ -365,46 +368,87 @@ async function loadChart(days) {
     const res = await fetch(`/api/v1/forecast-chart?days=${days}&state=${currentState}`);
     const data = await res.json();
     
+    // 1. Forecast Line Chart
     const ctx = document.getElementById('forecastChart');
-    if(!ctx) return;
-
-    if(forecastChart) forecastChart.destroy();
-    
-    forecastChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: data.labels,
-        datasets: [
-          {
-            label: 'Historical Demand',
-            data: data.historical,
-            borderColor: '#94a3b8',
-            backgroundColor: 'rgba(148, 163, 184, 0.1)',
-            fill: true,
-            tension: 0.4
-          },
-          {
-            label: 'AI Forecast',
-            data: data.forecast,
-            borderColor: '#0d9488',
-            backgroundColor: 'rgba(13, 148, 136, 0.1)',
-            borderDash: [5, 5],
-            fill: true,
-            tension: 0.4
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: 'bottom' }
+    if(ctx) {
+      if(forecastChart) forecastChart.destroy();
+      forecastChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.labels,
+          datasets: [
+            {
+              label: 'Historical Demand',
+              data: data.historical,
+              borderColor: '#94a3b8',
+              backgroundColor: 'rgba(148, 163, 184, 0.1)',
+              fill: true,
+              tension: 0.4
+            },
+            {
+              label: 'AI Forecast',
+              data: data.forecast,
+              borderColor: '#1e3a8a', // Deep Enterprise Blue
+              backgroundColor: 'rgba(30, 58, 138, 0.1)',
+              borderDash: [5, 5],
+              fill: true,
+              tension: 0.4
+            }
+          ]
         },
-        scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Quantity' } }
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom' } },
+          scales: { y: { beginAtZero: true, title: { display: true, text: 'Quantity' } } }
         }
-      }
-    });
+      });
+    }
+
+    // 2. Health Doughnut Chart
+    const ctxDoughnut = document.getElementById('healthDoughnutChart');
+    if(ctxDoughnut) {
+      if(doughnutChart) doughnutChart.destroy();
+      doughnutChart = new Chart(ctxDoughnut, {
+        type: 'doughnut',
+        data: {
+          labels: ['Healthy Stock', 'Low Warning', 'Critical Stockout'],
+          datasets: [{
+            data: [65, 20, 15],
+            backgroundColor: ['#16a34a', '#f97316', '#ef4444'], // Green, Saffron, Red
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          cutout: '75%',
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    // 3. Critical Shortages Bar Chart
+    const ctxBar = document.getElementById('shortagesBarChart');
+    if(ctxBar) {
+      if(barChart) barChart.destroy();
+      barChart = new Chart(ctxBar, {
+        type: 'bar',
+        data: {
+          labels: ['Paracetamol', 'ORS', 'Chloroquine', 'Amoxicillin', 'Iron'],
+          datasets: [{
+            label: 'Deficit (Units)',
+            data: [1200, 850, 600, 450, 300],
+            backgroundColor: '#1e3a8a',
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
   } catch(e) { console.error('Chart load failed', e); }
 }
 

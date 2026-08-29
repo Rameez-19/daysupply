@@ -90,8 +90,8 @@
           <!-- Populated by JS -->
         </div>
 
-        <div class="dashboard-row" style="margin-top: 24px;">
-          <div class="dashboard-section flex-1 chart-section">
+        <div class="dashboard-row" style="margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+          <div class="dashboard-section chart-section">
             <div class="chart-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
               <h3>📈 AI Demand Forecast</h3>
               <div class="chart-controls">
@@ -100,8 +100,26 @@
                 <button class="chart-btn" onclick="loadChart(30)">30D</button>
               </div>
             </div>
-            <div class="chart-container" style="position: relative; height: 300px; width: 100%;">
+            <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
               <canvas id="forecastChart"></canvas>
+            </div>
+          </div>
+
+          <div class="dashboard-section chart-section">
+            <div class="chart-header" style="margin-bottom: 12px;">
+              <h3>🏥 Network Stock Health</h3>
+            </div>
+            <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
+              <canvas id="healthDoughnutChart"></canvas>
+            </div>
+          </div>
+
+          <div class="dashboard-section chart-section">
+            <div class="chart-header" style="margin-bottom: 12px;">
+              <h3>⚠️ Critical Shortages (Top 5)</h3>
+            </div>
+            <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
+              <canvas id="shortagesBarChart"></canvas>
             </div>
           </div>
         </div>
