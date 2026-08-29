@@ -1,5 +1,7 @@
 # === Raw data (files exceed 100 MB — GitHub rejects them) ===
-Data/
+# The provenance README is tracked; the raw source files are not.
+Data/*
+!Data/README.md
 
 # === Environment / secrets ===
 .env
