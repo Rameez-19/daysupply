@@ -1,10 +1,13 @@
 """StockPulse — FastAPI backend."""
 
+import logging
 import os
 
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, HTTPException, UploadFile, Form
 from fastapi.staticfiles import StaticFiles
 
+from app import facilities as facility_repo
+from app.bq import QueryTooExpensive
 from app.capture import handle_capture
 from app.forecast import get_forecast_daily_demand
 from app.redistribute import get_recommendations
@@ -12,10 +15,11 @@ from app.patterns import get_local_patterns, ingest_peer_pattern, PatternNode
 from app.demo_data import (
     get_demo_stats, get_demo_review_queue, get_demo_recommendations,
     get_demo_alerts, get_demo_forecast_chart, get_demo_expiry_chart,
-    get_hierarchy,
 )
 
-app = FastAPI(title="StockPulse", version="0.3.0")
+log = logging.getLogger(__name__)
+
+app = FastAPI(title="StockPulse", version="0.4.0")
 
 
 @app.get("/healthz")
@@ -24,18 +28,91 @@ async def healthz():
     return {"status": "ok"}
 
 
-# ── Hierarchy (for cascading filters) ────────────────────────────────
-@app.get("/api/v1/hierarchy")
-async def fetch_hierarchy():
-    """Returns State → District → PHC hierarchy for filter dropdowns."""
-    return get_hierarchy()
+def _facility_query(fn, *args, **kwargs):
+    """Run a BigQuery-backed lookup, surfacing failures honestly.
+
+    Geography is never faked. If BigQuery is unreachable the endpoint reports
+    that, rather than returning invented facilities.
+    """
+    try:
+        return fn(*args, **kwargs)
+    except QueryTooExpensive as exc:
+        log.error("Refused expensive query: %s", exc)
+        raise HTTPException(status_code=413, detail=str(exc))
+    except Exception as exc:
+        log.exception("Facility query failed")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Facility data is unavailable: {exc}",
+        )
+
+
+# ── Geography — served from the real 200,438-facility master ─────────
+@app.get("/api/v1/states")
+async def fetch_states():
+    """Every state/UT present in the facility master, with counts."""
+    return {"states": _facility_query(facility_repo.list_states)}
+
+
+@app.get("/api/v1/districts")
+async def fetch_districts(state: str):
+    """Districts within a state."""
+    return {
+        "state": state,
+        "districts": _facility_query(facility_repo.list_districts, state),
+    }
+
+
+@app.get("/api/v1/facilities")
+async def fetch_facilities(state: str, district: str,
+                           facility_type: str = "phc"):
+    """Facilities within a district — PHCs by default."""
+    return {
+        "state": state,
+        "district": district,
+        "facilities": _facility_query(
+            facility_repo.list_facilities, state, district, facility_type
+        ),
+    }
+
+
+@app.get("/api/v1/facilities/{facility_id}")
+async def fetch_facility(facility_id: str):
+    """One facility by id."""
+    facility = _facility_query(facility_repo.get_facility, facility_id)
+    if facility is None:
+        raise HTTPException(status_code=404, detail="Facility not found")
+    return facility
+
+
+@app.get("/api/v1/coverage")
+async def fetch_coverage():
+    """National coverage headline — how much of India is loaded."""
+    return _facility_query(facility_repo.national_summary)
 
 
 # ── Dashboard stats ──────────────────────────────────────────────────
 @app.get("/api/v1/stats")
 async def get_stats(state: str = "Telangana", district: str = "", phc: str = ""):
-    """Returns dashboard summary stats."""
-    return get_demo_stats(state, district, phc)
+    """Dashboard summary stats.
+
+    Facility counts are real, queried from `daysupply.facilities`. The
+    remaining operational counters still come from the demo generator and are
+    replaced in Block B.
+    """
+    stats = get_demo_stats(state, district, phc)
+    counts = _facility_query(
+        facility_repo.facility_counts, state, district, phc
+    )
+    stats.update({
+        "facilities": counts["facilities"],
+        "phcs": counts["phcs"],
+        "demo_facilities": counts["demo_facilities"],
+        "districts": counts["districts"],
+        "population_served": counts["population_served"],
+    })
+    stats.pop("delta_facilities", None)
+    return stats
 
 
 # ── Voice capture ────────────────────────────────────────────────────
@@ -63,7 +140,8 @@ async def get_review_queue(state: str = "Telangana", district: str = "", phc: st
             return {"items": [doc.to_dict() for doc in docs]}
     except Exception:
         pass
-    return {"items": get_demo_review_queue(state, district, phc)}
+    scope = _facility_query(facility_repo.scope_facilities, state, district, phc)
+    return {"items": get_demo_review_queue(scope)}
 
 
 # ── Forecasting ──────────────────────────────────────────────────────
@@ -90,7 +168,8 @@ async def get_alerts(state: str = "Telangana", district: str = "", phc: str = ""
             return {"alerts": [doc.to_dict() for doc in docs]}
     except Exception:
         pass
-    return {"alerts": get_demo_alerts(state, district, phc)}
+    scope = _facility_query(facility_repo.scope_facilities, state, district, phc)
+    return {"alerts": get_demo_alerts(scope)}
 
 
 # ── Transfer recommendations ────────────────────────────────────────
@@ -112,7 +191,8 @@ async def fetch_recommendations(threshold_days: int = 14, transfer_max_km: float
             return {"recommendations": recs}
     except Exception:
         pass
-    return {"recommendations": get_demo_recommendations(state, district, phc)}
+    scope = _facility_query(facility_repo.scope_facilities, state, district, phc)
+    return {"recommendations": get_demo_recommendations(scope)}
 
 
 @app.post("/api/v1/recommendations/{rec_id}/approve")
@@ -135,7 +215,11 @@ async def post_patterns(pattern: PatternNode):
 @app.get("/api/v1/forecast-chart")
 async def get_forecast_chart_endpoint(days: int = 7, state: str = "Telangana", district: str = "", phc: str = ""):
     """Returns historical and forecast trend data for plotting."""
-    return get_demo_forecast_chart(days, state, district, phc)
+    label = ""
+    if phc:
+        facility = _facility_query(facility_repo.get_facility, phc)
+        label = (facility or {}).get("name", "")
+    return get_demo_forecast_chart(days, state, district, phc, scope_label=label)
 
 @app.get("/api/v1/expiry-chart")
 async def get_expiry_chart_endpoint(state: str = "Telangana", district: str = "", phc: str = ""):

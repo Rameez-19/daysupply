@@ -1,7 +1,11 @@
 """
-Demo data for hackathon presentation.
-Provides realistic sample data so every screen looks populated.
-Supports cascading filters: State → District → PHC.
+Operational demo data for the hackathon presentation.
+
+Geography is NOT defined here. Every state, district and facility comes from
+`daysupply.facilities` — the real 200,438-row national facility master — and is
+passed in by the caller. This module only fills in the operational counters
+(captures, alerts, transfers, expiry) that have no data source yet; those are
+replaced by real BigQuery-backed figures in Block B.
 """
 
 import hashlib
@@ -9,35 +13,6 @@ import math
 import random
 import uuid
 from datetime import datetime, timedelta
-
-# ── Hierarchical geography: State → District → PHC ──────────────────
-STATE_HIERARCHY = {
-    "Telangana": {
-        "Ranga Reddy": ["PHC Shadnagar", "PHC Shamshabad", "PHC Chevella"],
-        "Mahbubnagar": ["PHC Jadcherla", "PHC Kalwakurthy", "PHC Makthal"],
-        "Warangal": ["PHC Hanamkonda", "PHC Jangaon"],
-    },
-    "Maharashtra": {
-        "Pune": ["PHC Baramati", "PHC Junnar", "PHC Bhor"],
-        "Nagpur": ["PHC Kamptee", "PHC Hingna", "PHC Ramtek"],
-        "Nashik": ["PHC Sinnar", "PHC Igatpuri"],
-    },
-    "Rajasthan": {
-        "Jaipur": ["PHC Amber", "PHC Sanganer", "PHC Chaksu"],
-        "Jodhpur": ["PHC Osian", "PHC Bilara"],
-        "Udaipur": ["PHC Salumber", "PHC Gogunda"],
-    },
-    "Delhi": {
-        "North Delhi": ["PHC Narela", "PHC Alipur", "PHC Bawana"],
-        "South Delhi": ["PHC Mehrauli", "PHC Saket"],
-        "East Delhi": ["PHC Shahdara", "PHC Vivek Vihar"],
-    },
-    "Assam": {
-        "Kamrup": ["PHC Mirza", "PHC Sonapur", "PHC Boko"],
-        "Nagaon": ["PHC Raha", "PHC Dhing"],
-        "Dibrugarh": ["PHC Naharkatia", "PHC Lahowal"],
-    },
-}
 
 DEMO_ITEMS = [
     {"id": "PARA-500", "name": "Paracetamol 500mg",  "unit": "tablets"},
@@ -57,46 +32,38 @@ def _seed_from(state: str, district: str = "", phc: str = "") -> int:
     return int(hashlib.md5(key.encode()).hexdigest(), 16) % 1000
 
 
-def get_hierarchy():
-    """Returns full State -> District -> PHC hierarchy for the frontend."""
-    return STATE_HIERARCHY
+def _names(scope: list[dict]) -> list[dict]:
+    """Normalise the caller's facility scope to id/name pairs."""
+    if not scope:
+        return [{"facility_id": "IN-unknown", "name": "No facility selected"}]
+    return [
+        {
+            "facility_id": f.get("facility_id", "IN-unknown"),
+            "name": f.get("name") or "Unnamed facility",
+        }
+        for f in scope
+    ]
 
 
 def get_demo_stats(state: str = "Telangana", district: str = "", phc: str = ""):
     seed = _seed_from(state, district, phc)
-    base_facilities = 200 if not district else (50 if not phc else 1)
     base_captures = 47 if not district else (18 if not phc else 6)
     base_alerts = 12 if not district else (5 if not phc else 2)
     base_transfers = 5 if not district else (2 if not phc else 1)
     return {
-        "facilities": base_facilities + (seed % 30),
         "captures_today": base_captures + (seed % 15),
         "stockout_alerts": base_alerts + (seed % 8),
         "pending_transfers": base_transfers + (seed % 4),
         "items_tracked": 15,
         "last_sync": datetime.utcnow().isoformat() + "Z",
-        "delta_facilities": round(((seed % 7) - 3) * 0.5, 1),
         "delta_captures": round(((seed % 13) - 5) * 1.2, 1),
         "delta_alerts": round(((seed % 9) - 4) * -1.5, 1),
         "delta_transfers": round(((seed % 5) - 2) * 2.0, 1),
     }
 
 
-def _get_phcs_for_filter(state, district, phc):
-    """Get the list of PHC names based on active filters."""
-    hierarchy = STATE_HIERARCHY.get(state, {})
-    if phc:
-        return [phc]
-    if district:
-        return hierarchy.get(district, ["PHC Default"])
-    all_phcs = []
-    for d_phcs in hierarchy.values():
-        all_phcs.extend(d_phcs)
-    return all_phcs
-
-
-def get_demo_review_queue(state: str = "Telangana", district: str = "", phc: str = ""):
-    phcs = _get_phcs_for_filter(state, district, phc)
+def get_demo_review_queue(scope: list[dict]):
+    phcs = _names(scope)
     items = []
     transcripts = [
         ("PARA-500", "Paracetamol 500mg", "Paracetamol ke do sau tablet aaye hain", 200, "tablets", "received", 0.52),
@@ -107,8 +74,8 @@ def get_demo_review_queue(state: str = "Telangana", district: str = "", phc: str
         fac = phcs[i % len(phcs)]
         items.append({
             "event_id": "evt-" + uuid.uuid4().hex[:8],
-            "facility_id": f"IN-10{1000+i}",
-            "facility_name": fac,
+            "facility_id": fac["facility_id"],
+            "facility_name": fac["name"],
             "raw_transcript": transcript,
             "item_id": item_id, "item_name": item_name,
             "quantity": qty, "unit": unit, "event_type": etype,
@@ -118,8 +85,8 @@ def get_demo_review_queue(state: str = "Telangana", district: str = "", phc: str
     return items
 
 
-def get_demo_recommendations(state: str = "Telangana", district: str = "", phc: str = ""):
-    phcs = _get_phcs_for_filter(state, district, phc)
+def get_demo_recommendations(scope: list[dict]):
+    phcs = _names(scope)
     transfers = [
         ("PARA-500", "Paracetamol 500mg", 500, "tablets", 38.2, 52, 28, 3, 18, "high"),
         ("ORS-PKT", "ORS Sachets", 200, "sachets", 22.7, 45, 25, 5, 19, "high"),
@@ -133,8 +100,10 @@ def get_demo_recommendations(state: str = "Telangana", district: str = "", phc: 
         recs.append({
             "recommendation_id": "rec-" + uuid.uuid4().hex[:8],
             "item_id": iid, "item_name": iname,
-            "from_facility_id": f"IN-10{2000+i}", "from_facility_name": from_phc,
-            "to_facility_id": f"IN-10{3000+i}", "to_facility_name": to_phc,
+            "from_facility_id": from_phc["facility_id"],
+            "from_facility_name": from_phc["name"],
+            "to_facility_id": to_phc["facility_id"],
+            "to_facility_name": to_phc["name"],
             "quantity": qty, "unit": unit, "distance_km": dist,
             "donor_cover_before": db, "donor_post_cover": da,
             "receiver_cover_before": rb, "receiver_post_cover": ra,
@@ -143,8 +112,8 @@ def get_demo_recommendations(state: str = "Telangana", district: str = "", phc: 
     return recs
 
 
-def get_demo_alerts(state: str = "Telangana", district: str = "", phc: str = ""):
-    phcs = _get_phcs_for_filter(state, district, phc)
+def get_demo_alerts(scope: list[dict]):
+    phcs = _names(scope)
     alert_items = [
         ("PARA-500", "Paracetamol 500mg", 3, "critical"),
         ("ORS-PKT", "ORS Sachets", 5, "high"),
@@ -155,14 +124,16 @@ def get_demo_alerts(state: str = "Telangana", district: str = "", phc: str = "")
     for i, (iid, iname, days, sev) in enumerate(alert_items):
         fac = phcs[i % len(phcs)]
         alerts.append({
-            "facility_id": f"IN-10{4000+i}", "facility_name": fac,
+            "facility_id": fac["facility_id"], "facility_name": fac["name"],
             "item_id": iid, "item_name": iname,
             "days_of_cover": days, "status": "active", "severity": sev,
         })
     return alerts
 
 
-def get_demo_forecast_chart(days: int = 7, state: str = "Telangana", district: str = "", phc: str = ""):
+def get_demo_forecast_chart(days: int = 7, state: str = "Telangana",
+                            district: str = "", phc: str = "",
+                            scope_label: str = ""):
     seed = _seed_from(state, district, phc)
     random.seed(seed)
     today = datetime.now()
@@ -189,7 +160,7 @@ def get_demo_forecast_chart(days: int = 7, state: str = "Telangana", district: s
         forecast.append(round(trend + random.uniform(-5, 5)))
 
     random.seed()
-    scope = phc if phc else (district if district else f"{state} State")
+    scope = scope_label or district or f"{state} State"
     return {
         "item_name": "Paracetamol 500mg", "facility_name": scope,
         "labels": labels, "historical": historical, "forecast": forecast,

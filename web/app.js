@@ -68,68 +68,111 @@ let currentState = "Telangana";
 let currentDistrict = "";
 let currentPHC = "";
 let currentChartDays = 7;
-let hierarchy = {};
+let currentPHCName = "";
 
-// Fetch hierarchy on load
-async function loadHierarchy() {
+// Geography comes from BigQuery — the real 200,438-facility national master.
+// Nothing here is hardcoded; the dropdowns list what is actually in the data.
+function setOptions(select, placeholder, rows, valueKey, labelFn) {
+  select.innerHTML = "";
+  const first = document.createElement("option");
+  first.value = ""; first.textContent = placeholder;
+  select.appendChild(first);
+  rows.forEach(r => {
+    const opt = document.createElement("option");
+    opt.value = r[valueKey];
+    opt.textContent = labelFn(r);
+    select.appendChild(opt);
+  });
+}
+
+function setDropdownError(select, message) {
+  select.innerHTML = `<option value="">${message}</option>`;
+}
+
+async function loadStates() {
+  const sel = document.getElementById('state-filter');
   try {
-    const res = await fetch('/api/v1/hierarchy');
-    hierarchy = await res.json();
-    populateDistrictDropdown();
-  } catch(e) { console.error('Failed to load hierarchy', e); }
+    const res = await fetch('/api/v1/states');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { states } = await res.json();
+    setOptions(sel, `All States (${states.length})`, states, 'state',
+      r => `${r.state} — ${r.facility_count.toLocaleString('en-IN')} facilities`);
+    // Default to the first state that has demo coverage, else the first state.
+    const preferred = states.find(s => s.state === currentState) || states[0];
+    if (preferred) {
+      currentState = preferred.state;
+      sel.value = currentState;
+    }
+    await loadDistricts();
+  } catch (e) {
+    console.error('Failed to load states', e);
+    setDropdownError(sel, 'States unavailable');
+  }
 }
 
-function populateDistrictDropdown() {
-  const distSelect = document.getElementById('district-filter');
-  distSelect.innerHTML = '<option value="">All Districts</option>';
-  const districts = hierarchy[currentState] || {};
-  Object.keys(districts).forEach(d => {
-    const opt = document.createElement('option');
-    opt.value = d; opt.textContent = d;
-    distSelect.appendChild(opt);
-  });
-  currentDistrict = "";
-  populatePHCDropdown();
+async function loadDistricts() {
+  const sel = document.getElementById('district-filter');
+  currentDistrict = ""; currentPHC = ""; currentPHCName = "";
+  if (!currentState) { setOptions(sel, 'All Districts', [], 'district', r => r); return; }
+  try {
+    const res = await fetch(`/api/v1/districts?state=${encodeURIComponent(currentState)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { districts } = await res.json();
+    setOptions(sel, `All Districts (${districts.length})`, districts, 'district',
+      r => `${r.district} — ${r.phc_count} PHCs`);
+  } catch (e) {
+    console.error('Failed to load districts', e);
+    setDropdownError(sel, 'Districts unavailable');
+  }
+  await loadPHCs();
 }
 
-function populatePHCDropdown() {
-  const phcSelect = document.getElementById('phc-filter');
-  phcSelect.innerHTML = '<option value="">All PHCs</option>';
-  if (!currentDistrict || !hierarchy[currentState]) return;
-  const phcs = hierarchy[currentState][currentDistrict] || [];
-  phcs.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p; opt.textContent = p;
-    phcSelect.appendChild(opt);
-  });
-  currentPHC = "";
+async function loadPHCs() {
+  const sel = document.getElementById('phc-filter');
+  currentPHC = ""; currentPHCName = "";
+  if (!currentState || !currentDistrict) {
+    setOptions(sel, 'All PHCs', [], 'facility_id', r => r.name);
+    return;
+  }
+  try {
+    const url = `/api/v1/facilities?state=${encodeURIComponent(currentState)}`
+      + `&district=${encodeURIComponent(currentDistrict)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { facilities } = await res.json();
+    setOptions(sel, `All PHCs (${facilities.length})`, facilities, 'facility_id',
+      r => r.name);
+  } catch (e) {
+    console.error('Failed to load facilities', e);
+    setDropdownError(sel, 'Facilities unavailable');
+  }
 }
 
-function onStateChange() {
+async function onStateChange() {
   currentState = document.getElementById('state-filter').value;
-  currentDistrict = "";
-  currentPHC = "";
-  populateDistrictDropdown();
+  await loadDistricts();
   updateSubtitle();
   refreshAll();
 }
 
-function onDistrictChange() {
+async function onDistrictChange() {
   currentDistrict = document.getElementById('district-filter').value;
-  currentPHC = "";
-  populatePHCDropdown();
+  await loadPHCs();
   updateSubtitle();
   refreshAll();
 }
 
 function onPHCChange() {
-  currentPHC = document.getElementById('phc-filter').value;
+  const sel = document.getElementById('phc-filter');
+  currentPHC = sel.value;
+  currentPHCName = currentPHC ? sel.options[sel.selectedIndex].textContent : "";
   updateSubtitle();
   refreshAll();
 }
 
 function updateSubtitle() {
-  const scope = currentPHC || currentDistrict || `${currentState} State`;
+  const scope = currentPHCName || currentDistrict
+    || (currentState ? `${currentState} State` : 'All India');
   document.getElementById('dashboard-subtitle').textContent = `${scope} Network — Real-time overview`;
 }
 
@@ -160,7 +203,14 @@ async function loadDashboard() {
     const syncEl = document.getElementById('last-synced');
     if (syncEl) syncEl.textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
   } catch (e) {
-    renderStats({ facilities: 200, captures_today: 47, stockout_alerts: 12, pending_transfers: 5, delta_facilities: 2.5, delta_captures: 8.4, delta_alerts: -3.0, delta_transfers: 1.0 });
+    // Facility counts come from BigQuery. If that fails we say so rather than
+    // showing a number that is not real.
+    console.error('Failed to load stats', e);
+    const grid = document.getElementById('stats-grid');
+    if (grid) grid.innerHTML = '<div class="stat-card"><div class="stat-info">'
+      + '<span class="stat-value">—</span>'
+      + '<span class="stat-label">Facility data unavailable</span>'
+      + '</div></div>';
   }
 
   try {
@@ -193,9 +243,9 @@ function renderStats(s) {
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
       </div>
       <div class="stat-info">
-        <span class="stat-value">${s.facilities}</span>
-        <span class="stat-label">Active Facilities</span>
-        ${deltaHtml(s.delta_facilities)}
+        <span class="stat-value">${(s.facilities ?? 0).toLocaleString('en-IN')}</span>
+        <span class="stat-label">Health Facilities</span>
+        <span class="stat-delta">${(s.phcs ?? 0).toLocaleString('en-IN')} PHCs</span>
       </div>
     </div>
     <div class="stat-card clickable" onclick="switchTab('capture-view')">
@@ -430,9 +480,14 @@ function showCaptureResult(data) {
 }
 
 // ===== Init =====
-loadHierarchy();
-loadDashboard();
-loadChart(7);
+// Geography loads first so the dashboard queries a state that actually exists
+// in the facility master rather than a hardcoded default.
+(async () => {
+  await loadStates();
+  updateSubtitle();
+  loadDashboard();
+  loadChart(7);
+})();
 
 // ===== Analytics Charts =====
 let forecastChart = null;
