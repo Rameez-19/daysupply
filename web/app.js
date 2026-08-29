@@ -145,7 +145,8 @@ function renderStats(s) {
 function renderDashboardAlerts(alerts) {
   const el = document.getElementById('dashboard-alerts');
   if (!alerts.length) { el.innerHTML = '<p style="font-size:0.85rem; color:var(--gray-400);">No active alerts</p>'; return; }
-  el.innerHTML = alerts.slice(0, 4).map(a => `
+  
+  let html = alerts.slice(0, 4).map(a => `
     <div class="mini-alert">
       <div class="mini-alert-left">
         <span class="mini-alert-facility">${a.facility_name || a.facility_id}</span>
@@ -154,6 +155,12 @@ function renderDashboardAlerts(alerts) {
       <span class="mini-alert-days">${a.days_of_cover}d left</span>
     </div>
   `).join('');
+  
+  if (alerts.length > 0) {
+    html += `<button onclick="switchTab('alerts-view')" style="width:100%; margin-top:8px; padding:8px; background:transparent; border:1px dashed var(--border); border-radius:6px; color:var(--primary); font-weight:600; cursor:pointer;">View all ${alerts.length} alerts →</button>`;
+  }
+  
+  el.innerHTML = html;
 }
 
 // ===== Review Queue =====
