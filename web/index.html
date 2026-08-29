@@ -3,54 +3,200 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DaySupply</title>
+  <meta name="description" content="StockPulse — Voice-first medicine stock tracking and redistribution for primary health centres.">
+  <title>StockPulse</title>
+  <link rel="icon" href="logo.jpg" type="image/jpeg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-container">
-    <header>
-      <h1>DaySupply</h1>
-      <div id="sync-status" class="status-online">Online</div>
-    </header>
+  <div class="app-shell">
 
-    <nav class="tabs">
-      <button class="tab-btn active" data-tab="capture-view">Capture</button>
-      <button class="tab-btn" data-tab="review-view">Review</button>
-      <button class="tab-btn" data-tab="transfer-view">Transfers</button>
-    </nav>
-
-    <main id="capture-view" class="view active-view">
-      <div class="capture-container">
-        <h2>Record Stock Event</h2>
-        <p>Press and hold to record</p>
-        <button id="mic-btn" class="mic-btn">🎙️</button>
-        <p id="mic-status">Ready</p>
+    <!-- Sidebar (desktop) -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img src="logo.jpg" alt="StockPulse" class="brand-logo">
+        <span class="brand-name">StockPulse</span>
       </div>
-    </main>
-
-    <main id="review-view" class="view hidden-view">
-      <h2>Review Queue</h2>
-      <div id="review-list" class="list-container"></div>
-    </main>
-
-    <main id="transfer-view" class="view hidden-view">
-      <h2>Transfer Recommendations</h2>
-      <div id="map-container">
-        <div class="map-placeholder">
-          <p>Regional Map View</p>
-          <div id="transfer-arrows" class="transfer-arrows-container"></div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="dashboard-view" id="nav-dashboard">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          <span>Dashboard</span>
+        </button>
+        <button class="nav-item" data-tab="capture-view" id="nav-capture">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          <span>Voice Capture</span>
+        </button>
+        <button class="nav-item" data-tab="review-view" id="nav-review">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <span>Review Queue</span>
+        </button>
+        <button class="nav-item" data-tab="transfer-view" id="nav-transfer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          <span>Transfers</span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sync-badge" id="sync-status">
+          <span class="sync-dot online"></span>
+          <span class="sync-label">Online</span>
         </div>
       </div>
-      <div id="transfer-list" class="list-container"></div>
-    </main>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content">
+
+      <!-- Top Bar (mobile) -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <img src="logo.jpg" alt="StockPulse" class="topbar-logo">
+          <h1 class="topbar-title">StockPulse</h1>
+        </div>
+        <div class="sync-badge" id="sync-status-mobile">
+          <span class="sync-dot online"></span>
+          <span class="sync-label">Online</span>
+        </div>
+      </header>
+
+      <!-- Dashboard View -->
+      <section id="dashboard-view" class="view active-view">
+        <div class="view-header">
+          <h2>Dashboard</h2>
+          <p class="view-subtitle">Overview of your medicine supply network</p>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #0d9488, #10b981);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-value" id="stat-facilities">200</span>
+              <span class="stat-label">Active Facilities</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #6366f1, #8b5cf6);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-value" id="stat-captures">—</span>
+              <span class="stat-label">Voice Captures Today</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b, #f97316);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-value" id="stat-alerts">—</span>
+              <span class="stat-label">Stockout Alerts</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #ec4899, #f43f5e);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-value" id="stat-transfers">—</span>
+              <span class="stat-label">Pending Transfers</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="dashboard-section">
+          <h3>Quick Actions</h3>
+          <div class="quick-actions">
+            <button class="quick-action-btn" onclick="switchTab('capture-view')">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+              <span>Record Stock</span>
+            </button>
+            <button class="quick-action-btn" onclick="switchTab('review-view')">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span>Review Items</span>
+            </button>
+            <button class="quick-action-btn" onclick="switchTab('transfer-view')">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>
+              <span>View Transfers</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Voice Capture View -->
+      <section id="capture-view" class="view hidden-view">
+        <div class="view-header">
+          <h2>Voice Capture</h2>
+          <p class="view-subtitle">Record a stock update in your language</p>
+        </div>
+        <div class="capture-card">
+          <div class="capture-visual">
+            <div class="mic-ring" id="mic-ring">
+              <button id="mic-btn" class="mic-btn" aria-label="Hold to record">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
+            </div>
+            <p class="mic-instruction" id="mic-status">Press and hold to record</p>
+            <p class="mic-hint">Speak naturally in Hindi or English.<br>Example: "Paracetamol ke 200 tablet aaye hain"</p>
+          </div>
+
+          <div class="capture-result hidden" id="capture-result">
+            <h4>Extracted Data</h4>
+            <div id="capture-result-content"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Review Queue View -->
+      <section id="review-view" class="view hidden-view">
+        <div class="view-header">
+          <h2>Review Queue</h2>
+          <p class="view-subtitle">Verify low-confidence voice captures</p>
+        </div>
+        <div id="review-list" class="card-list"></div>
+      </section>
+
+      <!-- Transfer View -->
+      <section id="transfer-view" class="view hidden-view">
+        <div class="view-header">
+          <h2>Transfer Recommendations</h2>
+          <p class="view-subtitle">AI-optimised medicine redistribution</p>
+        </div>
+        <div id="transfer-list" class="card-list"></div>
+      </section>
+
+    </div>
+
+    <!-- Bottom Nav (mobile) -->
+    <nav class="bottom-nav">
+      <button class="bottom-nav-item active" data-tab="dashboard-view">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span>Home</span>
+      </button>
+      <button class="bottom-nav-item" data-tab="capture-view">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        <span>Capture</span>
+      </button>
+      <button class="bottom-nav-item" data-tab="review-view">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>Review</span>
+      </button>
+      <button class="bottom-nav-item" data-tab="transfer-view">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>
+        <span>Transfers</span>
+      </button>
+    </nav>
+
   </div>
-  
+
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(reg => {
         console.log('Service Worker Registered!', reg);
-      }).catch(err => console.error('Service Worker registration failed', err));
+      }).catch(err => console.error('SW registration failed', err));
     }
   </script>
 </body>

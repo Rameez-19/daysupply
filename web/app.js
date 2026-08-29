@@ -1,131 +1,122 @@
-// IndexedDB setup for offline queue
+// ===== IndexedDB setup for offline queue =====
 let db;
-const request = indexedDB.open("DaySupplyDB", 1);
-request.onupgradeneeded = event => {
-  db = event.target.result;
+const dbReq = indexedDB.open("StockPulseDB", 1);
+dbReq.onupgradeneeded = e => {
+  db = e.target.result;
   db.createObjectStore("offline-queue", { keyPath: "id" });
 };
-request.onsuccess = event => {
-  db = event.target.result;
+dbReq.onsuccess = e => {
+  db = e.target.result;
   checkOnlineStatus();
 };
 
-// UI Elements
-const tabs = document.querySelectorAll('.tab-btn');
-const views = document.querySelectorAll('.view');
-const micBtn = document.getElementById('mic-btn');
-const micStatus = document.getElementById('mic-status');
-const syncStatus = document.getElementById('sync-status');
-const reviewList = document.getElementById('review-list');
+// ===== DOM References =====
+const sidebarItems = document.querySelectorAll('.nav-item');
+const bottomItems  = document.querySelectorAll('.bottom-nav-item');
+const allViews     = document.querySelectorAll('.view');
+const micBtn       = document.getElementById('mic-btn');
+const micRing      = document.getElementById('mic-ring');
+const micStatus    = document.getElementById('mic-status');
+const captureResult    = document.getElementById('capture-result');
+const captureContent   = document.getElementById('capture-result-content');
+const reviewList   = document.getElementById('review-list');
 const transferList = document.getElementById('transfer-list');
 
-// Navigation
-tabs.forEach(tab => {
-  tab.addEventListener('click', () => {
-    tabs.forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    
-    views.forEach(v => {
-      v.classList.remove('active-view');
-      v.classList.add('hidden-view');
-    });
-    
-    const target = document.getElementById(tab.dataset.tab);
-    target.classList.remove('hidden-view');
-    target.classList.add('active-view');
-    
-    if (tab.dataset.tab === 'review-view') loadReviewQueue();
-    if (tab.dataset.tab === 'transfer-view') loadTransfers();
-  });
-});
+// ===== Navigation =====
+function switchTab(tabId) {
+  // Update views
+  allViews.forEach(v => { v.classList.remove('active-view'); v.classList.add('hidden-view'); });
+  const target = document.getElementById(tabId);
+  if (target) { target.classList.remove('hidden-view'); target.classList.add('active-view'); }
 
-// Network Status & Sync
-window.addEventListener('online', () => {
-  syncStatus.textContent = 'Online';
-  syncStatus.className = 'status-online';
-  syncQueue();
-});
-window.addEventListener('offline', () => {
-  syncStatus.textContent = 'Offline (Queueing)';
-  syncStatus.className = 'status-offline';
-});
+  // Update sidebar
+  sidebarItems.forEach(b => b.classList.remove('active'));
+  const sideBtn = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
+  if (sideBtn) sideBtn.classList.add('active');
+
+  // Update bottom nav
+  bottomItems.forEach(b => b.classList.remove('active'));
+  const botBtn = document.querySelector(`.bottom-nav-item[data-tab="${tabId}"]`);
+  if (botBtn) botBtn.classList.add('active');
+
+  // Load data for views
+  if (tabId === 'review-view')   loadReviewQueue();
+  if (tabId === 'transfer-view') loadTransfers();
+}
+
+sidebarItems.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+bottomItems.forEach(btn  => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+// ===== Online / Offline =====
+function updateSyncUI(online) {
+  const dots   = document.querySelectorAll('.sync-dot');
+  const labels = document.querySelectorAll('.sync-label');
+  dots.forEach(d => { d.className = online ? 'sync-dot online' : 'sync-dot offline'; });
+  labels.forEach(l => { l.textContent = online ? 'Online' : 'Offline'; });
+}
+
+window.addEventListener('online',  () => { updateSyncUI(true);  syncQueue(); });
+window.addEventListener('offline', () => { updateSyncUI(false); });
 
 function checkOnlineStatus() {
-  if (navigator.onLine) {
-    syncStatus.textContent = 'Online';
-    syncStatus.className = 'status-online';
-    syncQueue();
-  } else {
-    syncStatus.textContent = 'Offline (Queueing)';
-    syncStatus.className = 'status-offline';
-  }
+  updateSyncUI(navigator.onLine);
+  if (navigator.onLine) syncQueue();
 }
 
 async function syncQueue() {
   if (!db) return;
-  const transaction = db.transaction(["offline-queue"], "readwrite");
-  const store = transaction.objectStore("offline-queue");
-  const getReq = store.getAll();
-  
-  getReq.onsuccess = async () => {
-    const items = getReq.result;
-    if (items.length === 0) return;
-    
-    syncStatus.textContent = `Syncing ${items.length} items...`;
-    
+  const tx = db.transaction(["offline-queue"], "readwrite");
+  const store = tx.objectStore("offline-queue");
+  const req = store.getAll();
+
+  req.onsuccess = async () => {
+    const items = req.result;
+    if (!items.length) return;
+
     for (const item of items) {
       try {
-        const formData = new FormData();
-        formData.append("facility_id", item.facility_id);
-        formData.append("file", item.audioBlob, "recording.webm");
-        
-        const res = await fetch("/api/v1/voice-note", {
-          method: "POST",
-          body: formData
-        });
-        
+        const fd = new FormData();
+        fd.append("facility_id", item.facility_id);
+        fd.append("file", item.audioBlob, "recording.webm");
+        const res = await fetch("/api/v1/voice-note", { method: "POST", body: fd });
         if (res.ok) {
           db.transaction(["offline-queue"], "readwrite").objectStore("offline-queue").delete(item.id);
         }
-      } catch (err) {
-        console.error("Sync failed for item", item.id, err);
-      }
+      } catch (err) { console.error("Sync failed", item.id, err); }
     }
-    syncStatus.textContent = 'Online';
   };
 }
 
-// MediaRecorder setup
+// ===== MediaRecorder =====
 let mediaRecorder;
 let audioChunks = [];
 
-micBtn.addEventListener('mousedown', startRecording);
-micBtn.addEventListener('mouseup', stopRecording);
+micBtn.addEventListener('mousedown',  startRecording);
+micBtn.addEventListener('mouseup',    stopRecording);
 micBtn.addEventListener('touchstart', startRecording);
-micBtn.addEventListener('touchend', stopRecording);
+micBtn.addEventListener('touchend',   stopRecording);
 
 async function startRecording(e) {
-  e.preventDefault(); // prevent double firing on touch
+  e.preventDefault();
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
     audioChunks = [];
-    
-    mediaRecorder.ondataavailable = e => {
-      if (e.data.size > 0) audioChunks.push(e.data);
-    };
-    
+
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
     mediaRecorder.onstop = () => {
-      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-      processAudio(audioBlob);
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      processAudio(blob);
     };
-    
+
     mediaRecorder.start();
     micBtn.classList.add('recording');
-    micStatus.textContent = 'Listening... (Release to submit)';
+    micRing.classList.add('recording');
+    micStatus.textContent = 'Listening… Release to submit';
+    captureResult.classList.add('hidden');
   } catch (err) {
     console.error(err);
-    alert('Microphone access required.');
+    micStatus.textContent = 'Microphone access denied';
   }
 }
 
@@ -135,158 +126,184 @@ function stopRecording(e) {
     mediaRecorder.stop();
     mediaRecorder.stream.getTracks().forEach(t => t.stop());
     micBtn.classList.remove('recording');
-    micStatus.textContent = 'Processing...';
+    micRing.classList.remove('recording');
+    micStatus.textContent = 'Processing…';
   }
 }
 
 async function processAudio(blob) {
   if (!navigator.onLine) {
-    // Save to IndexedDB
     const tx = db.transaction(["offline-queue"], "readwrite");
-    const store = tx.objectStore("offline-queue");
-    store.add({
+    tx.objectStore("offline-queue").add({
       id: Date.now().toString(),
       facility_id: "IN-DEMO-001",
       audioBlob: blob,
       timestamp: Date.now()
     });
-    micStatus.textContent = 'Saved offline. Ready.';
+    micStatus.textContent = 'Saved offline — will sync when connected';
     return;
   }
-  
+
   try {
-    const formData = new FormData();
-    formData.append("facility_id", "IN-DEMO-001");
-    formData.append("file", blob, "recording.webm");
-    
-    const res = await fetch("/api/v1/voice-note", {
-      method: "POST",
-      body: formData
-    });
-    
+    const fd = new FormData();
+    fd.append("facility_id", "IN-DEMO-001");
+    fd.append("file", blob, "recording.webm");
+
+    const res = await fetch("/api/v1/voice-note", { method: "POST", body: fd });
+
     if (res.ok) {
-      micStatus.textContent = 'Success! Ready.';
+      const data = await res.json();
+      micStatus.textContent = 'Captured successfully!';
+      showCaptureResult(data);
     } else {
-      micStatus.textContent = 'Error processing note.';
+      micStatus.textContent = 'Error processing — try again';
     }
   } catch (err) {
-    micStatus.textContent = 'Network error. Saved offline.';
+    micStatus.textContent = 'Network error — saved offline';
     const tx = db.transaction(["offline-queue"], "readwrite");
-    const store = tx.objectStore("offline-queue");
-    store.add({
+    tx.objectStore("offline-queue").add({
       id: Date.now().toString(),
       facility_id: "IN-DEMO-001",
       audioBlob: blob,
       timestamp: Date.now()
     });
   }
-  
+
   setTimeout(() => {
-    if (micStatus.textContent.includes('Success') || micStatus.textContent.includes('offline')) {
-      micStatus.textContent = 'Ready';
+    if (micStatus.textContent.includes('success') || micStatus.textContent.includes('offline')) {
+      micStatus.textContent = 'Press and hold to record';
     }
-  }, 3000);
+  }, 4000);
 }
 
-// API Fetching
+function showCaptureResult(data) {
+  captureResult.classList.remove('hidden');
+  const events = data.events || data.results || [];
+  if (events.length === 0) {
+    captureContent.innerHTML = '<p style="color:var(--gray-500);">No items detected. Try speaking more clearly.</p>';
+    return;
+  }
+  captureContent.innerHTML = events.map(ev => `
+    <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--gray-200);">
+      <span style="font-weight:600;">${ev.item_name || ev.item_id || 'Unknown'}</span>
+      <span style="color:var(--gray-500);">${ev.quantity || '?'} ${ev.unit || 'units'}</span>
+    </div>
+  `).join('');
+}
+
+// ===== Review Queue =====
 async function loadReviewQueue() {
-  reviewList.innerHTML = 'Loading...';
+  reviewList.innerHTML = renderEmptyState('Loading review items…');
   try {
     const res = await fetch("/api/v1/review-queue");
     if (!res.ok) throw new Error("Failed");
     const data = await res.json();
-    
+
     if (!data.items || data.items.length === 0) {
-      reviewList.innerHTML = '<p>No items pending review.</p>';
+      reviewList.innerHTML = renderEmptyState('All clear! No items need review.');
       return;
     }
-    
+
     reviewList.innerHTML = data.items.map(item => `
-      <div class="card" id="review-${item.event_id}">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:12px; background:#fef3c7; color:#92400e; padding:2px 6px; border-radius:4px;">
-            Confidence: ${Math.round(item.confidence * 100)}%
-          </span>
-          <span style="font-size:12px; color:var(--text-muted);">${item.facility_id}</span>
+      <div class="item-card" id="review-${item.event_id}">
+        <div class="card-header">
+          <span class="card-badge badge-warning">Confidence: ${Math.round(item.confidence * 100)}%</span>
+          <span class="card-facility">${item.facility_id}</span>
         </div>
-        <p style="margin-top:8px; font-style:italic; font-weight:500; color:#1e293b;">"${item.raw_transcript}"</p>
-        <div style="font-size:13px; margin-bottom:12px;">
-          <strong>Item:</strong> ${item.item_id || 'Unknown'} <br/>
-          <strong>Qty:</strong> ${item.quantity !== null ? item.quantity : 'Unknown'}
+        <div class="card-transcript">"${item.raw_transcript}"</div>
+        <div class="card-details">
+          <div>
+            <span class="card-detail-label">Item</span><br>
+            <span class="card-detail-value">${item.item_id || 'Unknown'}</span>
+          </div>
+          <div>
+            <span class="card-detail-label">Quantity</span><br>
+            <span class="card-detail-value">${item.quantity !== null ? item.quantity : 'Unknown'}</span>
+          </div>
         </div>
-        <div style="display:flex; gap:8px;">
-          <button class="action-btn" style="background:var(--success);" onclick="resolveEvent('${item.event_id}')">Approve</button>
-          <button class="action-btn" style="background:var(--danger);" onclick="discardEvent('${item.event_id}')">Discard</button>
+        <div class="card-actions">
+          <button class="btn btn-primary" onclick="resolveEvent('${item.event_id}')">Approve</button>
+          <button class="btn btn-danger" onclick="discardEvent('${item.event_id}')">Discard</button>
         </div>
       </div>
     `).join('');
   } catch (err) {
-    reviewList.innerHTML = '<p>Error loading queue.</p>';
+    reviewList.innerHTML = renderEmptyState('Could not load review queue.');
   }
 }
 
+// ===== Transfers =====
 async function loadTransfers() {
-  transferList.innerHTML = 'Loading...';
+  transferList.innerHTML = renderEmptyState('Loading transfer recommendations…');
   try {
     const res = await fetch("/api/v1/recommendations");
     if (!res.ok) throw new Error("Failed");
     const data = await res.json();
-    
+
     if (!data.recommendations || data.recommendations.length === 0) {
-      transferList.innerHTML = '<p>No transfers recommended. Network is optimal.</p>';
-      document.getElementById('transfer-arrows').innerHTML = '';
+      transferList.innerHTML = renderEmptyState('Network is balanced — no transfers needed.');
       return;
     }
-    
+
     transferList.innerHTML = data.recommendations.map(rec => `
-      <div class="card" id="rec-${rec.recommendation_id}">
-        <h3>${rec.item_id}</h3>
-        <div style="display:flex; justify-content:space-between; text-align:center; margin:16px 0;">
-          <div>
-            <div style="font-size:12px; color:var(--text-muted); font-weight:bold;">FROM SURPLUS</div>
-            <div>${rec.from_facility_id}</div>
-            <div style="color:var(--success); font-size:12px;">Post: ${rec.donor_post_cover} days</div>
+      <div class="item-card" id="rec-${rec.recommendation_id}">
+        <div class="card-header">
+          <span style="font-weight:700; color:var(--gray-900);">${rec.item_id}</span>
+          <span class="card-badge badge-info">${Math.round(rec.distance_km)} km</span>
+        </div>
+        <div class="transfer-flow">
+          <div class="transfer-node">
+            <div class="transfer-node-label surplus">Surplus</div>
+            <div class="transfer-node-id">${rec.from_facility_id}</div>
+            <div class="transfer-node-cover">Post: ${rec.donor_post_cover}d cover</div>
           </div>
-          <div style="display:flex; flex-direction:column; justify-content:center; align-items:center;">
-            <div style="background:#dbeafe; color:#1e40af; font-size:12px; font-weight:bold; padding:2px 8px; border-radius:12px; margin-bottom:4px;">
-              ${rec.quantity} units
-            </div>
-            <div style="color:var(--text-muted);">➡️</div>
-            <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">${Math.round(rec.distance_km)} km</div>
+          <div class="transfer-arrow">
+            <span class="transfer-qty">${rec.quantity} units</span>
+            <span class="transfer-arrow-icon">→</span>
+            <span class="transfer-dist">${Math.round(rec.distance_km)} km</span>
           </div>
-          <div>
-            <div style="font-size:12px; color:var(--text-muted); font-weight:bold;">TO DEFICIT</div>
-            <div>${rec.to_facility_id}</div>
-            <div style="color:#d97706; font-size:12px;">Post: ${rec.receiver_post_cover} days</div>
+          <div class="transfer-node">
+            <div class="transfer-node-label deficit">Deficit</div>
+            <div class="transfer-node-id">${rec.to_facility_id}</div>
+            <div class="transfer-node-cover">Post: ${rec.receiver_post_cover}d cover</div>
           </div>
         </div>
-        <button class="action-btn" style="width:100%;" onclick="approveTransfer('${rec.recommendation_id}')">Approve Transfer</button>
+        <button class="btn btn-primary btn-full" onclick="approveTransfer('${rec.recommendation_id}')">Approve Transfer</button>
       </div>
     `).join('');
-    
-    // Map Visualization
-    document.getElementById('transfer-arrows').innerHTML = data.recommendations.map(rec => 
-      `<div>${rec.from_facility_id} ➝ ${rec.to_facility_id} (${rec.item_id})</div>`
-    ).join('');
-    
   } catch (err) {
-    transferList.innerHTML = '<p>Error loading transfers.</p>';
+    transferList.innerHTML = renderEmptyState('Could not load transfer recommendations.');
   }
 }
 
+// ===== Actions =====
 window.resolveEvent = async (id) => {
-  document.getElementById(`review-${id}`).remove();
-  alert('Event approved.');
+  const el = document.getElementById(`review-${id}`);
+  if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
 };
+
 window.discardEvent = async (id) => {
-  document.getElementById(`review-${id}`).remove();
+  const el = document.getElementById(`review-${id}`);
+  if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
 };
+
 window.approveTransfer = async (id) => {
   try {
     await fetch(`/api/v1/recommendations/${id}/approve`, { method: "POST" });
-    document.getElementById(`rec-${id}`).remove();
-    alert('Transfer approved and dispatched.');
+    const el = document.getElementById(`rec-${id}`);
+    if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
   } catch (err) {
     alert('Failed to approve transfer.');
   }
 };
+
+// ===== Helpers =====
+function renderEmptyState(msg) {
+  return `<div class="empty-state">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+    <p>${msg}</p>
+  </div>`;
+}
+
+// Expose switchTab globally for quick-action buttons
+window.switchTab = switchTab;
