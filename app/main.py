@@ -25,9 +25,9 @@ async def healthz():
 
 # ── Dashboard stats ──────────────────────────────────────────────────
 @app.get("/api/v1/stats")
-async def get_stats():
+async def get_stats(state: str = "Telangana"):
     """Returns dashboard summary stats."""
-    return get_demo_stats()
+    return get_demo_stats(state)
 
 
 # ── Voice capture ────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ async def post_voice_note(
 
 # ── Review queue ─────────────────────────────────────────────────────
 @app.get("/api/v1/review-queue")
-async def get_review_queue():
+async def get_review_queue(state: str = "Telangana"):
     """Returns items that need manual review. Falls back to demo data."""
     from google.cloud import firestore
     try:
@@ -56,7 +56,7 @@ async def get_review_queue():
     except Exception:
         pass
     # Fallback: demo data
-    return {"items": get_demo_review_queue()}
+    return {"items": get_demo_review_queue(state)}
 
 
 # ── Forecasting ──────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ async def get_forecast(facility_id: str, item_id: str):
 
 # ── Alerts ───────────────────────────────────────────────────────────
 @app.get("/api/v1/alerts")
-async def get_alerts():
+async def get_alerts(state: str = "Telangana"):
     """Returns active stock-out warnings. Falls back to demo data."""
     from google.cloud import firestore
     try:
@@ -83,12 +83,12 @@ async def get_alerts():
             return {"alerts": [doc.to_dict() for doc in docs]}
     except Exception:
         pass
-    return {"alerts": get_demo_alerts()}
+    return {"alerts": get_demo_alerts(state)}
 
 
 # ── Transfer recommendations ────────────────────────────────────────
 @app.get("/api/v1/recommendations")
-async def fetch_recommendations(threshold_days: int = 14, transfer_max_km: float = 50.0):
+async def fetch_recommendations(threshold_days: int = 14, transfer_max_km: float = 50.0, state: str = "Telangana"):
     """Returns transfer recommendations. Falls back to demo data."""
     from google.cloud import firestore
     try:
@@ -105,7 +105,7 @@ async def fetch_recommendations(threshold_days: int = 14, transfer_max_km: float
             return {"recommendations": recs}
     except Exception:
         pass
-    return {"recommendations": get_demo_recommendations()}
+    return {"recommendations": get_demo_recommendations(state)}
 
 
 @app.post("/api/v1/recommendations/{rec_id}/approve")
@@ -126,10 +126,10 @@ async def post_patterns(pattern: PatternNode):
     return ingest_peer_pattern(pattern)
 
 @app.get("/api/v1/forecast-chart")
-async def get_forecast_chart(days: int = 7):
+async def get_forecast_chart(days: int = 7, state: str = "Telangana"):
     """Returns historical and forecast trend data for plotting."""
     from app.demo_data import get_demo_forecast_chart
-    return get_demo_forecast_chart(days)
+    return get_demo_forecast_chart(days, state)
 
 
 # ── Static files (must be last) ─────────────────────────────────────

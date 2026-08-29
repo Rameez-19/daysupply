@@ -64,9 +64,20 @@ async function syncQueue() {
 }
 
 // ===== Dashboard — load on start =====
+let currentState = "Telangana";
+let currentChartDays = 7;
+
+function onStateChange() {
+  const select = document.getElementById('state-filter');
+  currentState = select.value;
+  document.getElementById('dashboard-subtitle').textContent = `${currentState} District Network — Real-time overview`;
+  loadDashboard();
+  loadChart(currentChartDays);
+}
+
 async function loadDashboard() {
   try {
-    const res = await fetch("/api/v1/stats");
+    const res = await fetch(`/api/v1/stats?state=${currentState}`);
     const stats = await res.json();
     renderStats(stats);
   } catch (e) {
@@ -74,7 +85,7 @@ async function loadDashboard() {
   }
 
   try {
-    const res = await fetch("/api/v1/alerts");
+    const res = await fetch(`/api/v1/alerts?state=${currentState}`);
     const data = await res.json();
     renderDashboardAlerts(data.alerts || []);
     const badge = document.getElementById('alert-badge');
@@ -82,7 +93,7 @@ async function loadDashboard() {
   } catch (e) {}
 
   try {
-    const res = await fetch("/api/v1/review-queue");
+    const res = await fetch(`/api/v1/review-queue?state=${currentState}`);
     const data = await res.json();
     const badge = document.getElementById('review-badge');
     if (badge && data.items) badge.textContent = data.items.length;
@@ -149,7 +160,7 @@ function renderDashboardAlerts(alerts) {
 async function loadReviewQueue() {
   reviewList.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
   try {
-    const res = await fetch("/api/v1/review-queue");
+    const res = await fetch(`/api/v1/review-queue?state=${currentState}`);
     const data = await res.json();
     if (!data.items || !data.items.length) {
       reviewList.innerHTML = '<div class="empty-state"><p>All clear! No items need review.</p></div>';
@@ -183,7 +194,7 @@ async function loadReviewQueue() {
 async function loadAlerts() {
   alertsList.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
   try {
-    const res = await fetch("/api/v1/alerts");
+    const res = await fetch(`/api/v1/alerts?state=${currentState}`);
     const data = await res.json();
     if (!data.alerts || !data.alerts.length) {
       alertsList.innerHTML = '<div class="empty-state"><p>No active stockout alerts.</p></div>';
@@ -210,7 +221,7 @@ async function loadAlerts() {
 async function loadTransfers() {
   transferList.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
   try {
-    const res = await fetch("/api/v1/recommendations");
+    const res = await fetch(`/api/v1/recommendations?state=${currentState}`);
     const data = await res.json();
     if (!data.recommendations || !data.recommendations.length) {
       transferList.innerHTML = '<div class="empty-state"><p>Network is balanced — no transfers needed.</p></div>';
@@ -337,13 +348,14 @@ loadChart(7);
 // ===== Analytics Chart =====
 let forecastChart = null;
 async function loadChart(days) {
+  currentChartDays = days;
   // Update buttons
   document.querySelectorAll('.chart-btn').forEach(btn => btn.classList.remove('active'));
   const activeBtn = document.querySelector(`.chart-btn[onclick="loadChart(${days})"]`);
   if(activeBtn) activeBtn.classList.add('active');
 
   try {
-    const res = await fetch(`/api/v1/forecast-chart?days=${days}`);
+    const res = await fetch(`/api/v1/forecast-chart?days=${days}&state=${currentState}`);
     const data = await res.json();
     
     const ctx = document.getElementById('forecastChart');

@@ -71,9 +71,20 @@
 
       <!-- ═══ Dashboard ═══ -->
       <section id="dashboard-view" class="view active-view">
-        <div class="view-header">
-          <h2>Dashboard</h2>
-          <p class="view-subtitle">Telangana District Network — Real-time overview</p>
+        <div class="view-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h2>Dashboard</h2>
+            <p class="view-subtitle" id="dashboard-subtitle">Telangana District Network — Real-time overview</p>
+          </div>
+          <div>
+            <select id="state-filter" onchange="onStateChange()" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 500; cursor: pointer; outline: none;">
+              <option value="Telangana">Telangana</option>
+              <option value="Maharashtra">Maharashtra</option>
+              <option value="Rajasthan">Rajasthan</option>
+              <option value="Delhi">Delhi</option>
+              <option value="Assam">Assam</option>
+            </select>
+          </div>
         </div>
         <div class="stats-grid" id="stats-grid">
           <!-- Populated by JS -->
