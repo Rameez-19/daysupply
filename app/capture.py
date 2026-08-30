@@ -5,10 +5,8 @@ from datetime import datetime, timezone
 import google.generativeai as genai
 from google.cloud import firestore
 from pydantic import ValidationError
-from thefuzz import process
-from typing import List, Tuple
 
-from ingestion.build_items import get_items_data
+from app import items
 from app.models import GeminiExtractionItem, StockEvent, ReviewQueueItem
 
 # Initialize Gemini
@@ -39,19 +37,6 @@ Rules:
 - Transcribe the drug name as spoken; do not translate or correct it
 """
 
-# The full National List of Essential Medicines, not a shortlist — capture
-# matches spoken names against every essential medicine in the country.
-ITEMS_CATALOG = get_items_data()
-ITEM_NAMES = []
-NAME_TO_ID = {}
-for item in ITEMS_CATALOG:
-    variants = [item['local_name_in'], item['display_name']] + item['spoken_variants']
-    for v in variants:
-        v_lower = v.lower()
-        if v_lower not in NAME_TO_ID:
-            ITEM_NAMES.append(v_lower)
-            NAME_TO_ID[v_lower] = item['item_id']
-
 db = None
 def get_db():
     global db
@@ -60,14 +45,9 @@ def get_db():
         db = firestore.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply"))
     return db
 
-def match_item(local_name: str) -> str:
-    """Fuzzy match local_name to an item_id. Returns None if no good match."""
-    if not local_name:
-        return None
-    best_match = process.extractOne(local_name.lower(), ITEM_NAMES)
-    if best_match and best_match[1] >= 60:
-        return NAME_TO_ID[best_match[0]]
-    return None
+def match_item(local_name: str) -> str | None:
+    """Fuzzy-match a spoken name against the full NLEM catalogue."""
+    return items.match(local_name)
 
 def process_audio(audio_bytes: bytes, mime_type: str = "audio/mp3") -> str:
     """Sends audio to Gemini and returns raw JSON text."""
