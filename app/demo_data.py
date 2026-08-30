@@ -131,49 +131,7 @@ def get_demo_alerts(scope: list[dict]):
     return alerts
 
 
-def get_demo_forecast_chart(days: int = 7, state: str = "Telangana",
-                            district: str = "", phc: str = "",
-                            scope_label: str = ""):
-    seed = _seed_from(state, district, phc)
-    random.seed(seed)
-    today = datetime.now()
-    labels, historical, forecast = [], [], []
-    base_demand = 50 + (seed % 30)
-
-    for i in range(30, 0, -1):
-        d = today - timedelta(days=i)
-        labels.append(d.strftime("%b %d"))
-        val = base_demand + 20 * math.sin(i * 0.5)
-        historical.append(round(val + random.uniform(-10, 10)))
-        forecast.append(None)
-
-    current_val = round(base_demand + random.uniform(-10, 10))
-    labels.append("Today")
-    historical.append(current_val)
-    forecast.append(current_val)
-
-    for i in range(1, days + 1):
-        d = today + timedelta(days=i)
-        labels.append(d.strftime("%b %d"))
-        historical.append(None)
-        trend = base_demand + 20 * math.sin(-i * 0.5) + (i * 0.5)
-        forecast.append(round(trend + random.uniform(-5, 5)))
-
-    random.seed()
-    scope = scope_label or district or f"{state} State"
-    return {
-        "item_name": "Paracetamol 500mg", "facility_name": scope,
-        "labels": labels, "historical": historical, "forecast": forecast,
-    }
-
-
-def get_demo_expiry_chart(state: str = "Telangana", district: str = "", phc: str = ""):
-    """Returns medicine expiry data for the horizontal bar chart."""
-    seed = _seed_from(state, district, phc)
-    random.seed(seed)
-    medicines = ["Paracetamol", "Amoxicillin", "Chloroquine", "ORS", "Iron Tab", "Metronidazole"]
-    expired = [random.randint(50, 300) for _ in medicines]
-    expiring_30d = [random.randint(100, 500) for _ in medicines]
-    safe = [random.randint(500, 2000) for _ in medicines]
-    random.seed()
-    return {"labels": medicines, "expired": expired, "expiring_30d": expiring_30d, "safe": safe}
+# The forecast chart and the expiry chart used to be generated here — a sine
+# wave and random.randint respectively. Both are gone. The forecast is served
+# from the trained ARIMA_PLUS model in app/forecast.py; expiry returns in
+# Block C backed by real batch data.

@@ -222,3 +222,11 @@ button { font-family: inherit; cursor: pointer; }
   .stats-grid { grid-template-columns:1fr; }
   .quick-actions { flex-direction:column; }
 }
+
+/* Provenance note under each chart — says where the numbers came from. */
+.chart-note {
+  margin: 6px 2px 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--gray-500);
+}

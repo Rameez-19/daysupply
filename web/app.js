@@ -493,7 +493,6 @@ function showCaptureResult(data) {
 let forecastChart = null;
 let doughnutChart = null;
 let barChart = null;
-let expiryChart = null;
 
 async function loadChart(days) {
   currentChartDays = days;
@@ -501,11 +500,12 @@ async function loadChart(days) {
   const activeBtn = document.querySelector(`.chart-btn[onclick="loadChart(${days})"]`);
   if(activeBtn) activeBtn.classList.add('active');
 
+  // 1. Forecast — real history plus real ML.FORECAST output. Nothing about
+  // this curve is computed in the browser.
   try {
     const res = await fetch(`/api/v1/forecast-chart?days=${days}&${getFilterParams()}`);
+    if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
     const data = await res.json();
-    
-    // 1. Forecast Line Chart
     const ctx = document.getElementById('forecastChart');
     if(ctx) {
       if(forecastChart) forecastChart.destroy();
@@ -514,70 +514,77 @@ async function loadChart(days) {
         data: {
           labels: data.labels,
           datasets: [
-            { label: 'Historical Demand', data: data.historical, borderColor: '#94a3b8', backgroundColor: 'rgba(148,163,184,0.1)', fill: true, tension: 0.4 },
-            { label: 'AI Forecast', data: data.forecast, borderColor: '#1e3a8a', backgroundColor: 'rgba(30,58,138,0.08)', borderDash: [5,5], fill: true, tension: 0.4 }
+            { label: 'Dispensed (recorded)', data: data.historical, borderColor: '#94a3b8', backgroundColor: 'rgba(148,163,184,0.1)', fill: true, tension: 0.3, pointRadius: 0 },
+            { label: 'ARIMA_PLUS forecast', data: data.forecast, borderColor: '#1e3a8a', backgroundColor: 'rgba(30,58,138,0.08)', borderDash: [5,5], fill: true, tension: 0.3, pointRadius: 2 },
+            { label: `${Math.round(data.confidence_level*100)}% interval`, data: data.upper, borderColor: 'rgba(30,58,138,0.25)', borderWidth: 1, pointRadius: 0, fill: '+1' },
+            { label: '', data: data.lower, borderColor: 'rgba(30,58,138,0.25)', borderWidth: 1, pointRadius: 0, fill: false }
           ]
         },
-        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11, weight:'600' } } } }, scales:{ y:{ beginAtZero:true, title:{ display:true, text:'Qty', font:{ size:11 } } } } }
+        options: {
+          responsive:true, maintainAspectRatio:false,
+          plugins:{
+            legend:{ position:'bottom', labels:{ font:{ size:11, weight:'600' }, filter: it => it.text !== '' } },
+            title:{ display:true, text: `${data.item_name} — ${data.facility_name}`, font:{ size:12, weight:'600' } }
+          },
+          scales:{ y:{ beginAtZero:true, title:{ display:true, text: data.unit || 'Qty', font:{ size:11 } } } }
+        }
       });
     }
+    setChartNote('forecast-note', `Source: ${data.source}`);
+  } catch(e) {
+    console.error('Forecast chart failed', e);
+    setChartNote('forecast-note', `Forecast unavailable: ${e.message}`);
+  }
 
-    // 2. Health Doughnut
+  // 2 & 3. Network stock health and critical shortages — both derived from the
+  // model and the dispensing ledger.
+  try {
+    const res = await fetch(`/api/v1/stock-health?${getFilterParams()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const h = await res.json();
+
     const ctxD = document.getElementById('healthDoughnutChart');
     if(ctxD) {
       if(doughnutChart) doughnutChart.destroy();
-      const seed = data.labels.length;
       doughnutChart = new Chart(ctxD, {
         type: 'doughnut',
         data: {
-          labels: ['Healthy Stock', 'Low Warning', 'Critical Stockout'],
-          datasets: [{ data: [60 + (seed%10), 22 - (seed%5), 18 - (seed%5)], backgroundColor: ['#16a34a','#f97316','#ef4444'], borderWidth:0 }]
+          labels: ['Healthy (14+ days)', 'Low (7-14 days)', 'Critical (<7 days)'],
+          datasets: [{ data: [h.healthy, h.low, h.critical], backgroundColor: ['#16a34a','#f97316','#ef4444'], borderWidth:0 }]
         },
         options: { responsive:true, maintainAspectRatio:false, cutout:'72%', plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11, weight:'600' } } } } }
       });
     }
 
-    // 3. Critical Shortages Bar
     const ctxB = document.getElementById('shortagesBarChart');
     if(ctxB) {
       if(barChart) barChart.destroy();
       barChart = new Chart(ctxB, {
         type: 'bar',
         data: {
-          labels: ['Paracetamol','ORS','Chloroquine','Amoxicillin','Iron'],
-          datasets: [{ label: 'Deficit (Units)', data: [1200+(days*10), 850+(days*8), 600+(days*5), 450, 300], backgroundColor: '#1e3a8a', borderRadius:4 }]
-        },
-        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true } } }
-      });
-    }
-
-  } catch(e) { console.error('Chart load failed', e); }
-
-  // 4. Expiry Stacked Horizontal Bar
-  try {
-    const res2 = await fetch(`/api/v1/expiry-chart?${getFilterParams()}`);
-    const exp = await res2.json();
-    const ctxE = document.getElementById('expiryChart');
-    if(ctxE) {
-      if(expiryChart) expiryChart.destroy();
-      expiryChart = new Chart(ctxE, {
-        type: 'bar',
-        data: {
-          labels: exp.labels,
-          datasets: [
-            { label: 'Expired', data: exp.expired, backgroundColor: '#ef4444', borderRadius:2 },
-            { label: 'Expiring <30d', data: exp.expiring_30d, backgroundColor: '#f97316', borderRadius:2 },
-            { label: 'Safe', data: exp.safe, backgroundColor: '#16a34a', borderRadius:2 }
-          ]
+          labels: h.shortages.map(s => `${s.item_name} (${s.ven_class[0]})`),
+          datasets: [{ label: 'Deficit', data: h.shortages.map(s => s.deficit_units), backgroundColor: '#1e3a8a', borderRadius:4 }]
         },
         options: {
-          indexAxis: 'y', responsive:true, maintainAspectRatio:false,
-          plugins:{ legend:{ position:'bottom', labels:{ font:{ size:10, weight:'600' } } } },
-          scales:{ x:{ stacked:true, beginAtZero:true }, y:{ stacked:true } }
+          responsive:true, maintainAspectRatio:false,
+          plugins:{
+            legend:{ display:false },
+            tooltip:{ callbacks:{ afterLabel: c => `${h.shortages[c.dataIndex].facilities_affected} facilities · ${h.shortages[c.dataIndex].ven_class}` } }
+          },
+          scales:{ y:{ beginAtZero:true, title:{ display:true, text:'Units short of 14-day cover', font:{ size:10 } } } }
         }
       });
     }
-  } catch(e) { console.error('Expiry chart failed', e); }
+    setChartNote('health-note', `${h.total_series.toLocaleString('en-IN')} facility-item series · mean cover ${h.mean_days_of_cover} days · ${h.on_hand_basis}`);
+  } catch(e) {
+    console.error('Stock health failed', e);
+    setChartNote('health-note', 'Stock health unavailable');
+  }
+}
+
+function setChartNote(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
 }
 
 // ===== Barcode Scanner =====

@@ -127,8 +127,10 @@ hypertension, epilepsy, mental illness, dental, ophthalmic, acute heart disease
 and stroke; malaria positives by species (microscopy and RDT); childhood
 diseases; and inpatient counts.
 
-Each of the 15 tracked items names one of these as its `demand_driver`, so
-monthly demand shape is taken from real reported incidence rather than invented.
+Each forecast item names one of these as its `demand_driver`, so monthly demand
+shape is taken from real reported incidence rather than invented. **Only
+Telangana has been parsed** — 31 districts, 4,092 rows — which is why the
+forecast set is Telangana-only (§9).
 
 ⚠️ **2019-20 means April 2019 – March 2020.** February and March 2020 are
 COVID-affected. Use April–December or smooth those two months explicitly.
@@ -137,9 +139,9 @@ COVID-affected. Use April–December or smooth those two months explicitly.
 
 ## 5. Item master — REAL
 
-15 essential medicines, drawn from the **National List of Essential Medicines
-2022** (`Data/India/nlem2022.pdf`, MoHFW) and cross-coded to **WHO ATC**.
-Built by `ingestion/build_items.py` → `daysupply.items`.
+The **complete** National List of Essential Medicines 2022 — 385 medicines
+across 27 therapeutic sections. Full detail, including the conversion traps in
+the source file and the confident-or-null ATC rule, is in §8.
 
 ATC codes are what make therapeutic substitution possible: when an exact item is
 unavailable, items sharing an ATC class are surfaced as alternatives.
@@ -167,10 +169,160 @@ These are cited in the pitch, never loaded into the product:
 | `population_served` | **Real source, derived**: state × type average (§2) |
 | Monthly demand seasonality | **Real**, HMIS 2019-20 |
 | Item list and ATC codes | **Real**, NLEM 2022 + WHO ATC |
-| Daily stock events | **Generated** for demo facilities — see §8 once Block B lands |
-| Forecasts | Pending Block B (BigQuery ML ARIMA_PLUS) |
+| Item list | **Real**, all 385 NLEM 2022 medicines (§8) |
+| ATC codes | **Real where assigned**, 264 of 385; NULL rather than guessed (§8) |
+| VEN classification | **Derived** — ours, not MoHFW's (§8) |
+| Daily stock events | **Generated** from real anchors (§9) |
+| Forecasts | **Real** — BigQuery ML ARIMA_PLUS, 3,649 series (§10) |
 
 ---
 
-*Sections 8+ (usage generation methodology, forecast model, lead-time proxy) are
-added by Blocks B and C.*
+*Section 11 (lead-time proxy) is added by Block C.*
+
+---
+
+## 8. Item catalogue — REAL, complete NLEM 2022
+
+| | |
+|---|---|
+| Source | `Data/India/nlem2022.xlsx` (a PDF-to-Excel conversion of `nlem2022.pdf`) |
+| Provenance | National List of Essential Medicines 2022, MoHFW |
+| Loaded by | `ingestion/parse_nlem.py` → `ingestion/build_items.py` → `daysupply.items` |
+| Result | **385 medicines across 27 therapeutic sections** |
+
+The conversion is not a clean dataset and is documented in full in the
+`parse_nlem.py` docstring. The consequential findings:
+
+- **`Table 1` is two documents in one sheet** — table of contents, then
+  Sections 1-3. Skipping it as an artefact silently loses Anaesthetics,
+  Analgesics and Antiallergics.
+- **`Table 20` changes meaning halfway down.** Rows 0-12 are real medicines;
+  row 13 begins "Alphabetical List of Medicines Added"; row 59 begins
+  **"Medicines Deleted from NLEM 2015"**, running on through `Table 26`.
+  Loading past that point would put *deleted* medicines into the catalogue as
+  though they were current. This is the highest-consequence trap in the file.
+- **`Tables 27-30` are the page index**, not data.
+- **Section codes were silently converted to dates.** `7.1.11` became
+  7 January 2011. Recovered as `day.month.two-digit-year`.
+- Therapeutic category is a **section heading row, not a column**, and header
+  rows repeat at every subsection with shifting column positions.
+
+Official NLEM 2022 contains 384 medicines; the parser yields 385 distinct name
+strings. The difference is spelling variants of cross-listed medicines, not
+extra drugs.
+
+### ATC codes — REAL, PARTIAL
+
+**NLEM does not publish ATC codes.** They are attached by hand in
+`ingestion/atc_map.py` under a confident-or-null rule: **264 of 385 (69%)** have
+a code and 121 are NULL. A wrong ATC code is worse than a missing one, because
+ATC class is what drives therapeutic substitution — a bad code would surface the
+wrong drug as an equivalent. Combination products are keyed in full rather than
+resolved to their first ingredient, since a combination's ATC genuinely differs
+from its parts.
+
+### VEN classification — DERIVED
+
+`ven_class` is Vital / Essential / Desirable per WHO and MoHFW practice: 109
+Vital, 249 Essential, 27 Desirable. It is **our classification, not MoHFW's** —
+NLEM does not publish VEN. It is assigned as an NLEM-section default with
+per-medicine overrides, both listed in `build_items.py`. NLEM sections are
+already organised by clinical purpose, which makes the section a defensible
+starting point; the overrides carry sections that mix criticality.
+
+---
+
+## 9. Stock events — GENERATED, from real anchors
+
+| | |
+|---|---|
+| Built by | `ingestion/generate_usage.py` |
+| Scope | 200 PHCs × 39 items × 365 days |
+| Rows | ~1.86M, partitioned by `DATE(event_ts)`, clustered by `facility_id` |
+| Seed | Fixed (`20260830`) — reruns are identical |
+
+**Real anchors:**
+
+1. **Which facilities** — 200 real PHCs flagged `is_forecast_facility`.
+2. **Demand scale** — the district's real HMIS patient volume for that item's
+   `demand_driver`, divided by the real number of PHCs in the district. District
+   volumes vary 12× to 1750× across Telangana, so this carries genuine
+   geographic variation.
+3. **Seasonality** — the month-by-month shape of the same real HMIS series,
+   joined per district. Generated antimalarial demand peaks in September at
+   1.53× baseline against the real HMIS figure of 1.58×.
+
+**Why Telangana only.** `demand_reference` holds HMIS 2019-20 for 31 Telangana
+districts and nowhere else, because only `Telangana.xls` has been parsed. A
+facility outside Telangana has no real demand signal to join to. Rather than
+fall back to a synthetic seasonal curve, the forecast set is restricted to where
+the real signal exists. All 817 Telangana PHCs join on a case-insensitive
+district match.
+
+**Generated, and why:**
+
+| Element | Why it is not real |
+|---|---|
+| Within-district facility variation | `population_served` is a state × type average (§2), identical for every Telangana PHC. No per-facility catchment is published. A deterministic log-normal multiplier stands in |
+| Day-of-week shape | No HMIS data is daily |
+| Daily noise | Poisson around the expected value |
+| Units per patient | Clinical dosing convention, not data |
+| Indent cycle and fill rates | Standard 30-day PHC indent practice |
+
+**The ledger is internally consistent.** `received` events are emitted on the
+indent cycle alongside `dispensed` ones, so on-hand is a real computation —
+`SUM(received) − SUM(dispensed)` — not a number reconstructed after the fact.
+The indent is a **top-up to a 40-day target**, which is how public health supply
+chains actually order; a fixed multiple of demand would compound and every
+facility would drift into permanent surplus.
+
+A facility that runs out **cannot dispense**. Demand it cannot serve is counted
+as unmet rather than allowed to drive stock negative: **348,372 units, 1.0% of
+total demand**, were unserved. Zero facility-item balances are negative.
+
+Resulting distribution: 4,894 healthy (14+ days cover), 1,175 low, 1,387
+critical, mean 22.1 days.
+
+**Engineered demo scenarios.** Three facilities are put into deficit by a
+supply-side failure — they order correctly and the warehouse delivers 35% — each
+paired with a same-district donor over-supplied at 230%:
+
+| Deficit facility | District | Cover | Donor | Cover |
+|---|---|---|---|---|
+| Jahanuma | Hyderabad | 0.1 d | Gaddianaram | 47.2 d |
+| Kundaram | Adilabad | 0.2 d | Tiryani | 47.2 d |
+| UHC Jangaon | Karim Nagar | 0.3 d | Gopalpoor | 32.3 d |
+
+---
+
+## 10. Forecast model — REAL
+
+| | |
+|---|---|
+| Model | `daysupply.demand_forecast`, BigQuery ML `ARIMA_PLUS` |
+| Trained by | `ingestion/train_forecast.py`; every run logged to `docs/training_runs.json` |
+| Series | 3,649 of 7,456 |
+| Duration | **15.5 s** (1.23 GB processed) |
+| Horizon | 30 days, 80% prediction interval |
+
+`auto_arima=TRUE`, `data_frequency='DAILY'`, series id `facility_id|item_id`.
+
+**Why 3,649 and not 7,456.** Only series with at least 300 observed days are
+trained. The rest are genuinely sparse — their HMIS driver reports close to zero
+patients in that district; several Telangana districts record an average of one
+acute heart disease outpatient a month. A model fitted to that would be worse
+than saying nothing. This also keeps training under the 5,000-series ceiling in
+MASTER_PROMPT §6.
+
+The model recovers the weekly pattern from the data without being told about it:
+a Sunday forecast of 67.8 units against 430.5 the following Monday.
+
+**Nothing in the forecast path is generated at request time.** `app/forecast.py`
+queries `ML.FORECAST`; `app/stock_health.py` derives days of cover from that
+model and the real ledger. The sine wave that used to produce the dashboard
+curve, and the hardcoded JavaScript arrays behind the stock-health and shortage
+charts, are gone.
+
+**The expiry tracker has been removed**, not fixed. It was `random.randint` over
+a data source that does not exist. It returns in Block C, backed by real batch
+expiry data for FEFO.

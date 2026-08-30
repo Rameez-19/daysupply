@@ -9,6 +9,8 @@ from fastapi import FastAPI, HTTPException, UploadFile, Form
 from fastapi.staticfiles import StaticFiles
 
 from app import facilities as facility_repo
+from app import forecast
+from app import stock_health
 from app.bq import QueryTooExpensive
 from app.capture import handle_capture
 from app.forecast import get_forecast_daily_demand
@@ -16,7 +18,7 @@ from app.redistribute import get_recommendations
 from app.patterns import get_local_patterns, ingest_peer_pattern, PatternNode
 from app.demo_data import (
     get_demo_stats, get_demo_review_queue, get_demo_recommendations,
-    get_demo_alerts, get_demo_forecast_chart, get_demo_expiry_chart,
+    get_demo_alerts,
 )
 
 log = logging.getLogger(__name__)
@@ -47,8 +49,16 @@ app = FastAPI(title="StockPulse", version="0.4.0", lifespan=lifespan)
 
 
 @app.get("/healthz")
+@app.get("/api/v1/healthz")
 async def healthz():
-    """Liveness probe for Cloud Run."""
+    """Liveness probe.
+
+    Exposed twice on purpose. Google's frontend swallows the exact path
+    `/healthz` before it reaches the container — it returns a Google-branded
+    404 with no `server: Google Frontend` header, while `/healthz2` and
+    `/healthz/` pass through normally. `/api/v1/healthz` is the path to probe
+    in production; `/healthz` still works locally.
+    """
     return {"status": "ok"}
 
 
@@ -227,9 +237,13 @@ async def approve_recommendation(rec_id: str):
 
 # ── Federated patterns ──────────────────────────────────────────────
 @app.get("/api/v1/patterns")
-async def fetch_patterns():
-    """Export local seasonal coefficients."""
-    return {"patterns": get_local_patterns()}
+async def fetch_patterns(district: str = ""):
+    """Export aggregate seasonal coefficients per ATC class.
+
+    Only 12-element monthly multiplier vectors leave: no facility rows and no
+    patient data.
+    """
+    return {"patterns": _facility_query(get_local_patterns, district)}
 
 @app.post("/api/v1/patterns")
 async def post_patterns(pattern: PatternNode):
@@ -237,18 +251,50 @@ async def post_patterns(pattern: PatternNode):
     return ingest_peer_pattern(pattern)
 
 @app.get("/api/v1/forecast-chart")
-async def get_forecast_chart_endpoint(days: int = 7, state: str = "Telangana", district: str = "", phc: str = ""):
-    """Returns historical and forecast trend data for plotting."""
-    label = ""
-    if phc:
-        facility = _facility_query(facility_repo.get_facility, phc)
-        label = (facility or {}).get("name", "")
-    return get_demo_forecast_chart(days, state, district, phc, scope_label=label)
+async def get_forecast_chart_endpoint(days: int = 7, state: str = "Telangana",
+                                      district: str = "", phc: str = ""):
+    """Real history and real ML.FORECAST predictions for the busiest series.
 
-@app.get("/api/v1/expiry-chart")
-async def get_expiry_chart_endpoint(state: str = "Telangana", district: str = "", phc: str = ""):
-    """Returns medicine expiry data for the horizontal bar chart."""
-    return get_demo_expiry_chart(state, district, phc)
+    Every value is queried: the history from `stock_events`, the forward curve
+    from the trained ARIMA_PLUS model. Nothing is generated here or in the
+    browser.
+    """
+    series = _facility_query(forecast.pick_series, state, district, phc)
+    if series is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No trained series in this scope. Forecasting is active for "
+                   "PHCs in Telangana, where real HMIS demand data exists.",
+        )
+    try:
+        payload = forecast.get_forecast_series(
+            series["facility_id"], series["item_id"], horizon=days
+        )
+    except forecast.ForecastUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    payload.update({
+        "facility_name": series["facility_name"],
+        "item_name": series["item_name"],
+        "unit": series["unit"],
+    })
+    return payload
+
+
+@app.get("/api/v1/stock-health")
+async def get_stock_health(state: str = "Telangana", district: str = "",
+                           phc: str = ""):
+    """Days-of-cover distribution and the largest deficits, from the model.
+
+    Replaces two charts that were previously arrays hardcoded in the browser.
+    """
+    return _facility_query(stock_health.network_health, state, district, phc)
+
+# The expiry chart used to be served here from `random.randint`. There is no
+# batch-expiry data source anywhere in the stack, so it has been removed rather
+# than left showing invented numbers. Block C adds `expiry_date` to
+# `stock_events` for FEFO redistribution, at which point it can return backed
+# by real batch data.
 
 
 # ── Static files (must be last) ─────────────────────────────────────

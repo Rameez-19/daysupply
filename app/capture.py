@@ -39,11 +39,13 @@ Rules:
 - Transcribe the drug name as spoken; do not translate or correct it
 """
 
+# The full National List of Essential Medicines, not a shortlist — capture
+# matches spoken names against every essential medicine in the country.
 ITEMS_CATALOG = get_items_data()
 ITEM_NAMES = []
 NAME_TO_ID = {}
 for item in ITEMS_CATALOG:
-    variants = [item['local_name_in'], item['local_name_br'], item['display_name']] + item['spoken_variants']
+    variants = [item['local_name_in'], item['display_name']] + item['spoken_variants']
     for v in variants:
         v_lower = v.lower()
         if v_lower not in NAME_TO_ID:
