@@ -186,6 +186,8 @@ function getFilterParams() {
 function refreshAll() {
   loadDashboard();
   loadChart(currentChartDays);
+  loadLeadTimeContrast();
+  loadReporting();
 }
 
 // Make filter functions global
@@ -281,6 +283,22 @@ function renderStats(s) {
   `;
 }
 
+// Vital / Essential / Desirable, per WHO and MoHFW practice. A vital-drug
+// stock-out is not the same event as a desirable-drug one, so the badge is
+// shown wherever an alert or a transfer is.
+function venBadge(ven) {
+  if (!ven) return '';
+  const cls = ven === 'Vital' ? 'ven-vital'
+            : ven === 'Essential' ? 'ven-essential' : 'ven-desirable';
+  return `<span class="ven-badge ${cls}" title="${ven} (WHO/MoHFW VEN)">${ven[0]}</span>`;
+}
+
+function severityOf(alert) {
+  if (alert.status === 'stocked_out') return 'critical';
+  if (alert.status === 'critical') return 'critical';
+  return 'warning';
+}
+
 function renderDashboardAlerts(alerts) {
   const el = document.getElementById('dashboard-alerts');
   if (!alerts.length) { el.innerHTML = '<p style="font-size:0.85rem; color:var(--gray-400);">No active alerts</p>'; return; }
@@ -289,7 +307,7 @@ function renderDashboardAlerts(alerts) {
     <div class="mini-alert">
       <div class="mini-alert-left">
         <span class="mini-alert-facility">${a.facility_name || a.facility_id}</span>
-        <span class="mini-alert-item">${a.item_name || a.item_id}</span>
+        <span class="mini-alert-item">${venBadge(a.ven_class)} ${a.item_name || a.item_id}</span>
       </div>
       <span class="mini-alert-days">${a.days_of_cover}d left</span>
     </div>
@@ -355,18 +373,33 @@ async function loadAlerts() {
       alertsList.innerHTML = '<div class="empty-state"><p>No active stockout alerts.</p></div>';
       return;
     }
-    alertsList.innerHTML = data.alerts.map(a => `
-      <div class="alert-card severity-${a.severity}">
-        <div class="alert-icon ${a.severity}">${a.severity === 'critical' ? '🚨' : '⚠️'}</div>
+    alertsList.innerHTML = data.alerts.map(a => {
+      const sev = severityOf(a);
+      // The reorder point is this facility's own, not a flat network rule.
+      const vsFlat = a.reorder_point > a.legacy_threshold
+        ? `<span class="alert-note up">+${Math.round(a.reorder_point - a.legacy_threshold)} ${a.unit} above the old flat 14-day rule</span>`
+        : `<span class="alert-note">${Math.round(a.legacy_threshold - a.reorder_point)} ${a.unit} below the old flat 14-day rule</span>`;
+      return `
+      <div class="alert-card severity-${sev}">
+        <div class="alert-icon ${sev}">${sev === 'critical' ? '🚨' : '⚠️'}</div>
         <div class="alert-body">
-          <div class="alert-title">${a.item_name || a.item_id}</div>
-          <div class="alert-meta">${a.facility_name || a.facility_id}</div>
+          <div class="alert-title">${venBadge(a.ven_class)} ${a.item_name || a.item_id}</div>
+          <div class="alert-meta">${a.facility_name || a.facility_id} · ${a.district || ''}</div>
+          <div class="alert-detail">
+            On hand ${Math.round(a.on_hand)} ${a.unit} ·
+            reorder at ${Math.round(a.reorder_point)}
+            (${Math.round(a.avg_daily_demand)}/day x ${a.lead_time_days}d lead
+             + ${Math.round(a.safety_stock)} safety)
+          </div>
+          <div class="alert-detail">
+            ${a.distance_to_hq_km} km from district HQ${a.lead_time_is_estimated ? ' (distance estimated)' : ''} · ${vsFlat}
+          </div>
         </div>
-        <div class="alert-days ${a.severity}">
+        <div class="alert-days ${sev}">
           ${a.days_of_cover}<span class="alert-days-label">days left</span>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (e) {
     alertsList.innerHTML = '<div class="empty-state"><p>Could not load alerts.</p></div>';
   }
@@ -385,15 +418,24 @@ async function loadTransfers() {
     transferList.innerHTML = data.recommendations.map(rec => `
       <div class="item-card" id="rec-${rec.recommendation_id}">
         <div class="card-header">
-          <span style="font-weight:700; color:var(--gray-900);">${rec.item_name || rec.item_id}</span>
-          <span class="card-badge ${rec.urgency === 'critical' ? 'badge-critical' : 'badge-info'}">${rec.urgency || 'recommended'}</span>
+          <span style="font-weight:700; color:var(--gray-900);">
+            ${venBadge(rec.ven_class)} ${rec.requested_item_name}
+          </span>
+          <span class="card-badge ${rec.status === 'stocked_out' ? 'badge-critical' : 'badge-info'}">${(rec.status || 'reorder').replace('_', ' ')}</span>
         </div>
+        ${rec.is_substitution ? `
+        <div class="substitution-note">
+          <strong>Therapeutic substitute.</strong>
+          ${rec.to_facility_name} needs <em>${rec.requested_item_name}</em>;
+          this transfer supplies <em>${rec.supplied_item_name}</em>, the same
+          ATC class. Confirm clinical suitability before dispensing.
+        </div>` : ''}
         <div class="transfer-flow">
           <div class="transfer-node">
             <div class="transfer-node-label surplus">Surplus</div>
             <div class="transfer-node-name">${rec.from_facility_name || ''}</div>
             <div class="transfer-node-id">${rec.from_facility_id}</div>
-            <div class="transfer-node-cover">${rec.donor_post_cover}d after</div>
+            <div class="transfer-node-cover">${rec.donor_cover_before}d → ${rec.donor_cover_after}d</div>
           </div>
           <div class="transfer-arrow">
             <span class="transfer-qty">${rec.quantity} ${rec.unit || 'units'}</span>
@@ -404,8 +446,15 @@ async function loadTransfers() {
             <div class="transfer-node-label deficit">Deficit</div>
             <div class="transfer-node-name">${rec.to_facility_name || ''}</div>
             <div class="transfer-node-id">${rec.to_facility_id}</div>
-            <div class="transfer-node-cover">${rec.receiver_cover_before}d → ${rec.receiver_post_cover}d</div>
+            <div class="transfer-node-cover">${rec.receiver_cover_before}d → ${rec.receiver_cover_after}d</div>
           </div>
+        </div>
+        <div class="fefo-note">
+          <strong>FEFO</strong> · moving batch expiring
+          ${rec.fefo_expiry_date} (${rec.fefo_days_to_expiry} days)
+          ${rec.waste_avoided_units > 0
+            ? ` · avoids ${rec.waste_avoided_units} ${rec.unit} of expiry waste`
+            : ' · no expiry risk on this batch'}
         </div>
         <button class="btn btn-primary btn-full" onclick="approveTransfer('${rec.recommendation_id}')">✓ Approve Transfer</button>
       </div>
@@ -487,6 +536,8 @@ function showCaptureResult(data) {
   updateSubtitle();
   loadDashboard();
   loadChart(7);
+  loadLeadTimeContrast();
+  loadReporting();
 })();
 
 // ===== Analytics Charts =====
@@ -579,6 +630,103 @@ async function loadChart(days) {
   } catch(e) {
     console.error('Stock health failed', e);
     setChartNote('health-note', 'Stock health unavailable');
+  }
+}
+
+// The single clearest illustration of the lead-time rule: two real PHCs,
+// the same medicine, reorder points that differ only by distance to the
+// district warehouse.
+async function loadLeadTimeContrast() {
+  const section = document.getElementById('contrast-section');
+  const el = document.getElementById('lead-time-contrast');
+  if (!el || !section) return;
+  try {
+    let url = `/api/v1/lead-time-contrast?state=${encodeURIComponent(currentState)}`;
+    if (currentDistrict) url += `&district=${encodeURIComponent(currentDistrict)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const c = await res.json();
+    if (!c || !c.nearest || !c.furthest) { section.hidden = true; return; }
+    section.hidden = false;
+
+    const row = (f, label) => `
+      <div class="contrast-col">
+        <div class="contrast-label">${label}</div>
+        <div class="contrast-name">${f.facility_name}</div>
+        <div class="contrast-sub">${f.district}</div>
+        <div class="contrast-km">${f.distance_to_hq_km} km from district HQ</div>
+        <div class="contrast-lead">${f.lead_time_days}-day lead time</div>
+        <div class="contrast-rp">${Math.round(f.reorder_point)}</div>
+        <div class="contrast-rp-label">reorder at, ${c.unit}</div>
+        <div class="contrast-formula">
+          ${Math.round(f.avg_daily_demand)}/day &times; ${f.lead_time_days}d
+          + ${Math.round(f.safety_stock)} safety
+        </div>
+      </div>`;
+
+    el.innerHTML = `
+      <p class="contrast-intro">
+        ${venBadge(c.ven_class)} <strong>${c.item_name}</strong> at two real PHCs.
+        ${c.furthest.facility_name} is
+        ${c.furthest.distance_to_hq_km} km from its district warehouse and waits
+        <strong>${c.extra_lead_days} days longer</strong> for resupply than
+        ${c.nearest.facility_name}.
+      </p>
+      <p class="contrast-intro">
+        Holding its own demand constant, that distance alone raises its reorder
+        point from ${Math.round(c.furthest_reorder_if_near)} to
+        <strong>${Math.round(c.furthest.reorder_point)} ${c.unit}</strong> —
+        ${Math.round(c.extra_units_from_distance)} extra units to hit the same
+        95% service level. The flat 14-day rule would have set it at
+        ${Math.round(c.furthest_flat_threshold)}, leaving it
+        <strong>${Math.round(c.flat_rule_shortfall)} ${c.unit} short</strong>.
+      </p>
+      <div class="contrast-grid">
+        ${row(c.nearest, 'Near the warehouse')}
+        <div class="contrast-vs">vs</div>
+        ${row(c.furthest, 'Remote')}
+      </div>
+      <p class="chart-note">
+        Lead time is derived from distance to the district hospital, a
+        documented proxy — not a measured delivery time. See Data/README.md.
+      </p>`;
+  } catch (e) {
+    console.error('Lead-time contrast failed', e);
+    section.hidden = true;
+  }
+}
+
+async function loadReporting() {
+  const el = document.getElementById('reporting-summary');
+  if (!el) return;
+  try {
+    const res = await fetch(`/api/v1/reporting?${getFilterParams()}&limit=5`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const s = data.summary || {};
+    if (!s.facilities) { el.innerHTML = '<p class="chart-note">No facilities in scope.</p>'; return; }
+    const worst = (data.facilities || []).filter(f => f.reporting_status !== 'complete').slice(0, 4);
+    el.innerHTML = `
+      <div class="reporting-bar">
+        <div class="reporting-seg complete" style="flex:${s.complete}" title="${s.complete} reporting fully"></div>
+        <div class="reporting-seg partial" style="flex:${s.partial}" title="${s.partial} reporting partially"></div>
+        <div class="reporting-seg silent" style="flex:${s.silent}" title="${s.silent} silent"></div>
+      </div>
+      <p class="chart-note">
+        <strong>${Math.round((s.mean_consistency || 0) * 100)}%</strong> of expected stock counts arrived
+        across ${s.facilities} facilities —
+        ${s.complete} complete, ${s.partial} partial,
+        <strong>${s.silent} silent</strong>.
+        A facility that stops reporting looks healthy on every dashboard above it.
+      </p>
+      ${worst.length ? `<div class="reporting-list">${worst.map(f => `
+        <div class="reporting-row">
+          <span>${f.facility_name} <span class="contrast-sub">${f.district}</span></span>
+          <span class="reporting-pct ${f.reporting_status}">${Math.round(f.reporting_consistency * 100)}% · last report ${f.days_since_last_report}d ago</span>
+        </div>`).join('')}</div>` : ''}`;
+  } catch (e) {
+    console.error('Reporting failed', e);
+    el.innerHTML = '<p class="chart-note">Reporting data unavailable.</p>';
   }
 }
 

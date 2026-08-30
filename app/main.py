@@ -11,15 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from app import facilities as facility_repo
 from app import forecast
 from app import stock_health
+from app import supply
 from app.bq import QueryTooExpensive
 from app.capture import handle_capture
 from app.forecast import get_forecast_daily_demand
-from app.redistribute import get_recommendations
 from app.patterns import get_local_patterns, ingest_peer_pattern, PatternNode
-from app.demo_data import (
-    get_demo_stats, get_demo_review_queue, get_demo_recommendations,
-    get_demo_alerts,
-)
+from app.demo_data import get_demo_stats, get_demo_review_queue
 
 log = logging.getLogger(__name__)
 
@@ -127,26 +124,32 @@ async def fetch_coverage():
 
 # ── Dashboard stats ──────────────────────────────────────────────────
 @app.get("/api/v1/stats")
-async def get_stats(state: str = "Telangana", district: str = "", phc: str = ""):
-    """Dashboard summary stats.
+async def get_stats(state: str = "Telangana", district: str = "",
+                    phc: str = ""):
+    """Dashboard summary.
 
-    Facility counts are real, queried from `daysupply.facilities`. The
-    remaining operational counters still come from the demo generator and are
-    replaced in Block B.
+    Facility counts come from the facility master; alerts, transfers and waste
+    avoided come from the supply engine. The only remaining generated figure is
+    `captures_today`, which has no data source until voice capture is writing
+    events in production — it is labelled as such in the response.
     """
-    stats = get_demo_stats(state, district, phc)
     counts = _facility_query(
-        facility_repo.facility_counts, state, district, phc
-    )
-    stats.update({
+        facility_repo.facility_counts, state, district, phc)
+    engine = _facility_query(supply.get_summary, state, district, phc)
+
+    demo = get_demo_stats(state, district, phc)
+    return {
+        **engine,
         "facilities": counts["facilities"],
         "phcs": counts["phcs"],
         "demo_facilities": counts["demo_facilities"],
         "districts": counts["districts"],
         "population_served": counts["population_served"],
-    })
-    stats.pop("delta_facilities", None)
-    return stats
+        "stockout_alerts": engine["open_alerts"],
+        "captures_today": demo["captures_today"],
+        "captures_today_is_generated": True,
+        "last_sync": demo["last_sync"],
+    }
 
 
 # ── Voice capture ────────────────────────────────────────────────────
@@ -192,41 +195,63 @@ async def get_forecast(facility_id: str, item_id: str):
 
 # ── Alerts ───────────────────────────────────────────────────────────
 @app.get("/api/v1/alerts")
-async def get_alerts(state: str = "Telangana", district: str = "", phc: str = ""):
-    """Returns active stock-out warnings. Falls back to demo data."""
-    from google.cloud import firestore
-    try:
-        db = firestore.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply"))
-        docs = list(db.collection("alerts").where("status", "==", "active").stream())
-        if docs:
-            return {"alerts": [doc.to_dict() for doc in docs]}
-    except Exception:
-        pass
-    scope = _facility_query(facility_repo.scope_facilities, state, district, phc)
-    return {"alerts": get_demo_alerts(scope)}
+async def get_alerts(state: str = "", district: str = "", phc: str = "",
+                     limit: int = 50):
+    """Open stock-out alerts from the reorder engine, VEN-ranked.
+
+    A vital medicine outranks a desirable one at the same days of cover. Every
+    figure is computed: on-hand from the ledger, demand from the trained model,
+    the reorder point from the facility's own lead time.
+    """
+    return {
+        "alerts": _facility_query(
+            supply.get_alerts, state, district, phc, limit),
+    }
 
 
 # ── Transfer recommendations ────────────────────────────────────────
 @app.get("/api/v1/recommendations")
-async def fetch_recommendations(threshold_days: int = 14, transfer_max_km: float = 50.0, state: str = "Telangana", district: str = "", phc: str = ""):
-    """Returns transfer recommendations. Falls back to demo data."""
-    from google.cloud import firestore
-    try:
-        db = firestore.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply"))
-        inventory_docs = list(db.collection("inventory_snapshot").stream())
-        if inventory_docs:
-            inventory_data = [doc.to_dict() for doc in inventory_docs]
-            facilities_docs = db.collection("facilities").stream()
-            facilities_metadata = {
-                doc.id: {"lat": doc.get("lat"), "lon": doc.get("lon"), "name": doc.get("name")}
-                for doc in facilities_docs
-            }
-            recs = get_recommendations(inventory_data, facilities_metadata, threshold_days, transfer_max_km)
-            return {"recommendations": recs}
-    except Exception:
-        pass
-    scope = _facility_query(facility_repo.scope_facilities, state, district, phc)
-    return {"recommendations": get_demo_recommendations(scope)}
+async def fetch_recommendations(state: str = "", district: str = "",
+                                phc: str = "", limit: int = 50):
+    """Transfer recommendations from the redistribution engine.
+
+    Each row names a donor, a receiver, the FEFO batch being moved and its
+    expiry, and post-transfer cover for both sides. Substitutions are flagged
+    with both the requested and the supplied item.
+    """
+    return {
+        "recommendations": _facility_query(
+            supply.get_recommendations, state, district, phc, limit),
+    }
+
+
+@app.get("/api/v1/substitutes")
+async def fetch_substitutes(state: str = "", district: str = "",
+                            phc: str = "", limit: int = 50):
+    """ATC-equivalent items a facility already holds for something it lacks."""
+    return {
+        "substitutes": _facility_query(
+            supply.get_substitutes, state, district, phc, limit),
+    }
+
+
+@app.get("/api/v1/reporting")
+async def fetch_reporting(state: str = "", district: str = "",
+                          phc: str = "", limit: int = 200):
+    """Reporting consistency per facility over the last 90 days."""
+    return _facility_query(supply.get_reporting, state, district, phc, limit)
+
+
+@app.get("/api/v1/impact")
+async def fetch_impact():
+    """Network impact metrics, including waste avoided by FEFO."""
+    return _facility_query(supply.get_impact)
+
+
+@app.get("/api/v1/lead-time-contrast")
+async def fetch_lead_time_contrast(state: str = "", district: str = ""):
+    """Two PHCs, same medicine, different distance to their warehouse."""
+    return _facility_query(supply.lead_time_contrast, state, district)
 
 
 @app.post("/api/v1/recommendations/{rec_id}/approve")

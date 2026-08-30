@@ -28,6 +28,22 @@ curve.
 * *Daily noise* — Poisson around the expected value.
 * *Units per patient* — how many tablets one patient consumes. Clinical dosing
   convention, not data.
+* *Batch expiry* — no expiry data exists in any public Indian dataset. Each
+  receipt is given a shelf life drawn from a fixed-seed distribution: most
+  batches arrive with 12-24 months, **15% short-dated at 2-5 months**, and
+  **4% "dumped" with 25-60 days** — what district warehouses really do when
+  clearing their own near-expiry stock downward. Without that tail nothing can
+  expire, FEFO has nothing to choose between, and waste avoided is always zero.
+
+**Reporting behaviour.** A PHC is expected to submit a stock count every 30
+days. Real programmes do not get 100% compliance, and evaluations of comparable
+systems — South Africa's Stock Visibility System among them — document
+compliance decaying a few months after rollout rather than staying flat. So
+each facility is given a baseline compliance probability and a decay, and
+`count` events appear only when it reports. The resulting
+reporting-consistency score is therefore a real measurement over the ledger,
+not an assumption: non-reporting is visible because the report is genuinely
+absent.
 
 **COVID handling.** HMIS 2019-20 runs April 2019 to March 2020. India's national
 lockdown began 25 March 2020, so the March figure is a service-disruption
@@ -56,6 +72,7 @@ FACILITIES = f"`{PROJECT}.{DATASET}.facilities`"
 ITEMS = f"`{PROJECT}.{DATASET}.items`"
 DEMAND_REF = f"`{PROJECT}.{DATASET}.demand_reference`"
 STOCK_EVENTS = f"{PROJECT}.{DATASET}.stock_events"
+IMPACT_METRICS = f"{PROJECT}.{DATASET}.impact_metrics"
 
 SEED = 20260830
 DAYS = 365
@@ -106,6 +123,33 @@ DEFICIT_FILL_RATE = 0.35        # chronically short-supplied -> runs out
 SURPLUS_FILL_RATE = 2.30        # over-supplied -> becomes the donor
 SCENARIO_CYCLES = 3
 
+# Warehouses do not fill every indent in full. Each facility gets a baseline
+# reliability and each individual indent varies around it, which is why real
+# essential-medicine availability sits near 45-51% rather than at 100%. Without
+# this every facility would sit permanently above its reorder point and the
+# alerting and redistribution logic would never be exercised by anything except
+# the three engineered scenarios.
+FILL_RELIABILITY = (0.68, 1.18)   # per-facility baseline, uniform
+FILL_NOISE_SD = 0.14              # per-indent variation around it
+
+# Batch shelf life at the point of receipt, in days.
+SHELF_LIFE_NORMAL = (365, 730)     # 12-24 months
+SHELF_LIFE_SHORT = (60, 150)       # 2-5 months
+SHELF_LIFE_DUMPED = (25, 60)       # under two months
+SHORT_DATED_SHARE = 0.15
+# District warehouses clear their own near-expiry stock by pushing it down to
+# facilities. It arrives with weeks of life, and a facility that cannot consume
+# it in time writes it off. This tranche is why expiry waste exists at all, and
+# why FEFO has something to choose between.
+DUMPED_SHARE = 0.04
+
+# Stock-count reporting. Compliance starts high and decays, which is the
+# documented failure mode of these systems: the dashboard looks healthy for a
+# few months and then quietly stops being fed.
+REPORT_PERIOD_DAYS = 30
+COMPLIANCE_START = (0.72, 0.99)    # per-facility baseline, uniform
+COMPLIANCE_DECAY = (0.00, 0.055)   # probability lost per period
+
 # Baseline daily units at an average PHC for items with no HMIS driver.
 FLAT_BASE_DAILY = {
     "PARACETAMOL": 140.0,
@@ -126,6 +170,8 @@ SCHEMA = [
     bigquery.SchemaField("source", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("confidence", "FLOAT64"),
     bigquery.SchemaField("raw_transcript", "STRING"),
+    # Only populated on `received` rows: the expiry of the batch that arrived.
+    bigquery.SchemaField("expiry_date", "DATE"),
 ]
 
 
@@ -258,6 +304,18 @@ def generate(dry_run: bool = False) -> None:
     size_rng = np.random.default_rng(SEED + 1)
     facility_multiplier = np.exp(size_rng.normal(0, 0.35, len(facilities)))
 
+    # How reliably this facility's indents are filled by its warehouse.
+    supply_rng = np.random.default_rng(SEED + 3)
+    facility_reliability = supply_rng.uniform(*FILL_RELIABILITY,
+                                              len(facilities))
+
+    # Per-facility reporting behaviour, fixed by seed.
+    report_rng = np.random.default_rng(SEED + 2)
+    compliance_base = report_rng.uniform(*COMPLIANCE_START, len(facilities))
+    compliance_decay = report_rng.uniform(*COMPLIANCE_DECAY, len(facilities))
+    report_days = list(range(0, DAYS, REPORT_PERIOD_DAYS))
+    report_draws = report_rng.random((len(facilities), len(report_days)))
+
     deficit_targets, surplus_targets = _pick_scenarios(facilities)
     scenario = {fid: "deficit" for fid in deficit_targets}
     scenario.update({fid: "surplus" for fid in surplus_targets})
@@ -271,12 +329,22 @@ def generate(dry_run: bool = False) -> None:
     chunks: list[pd.DataFrame] = []
     total_rows = 0
     unmet_units = 0
+    expired_units = 0
+    fifo_expired_units = 0
     unmatched: set[tuple[str, str]] = set()
 
     for f_idx, facility in facilities.reset_index(drop=True).iterrows():
         district_key = str(facility["district_key"])
         state = str(facility["state"])
         fac_mult = facility_multiplier[f_idx]
+
+        # Which periods this facility actually reported in.
+        reported = [
+            day_index
+            for period, day_index in enumerate(report_days)
+            if report_draws[f_idx, period] <
+            max(0.05, compliance_base[f_idx] - compliance_decay[f_idx] * period)
+        ]
 
         for _, item in items.iterrows():
             driver = item["demand_driver"]
@@ -314,9 +382,33 @@ def generate(dry_run: bool = False) -> None:
 
             # Run the ledger: receive on the indent cycle, dispense what is
             # actually on the shelf. A facility that runs out cannot dispense.
-            dispensed, receipts, unmet = _run_ledger(
-                demand, scenario.get(fid, "normal")
+            n_cycles = len(range(0, DAYS, INDENT_CYCLE_DAYS))
+            draw = rng.random(n_cycles)
+            shelf_lives = np.where(
+                draw < DUMPED_SHARE,
+                rng.integers(*SHELF_LIFE_DUMPED, size=n_cycles),
+                np.where(
+                    draw < DUMPED_SHARE + SHORT_DATED_SHARE,
+                    rng.integers(*SHELF_LIFE_SHORT, size=n_cycles),
+                    rng.integers(*SHELF_LIFE_NORMAL, size=n_cycles),
+                ),
             )
+            dispensed, receipts, expiries, unmet = _run_ledger(
+                demand, scenario.get(fid, "normal"),
+                reliability=facility_reliability[f_idx],
+                rng=rng, shelf_lives=shelf_lives,
+            )
+            expired_units += sum(q for _, q in expiries)
+
+            # Counterfactual: the same year issued first-in-first-out. Only the
+            # FEFO run is written; this exists to measure what FEFO saves.
+            _, _, fifo_expiries, _ = _run_ledger(
+                demand, scenario.get(fid, "normal"),
+                reliability=facility_reliability[f_idx],
+                rng=np.random.default_rng(SEED + 4 + f_idx),
+                shelf_lives=shelf_lives, policy="fifo",
+            )
+            fifo_expired_units += sum(q for _, q in fifo_expiries)
             unmet_units += unmet
 
             keep = dispensed > 0
@@ -333,11 +425,36 @@ def generate(dry_run: bool = False) -> None:
                     "source": "seed",
                     "confidence": 1.0,
                     "raw_transcript": None,
+                    "expiry_date": pd.NaT,
                 }))
                 total_rows += int(keep.sum())
 
+            # Stock counts: the facility reporting what it holds. Emitted only
+            # for periods it actually reported.
+            if reported:
+                count_days = [dates[i] for i in reported]
+                chunks.append(pd.DataFrame({
+                    "event_id": [
+                        f"seed-c-{fid}-{iid}-{d:%Y%m%d}" for d in count_days
+                    ],
+                    "facility_id": fid,
+                    "item_id": iid,
+                    "event_type": "count",
+                    "quantity": 0,
+                    "event_ts": pd.DatetimeIndex(count_days),
+                    "source": "seed",
+                    "confidence": 1.0,
+                    "raw_transcript": None,
+                    "expiry_date": pd.NaT,
+                }))
+                total_rows += len(count_days)
+
             if receipts:
-                days = [dates[i] for i, _ in receipts]
+                days = [dates[i] for i, _, _ in receipts]
+                expiry = [
+                    (dates[i] + pd.Timedelta(days=life)).date()
+                    for i, _, life in receipts
+                ]
                 chunks.append(pd.DataFrame({
                     "event_id": [
                         f"seed-r-{fid}-{iid}-{d:%Y%m%d}" for d in days
@@ -345,14 +462,36 @@ def generate(dry_run: bool = False) -> None:
                     "facility_id": fid,
                     "item_id": iid,
                     "event_type": "received",
-                    "quantity": np.array([q for _, q in receipts],
+                    "quantity": np.array([q for _, q, _ in receipts],
                                          dtype="int64"),
                     "event_ts": pd.DatetimeIndex(days),
                     "source": "seed",
                     "confidence": 1.0,
                     "raw_transcript": None,
+                    "expiry_date": expiry,
                 }))
                 total_rows += len(receipts)
+
+            # Write-offs: stock that reached its expiry date unused. This is
+            # the waste that FEFO and redistribution exist to reduce.
+            if expiries:
+                exp_days = [dates[i] for i, _ in expiries]
+                chunks.append(pd.DataFrame({
+                    "event_id": [
+                        f"seed-x-{fid}-{iid}-{d:%Y%m%d}" for d in exp_days
+                    ],
+                    "facility_id": fid,
+                    "item_id": iid,
+                    "event_type": "expired",
+                    "quantity": np.array([q for _, q in expiries],
+                                         dtype="int64"),
+                    "event_ts": pd.DatetimeIndex(exp_days),
+                    "source": "seed",
+                    "confidence": 1.0,
+                    "raw_transcript": None,
+                    "expiry_date": pd.NaT,
+                }))
+                total_rows += len(expiries)
 
         if (f_idx + 1) % 50 == 0:
             print(f"  {f_idx + 1}/{len(facilities)} facilities, "
@@ -366,12 +505,28 @@ def generate(dry_run: bool = False) -> None:
 
     frame = pd.concat(chunks, ignore_index=True)
     frame["event_ts"] = pd.to_datetime(frame["event_ts"], utc=True)
+    frame["expiry_date"] = pd.to_datetime(
+        frame["expiry_date"], errors="coerce").dt.date
     print(f"\nBuilt {len(frame):,} rows")
     print(f"  quantity: min={frame['quantity'].min()}, "
           f"mean={frame['quantity'].mean():.1f}, "
           f"max={frame['quantity'].max()}")
     print(f"  series:   {frame.groupby(['facility_id','item_id']).ngroups:,}")
+    counts = frame[frame["event_type"] == "count"]
+    if not counts.empty:
+        per_facility = counts.groupby("facility_id")["event_ts"].nunique()
+        expected = len(range(0, DAYS, REPORT_PERIOD_DAYS))
+        rate = per_facility / expected
+        print(f"  reporting: mean {rate.mean():.0%} of expected periods "
+              f"(worst {rate.min():.0%}, best {rate.max():.0%})")
     served = int(frame.loc[frame["event_type"] == "dispensed", "quantity"].sum())
+    print(f"  expired on shelf: {expired_units:,} units written off "
+          "(never dispensed)")
+    saved = fifo_expired_units - expired_units
+    print(f"  same year issued FIFO instead: {fifo_expired_units:,} units "
+          f"would have expired")
+    print(f"  WASTE AVOIDED BY FEFO: {saved:,} units "
+          f"({saved / max(fifo_expired_units, 1):.0%} of it)")
     print(f"  unmet demand: {unmet_units:,} units "
           f"({unmet_units / max(served + unmet_units, 1):.1%} of demand) — "
           "patients turned away because stock had run out")
@@ -382,6 +537,48 @@ def generate(dry_run: bool = False) -> None:
         return
 
     _write(client, frame)
+    _write_impact(client, frame, unmet_units, expired_units,
+                  fifo_expired_units)
+
+
+def _write_impact(client, frame, unmet, expired, fifo_expired):
+    """Record the network-level impact numbers as a one-row table.
+
+    `waste_avoided_by_fefo_units` is a measured counterfactual, not an
+    estimate: the same year's ledger is replayed issuing first-in-first-out
+    instead of first-expiry-first-out, and the write-offs are differenced.
+    """
+    dispensed = int(frame.loc[frame["event_type"] == "dispensed",
+                              "quantity"].sum())
+    rows = [{
+        "as_of_date": END_DATE.isoformat(),
+        "units_dispensed": dispensed,
+        "units_unmet": int(unmet),
+        "unmet_share": round(unmet / max(dispensed + unmet, 1), 4),
+        "units_expired_fefo": int(expired),
+        "units_expired_fifo": int(fifo_expired),
+        "waste_avoided_by_fefo_units": int(fifo_expired - expired),
+        "waste_avoided_share": round(
+            (fifo_expired - expired) / max(fifo_expired, 1), 4),
+    }]
+    client.load_table_from_json(
+        rows, IMPACT_METRICS,
+        job_config=bigquery.LoadJobConfig(
+            schema=[
+                bigquery.SchemaField("as_of_date", "DATE"),
+                bigquery.SchemaField("units_dispensed", "INT64"),
+                bigquery.SchemaField("units_unmet", "INT64"),
+                bigquery.SchemaField("unmet_share", "FLOAT64"),
+                bigquery.SchemaField("units_expired_fefo", "INT64"),
+                bigquery.SchemaField("units_expired_fifo", "INT64"),
+                bigquery.SchemaField("waste_avoided_by_fefo_units", "INT64"),
+                bigquery.SchemaField("waste_avoided_share", "FLOAT64"),
+            ],
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+        ),
+    ).result()
+    print(f"  impact_metrics written: {fifo_expired - expired:,} units of "
+          "waste avoided by FEFO")
 
 
 def _pick_scenarios(facilities: pd.DataFrame):
@@ -399,48 +596,60 @@ def _pick_scenarios(facilities: pd.DataFrame):
     return deficit, surplus
 
 
-def _run_ledger(demand: np.ndarray, mode: str):
-    """Walk one facility-item ledger through a year of indent cycles.
+def _run_ledger(demand, mode, reliability=1.0, rng=None, shelf_lives=None,
+                policy="fefo"):
+    """Walk one facility-item ledger through a year, batch by batch.
 
-    Returns `(dispensed, receipts, unmet)`:
+    Returns `(dispensed, receipts, expiries, unmet)`:
 
-    * `dispensed` — units actually handed over, which is demand capped by what
-      is on the shelf. **A facility that has run out dispenses nothing**, so
-      the ledger can never go negative and a stock-out shows up as unmet
-      demand rather than as impossible negative stock.
-    * `receipts` — `(day_index, quantity)` per indent.
-    * `unmet` — units of demand that could not be served. This is the number
-      the whole product exists to drive down.
+    * `dispensed` — units actually handed over: demand capped by what is on the
+      shelf **and still in date**.
+    * `receipts` — `(day_index, quantity, shelf_life_days)` per indent.
+    * `expiries` — `(day_index, quantity)` write-offs when a batch reaches its
+      expiry date with units left. This is real waste.
+    * `unmet` — demand that could not be served.
 
-    The indent tops stock back up to `TARGET_COVER_DAYS`, planned against the
-    previous cycle's actual consumption — the information a real pharmacist
-    has. The warehouse then fills that order in full, short, or over.
+    `policy` selects the issuing rule:
+
+    * `fefo` — first-expiry-first-out, what the product recommends.
+    * `fifo` — first-in-first-out, what a facility does when it takes whatever
+      is at the front of the shelf. Used only to measure the counterfactual:
+      the difference in write-offs between the two is the waste FEFO avoids.
+
+    Expired units are written off rather than dispensed. An earlier version had
+    no expiry step at all, so short-dated stock was quietly handed to patients
+    after its expiry date, which made waste invisible entirely.
     """
     days = len(demand)
     dispensed = np.zeros(days, dtype=np.int64)
-    receipts: list[tuple[int, int]] = []
+    receipts = []
+    expiries = []
     cycle_starts = list(range(0, days, INDENT_CYCLE_DAYS))
     total_cycles = len(cycle_starts)
-    stock = 0.0
     unmet = 0
 
-    for n, start in enumerate(cycle_starts):
-        end = min(start + INDENT_CYCLE_DAYS, days)
-        window = demand[start:end]
+    # Open batches as [expiry_day_index, remaining_units], sorted by expiry.
+    batches = []
+    stock = 0
+
+    for n, start_day in enumerate(cycle_starts):
+        end_day = min(start_day + INDENT_CYCLE_DAYS, days)
+        window = demand[start_day:end_day]
         if window.size == 0:
             continue
 
-        # Plan against last cycle's actual consumption; the first indent has
-        # no history and uses the cycle it is about to cover.
         if n == 0:
             rate = float(window.mean())
         else:
-            previous = dispensed[max(0, start - INDENT_CYCLE_DAYS):start]
+            previous = dispensed[max(0, start_day - INDENT_CYCLE_DAYS):start_day]
             rate = float(previous.mean()) if previous.size else float(window.mean())
 
         ordered = max(0.0, rate * TARGET_COVER_DAYS - stock)
 
-        fill_rate = 1.0
+        fill_rate = reliability
+        if rng is not None:
+            fill_rate = float(np.clip(
+                rng.normal(reliability, FILL_NOISE_SD), 0.15, 1.6))
         if n >= total_cycles - SCENARIO_CYCLES:
             if mode == "deficit":
                 fill_rate = DEFICIT_FILL_RATE
@@ -449,19 +658,44 @@ def _run_ledger(demand: np.ndarray, mode: str):
 
         quantity = int(round(ordered * fill_rate))
         if quantity > 0:
-            receipts.append((start, quantity))
+            life = int(shelf_lives[n]) if shelf_lives is not None else 540
+            receipts.append((start_day, quantity, life))
+            batches.append([start_day + life, quantity, start_day])
+            if policy == "fefo":
+                batches.sort(key=lambda b: b[0])   # soonest expiry first
+            else:
+                batches.sort(key=lambda b: b[2])   # oldest receipt first
             stock += quantity
 
-        # Serve the cycle day by day, capped by stock on the shelf.
-        # `available` is what remains before each day's demand is met.
-        consumed_before = np.cumsum(window) - window
-        available = np.clip(stock - consumed_before, 0, None)
-        served = np.minimum(window, available).astype(np.int64)
-        dispensed[start:end] = served
-        unmet += int(window.sum() - served.sum())
-        stock -= float(served.sum())
+        for offset in range(end_day - start_day):
+            day = start_day + offset
 
-    return dispensed, receipts, unmet
+            for batch in batches:
+                if batch[0] <= day and batch[1] > 0:
+                    expiries.append((day, batch[1]))
+                    stock -= batch[1]
+                    batch[1] = 0
+
+            need = int(window[offset])
+            if need <= 0:
+                continue
+
+            served = 0
+            for batch in batches:
+                if batch[1] <= 0 or batch[0] <= day:
+                    continue
+                take = min(batch[1], need - served)
+                batch[1] -= take
+                served += take
+                if served >= need:
+                    break
+            dispensed[day] = served
+            stock -= served
+            unmet += need - served
+
+        batches = [b for b in batches if b[1] > 0]
+
+    return dispensed, receipts, expiries, unmet
 
 
 def _write(client: bigquery.Client, frame: pd.DataFrame) -> None:

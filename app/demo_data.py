@@ -1,11 +1,22 @@
 """
-Operational demo data for the hackathon presentation.
+The last generated figures in the product, and the only ones.
 
-Geography is NOT defined here. Every state, district and facility comes from
-`daysupply.facilities` — the real 200,438-row national facility master — and is
-passed in by the caller. This module only fills in the operational counters
-(captures, alerts, transfers, expiry) that have no data source yet; those are
-replaced by real BigQuery-backed figures in Block B.
+Stock-out alerts, transfer recommendations, days of cover, reorder points,
+waste avoided and reporting consistency are all real — computed in BigQuery
+from the ledger and the trained model. See `app/supply.py`.
+
+What remains here:
+
+* `captures_today` — how many voice notes were recorded today. There is no
+  source for this until capture is running in production against real users.
+  The API marks it `captures_today_is_generated: true`.
+* `get_demo_review_queue` — three worked examples of low-confidence extractions
+  so the review-queue screen is demonstrable before a live Gemini call.
+  Real extractions land in Firestore and take precedence over these.
+
+`get_demo_alerts` and `get_demo_recommendations` were deleted in Block C. If
+BigQuery is unreachable those endpoints now report the failure rather than
+inventing a stock-out.
 """
 
 import hashlib
@@ -52,13 +63,7 @@ def get_demo_stats(state: str = "Telangana", district: str = "", phc: str = ""):
     base_transfers = 5 if not district else (2 if not phc else 1)
     return {
         "captures_today": base_captures + (seed % 15),
-        "stockout_alerts": base_alerts + (seed % 8),
-        "pending_transfers": base_transfers + (seed % 4),
-        "items_tracked": 15,
         "last_sync": datetime.utcnow().isoformat() + "Z",
-        "delta_captures": round(((seed % 13) - 5) * 1.2, 1),
-        "delta_alerts": round(((seed % 9) - 4) * -1.5, 1),
-        "delta_transfers": round(((seed % 5) - 2) * 2.0, 1),
     }
 
 
@@ -83,52 +88,6 @@ def get_demo_review_queue(scope: list[dict]):
             "created_at": (datetime.utcnow() - timedelta(minutes=12 * (i + 1))).isoformat() + "Z",
         })
     return items
-
-
-def get_demo_recommendations(scope: list[dict]):
-    phcs = _names(scope)
-    transfers = [
-        ("PARA-500", "Paracetamol 500mg", 500, "tablets", 38.2, 52, 28, 3, 18, "high"),
-        ("ORS-PKT", "ORS Sachets", 200, "sachets", 22.7, 45, 25, 5, 19, "high"),
-        ("CHLOR-Q", "Chloroquine 250mg", 150, "tablets", 47.1, 38, 22, 2, 14, "critical"),
-        ("IRON-TAB", "Iron + Folic Acid", 300, "tablets", 31.5, 60, 35, 4, 16, "medium"),
-    ]
-    recs = []
-    for i, (iid, iname, qty, unit, dist, db, da, rb, ra, urgency) in enumerate(transfers):
-        from_phc = phcs[i % len(phcs)]
-        to_phc = phcs[(i + 1) % len(phcs)]
-        recs.append({
-            "recommendation_id": "rec-" + uuid.uuid4().hex[:8],
-            "item_id": iid, "item_name": iname,
-            "from_facility_id": from_phc["facility_id"],
-            "from_facility_name": from_phc["name"],
-            "to_facility_id": to_phc["facility_id"],
-            "to_facility_name": to_phc["name"],
-            "quantity": qty, "unit": unit, "distance_km": dist,
-            "donor_cover_before": db, "donor_post_cover": da,
-            "receiver_cover_before": rb, "receiver_post_cover": ra,
-            "urgency": urgency,
-        })
-    return recs
-
-
-def get_demo_alerts(scope: list[dict]):
-    phcs = _names(scope)
-    alert_items = [
-        ("PARA-500", "Paracetamol 500mg", 3, "critical"),
-        ("ORS-PKT", "ORS Sachets", 5, "high"),
-        ("CHLOR-Q", "Chloroquine 250mg", 2, "critical"),
-        ("IRON-TAB", "Iron + Folic Acid", 4, "high"),
-    ]
-    alerts = []
-    for i, (iid, iname, days, sev) in enumerate(alert_items):
-        fac = phcs[i % len(phcs)]
-        alerts.append({
-            "facility_id": fac["facility_id"], "facility_name": fac["name"],
-            "item_id": iid, "item_name": iname,
-            "days_of_cover": days, "status": "active", "severity": sev,
-        })
-    return alerts
 
 
 # The forecast chart and the expiry chart used to be generated here — a sine

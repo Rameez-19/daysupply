@@ -38,5 +38,75 @@
     "duration_seconds": 15.4,
     "bytes_processed": 1367636664,
     "job_id": "d52a1910-f6b9-447f-8a05-bd21c25927bd"
+  },
+  {
+    "trained_at": "2026-08-30T09:37:22.965827+00:00",
+    "model": "daysupply.daysupply.demand_forecast",
+    "series": 4301,
+    "horizon": 30,
+    "min_days": 300,
+    "duration_seconds": 15.8,
+    "bytes_processed": 1368758652,
+    "job_id": "dd25c4bc-09b7-4399-a8ce-89f551f06b0e"
+  },
+  {
+    "trained_at": "2026-08-30T09:41:24.350673+00:00",
+    "model": "daysupply.daysupply.demand_forecast",
+    "series": 4304,
+    "horizon": 30,
+    "min_days": 300,
+    "duration_seconds": 18.0,
+    "bytes_processed": 1409839452,
+    "job_id": "e49c9355-9eba-4929-8061-203def852011"
+  },
+  {
+    "trained_at": "2026-08-30T09:48:13.866705+00:00",
+    "model": "daysupply.daysupply.demand_forecast",
+    "series": 3386,
+    "horizon": 30,
+    "min_days": 300,
+    "duration_seconds": 16.9,
+    "bytes_processed": 1297042848,
+    "job_id": "99046c8c-121a-40f7-8dcb-37a8899dc089"
+  },
+  {
+    "trained_at": "2026-08-30T09:52:58.111961+00:00",
+    "model": "daysupply.daysupply.demand_forecast",
+    "series": 3358,
+    "horizon": 30,
+    "min_days": 300,
+    "duration_seconds": 14.8,
+    "bytes_processed": 1295954004,
+    "job_id": "684f85ba-6a53-4b00-968d-d74bb44bd8da"
+  },
+  {
+    "trained_at": "2026-08-30T09:56:11.769714+00:00",
+    "model": "daysupply.daysupply.demand_forecast",
+    "series": 3362,
+    "horizon": 30,
+    "min_days": 300,
+    "duration_seconds": 16.4,
+    "bytes_processed": 1293764496,
+    "job_id": "3549fdbd-ddf0-49c1-8a85-0e00aa13860f"
+  },
+  {
+    "trained_at": "2026-08-30T10:03:18.344599+00:00",
+    "model": "daysupply.daysupply.demand_forecast",
+    "series": 3362,
+    "horizon": 30,
+    "min_days": 300,
+    "duration_seconds": 17.0,
+    "bytes_processed": 1293764496,
+    "job_id": "e466fb9c-ee94-48f3-b9a0-963ed9f414c0"
+  },
+  {
+    "trained_at": "2026-08-30T10:08:49.378579+00:00",
+    "model": "daysupply.daysupply.demand_forecast",
+    "series": 3362,
+    "horizon": 30,
+    "min_days": 300,
+    "duration_seconds": 14.1,
+    "bytes_processed": 1293764496,
+    "job_id": "6d479537-30e8-477f-882e-8b0f7127b5f5"
   }
 ]

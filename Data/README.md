@@ -345,3 +345,135 @@ charts, are gone.
 **The expiry tracker has been removed**, not fixed. It was `random.randint` over
 a data source that does not exist. It returns in Block C, backed by real batch
 expiry data for FEFO.
+
+---
+
+## 11. Lead time — REAL DISTANCE, ASSUMED CONVERSION
+
+**This is a documented proxy, not a measurement.** Say so whenever it is shown.
+
+India publishes no facility-level replenishment lead times. What the facility
+master does give is real coordinates for every facility, including the district
+and state hospitals that sit at the district headquarters where the drug
+warehouse is. So the *distance* is real; the conversion from distance to days
+is an assumption.
+
+**District HQ proxy.** The warehouse is taken to be the district hospital.
+Where a district has none the chain falls back to state hospital, then
+community health centre. Among candidates of the best available type, the one
+closest to the district's facility centroid is chosen — the most central
+facility is the most likely to sit in the district town. All 116 forecast
+districts resolve.
+
+**Distance to days.**
+
+    lead_time_days = clamp(7 + 0.08 x distance_km, 7, 30)
+
+Seven days is order processing and picking, paid by every facility whatever its
+distance. The 0.08 slope puts a PHC 20 km out at 9 days and one 145 km out at
+19 days. Built by `ingestion/set_lead_times.py`.
+
+`indent_cycle_days` is a flat 30 — the standard monthly PHC indent — and is
+derived from nothing. It is stored so the logic reads from data, not a literal.
+
+### Coordinate quality — three real defects in the source
+
+| Defect | Rows |
+|---|---|
+| Latitude or longitude missing | 80 |
+| Latitude outside ±90 | 224 |
+| Longitude outside ±180 | 248 |
+| Inside the valid globe but outside India (some with lat/long transposed) | 287 |
+
+These are flagged `has_valid_coords = FALSE` (633 facilities, one of them a demo
+facility) and excluded from all distance maths. **They are not corrected.**
+Inferring that a Mizoram row reading `92.41, 23.25` was meant to be
+`23.25, 92.41` is a guess, and guesses do not go into a government dataset.
+
+A fourth defect survives a bounding-box check: coordinates inside India but
+hundreds of kilometres from their own district. Distances are orderly to the
+95th percentile (97 km) and then jump to 2,230 km — further than Rajasthan is
+wide. Anything over 200 km is treated as a bad coordinate rather than a remote
+facility: the district's median PHC distance is substituted and the row is
+marked `lead_time_is_estimated`. Four of the 200 forecast facilities.
+
+---
+
+## 12. VEN classification — DERIVED, NOT PUBLISHED
+
+Vital / Essential / Desirable per WHO and MoHFW practice: **109 Vital, 249
+Essential, 27 Desirable**. NLEM does not publish VEN, so **this classification
+is ours**. It is an NLEM-section default with per-medicine overrides, both
+listed in `ingestion/build_items.py`. Alert priority is
+`ven_weight x shortfall`, so a vital medicine outranks a desirable one at equal
+days of cover.
+
+---
+
+## 13. Reporting consistency — REAL MEASUREMENT OVER GENERATED BEHAVIOUR
+
+Share of expected stock counts that actually arrived in the last 90 days
+(three 30-day periods). Computed from the ledger by
+`ingestion/build_facility_metrics.py`: a facility that did not report has no
+`count` events, and the absence *is* the measurement.
+
+The reporting behaviour underneath is generated. Each facility gets a baseline
+compliance probability (0.72–0.99) and a per-period decay (0–5.5pp), because
+evaluations of comparable systems — South Africa's Stock Visibility System
+among them — document compliance decaying a few months after rollout rather
+than holding steady.
+
+Result across the 200 forecast facilities: **35 complete, 139 partial, 26
+silent; mean 52%**.
+
+---
+
+## 14. Waste and FEFO — MEASURED COUNTERFACTUAL
+
+`stock_events` carries `expired` write-offs: stock that reached its expiry date
+unused. A facility that has run out cannot dispense, and expired stock cannot
+be dispensed either — an earlier version of the generator had no expiry step,
+so short-dated stock was quietly handed to patients after its expiry date,
+which made waste invisible.
+
+Batch shelf life at receipt: **81%** at 12–24 months, **15%** short-dated at
+2–5 months, **4% "dumped"** at 25–60 days — what district warehouses do when
+clearing their own near-expiry stock downward.
+
+**Waste avoided by FEFO is measured, not estimated.** The same year's ledger is
+replayed issuing first-in-first-out instead of first-expiry-first-out and the
+write-offs are differenced:
+
+| | Units |
+|---|---|
+| Expired under FEFO (actual) | 72,408 |
+| Expired under FIFO (counterfactual) | 166,950 |
+| **Avoided by FEFO** | **94,542 (57%)** |
+
+Stored in `daysupply.impact_metrics`, served at `/api/v1/impact`.
+
+**Per-transfer `waste_avoided_units` is currently 0, and that is honest.** FEFO
+at the facility has already consumed everything short-dated, so every batch a
+transfer would move has 500+ days of life. The metric is computed correctly and
+will report a real figure when a donor holds stock it cannot consume in time;
+it is not padded to look better.
+
+---
+
+## 15. What is real, after Block C
+
+| Component | Status |
+|---|---|
+| Facilities, geography | **Real** — 200,438 rows, 37 states, 668 districts |
+| HMIS seasonality | **Real** — 5 states, 137 districts, 18,084 rows |
+| Item catalogue | **Real** — all 385 NLEM 2022 medicines |
+| ATC codes | **Real where assigned** — 264 of 385, null never guessed |
+| VEN classification | **Derived** — ours, not MoHFW's (§12) |
+| Forecasts | **Real** — BigQuery ML ARIMA_PLUS, 3,362 series |
+| Reorder points, safety stock | **Computed** from forecast, observed variance, lead time |
+| Lead time | **Real distance, assumed conversion** (§11) |
+| Alerts, transfers, substitutes | **Computed** — no fabricated path remains |
+| Reporting consistency | **Measured** over generated reporting behaviour (§13) |
+| Waste avoided | **Measured counterfactual** (§14) |
+| Daily stock events | **Generated** from real anchors (§9) |
+| `captures_today` | **Generated** — the only one left, and flagged in the API |

@@ -33,11 +33,15 @@ difference will overclaim in the submission.
 | **Facility counts / geography** | **REAL** | 37 states, 668 districts, from `daysupply.facilities` |
 | **HMIS seasonality reference** | **REAL** | `demand_reference`, 4,092 rows — **Telangana only** |
 | **Item catalogue** | **PARTIAL** | 15 items loaded; full NLEM 2022 catalogue is Block B |
-| **Captures / alerts / transfers counters** | **GENERATED** | `app/demo_data.py` — no event data source yet |
-| **Demand forecast** | **GENERATED** | Sine wave in `get_demo_forecast_chart`. **No BigQuery ML model exists** |
-| **Network stock health, critical shortages** | **GENERATED IN THE BROWSER** | Hardcoded arrays in `web/app.js` `loadChart()` |
-| **Expiry data** | **GENERATED** | `random.randint` — no expiry data source exists anywhere |
-| **Transfer recommendations** | **PARTLY REAL** | Real algorithm and real facility names; generated stock levels |
+| **Demand forecast** | **REAL** | BigQuery ML ARIMA_PLUS, 3,362 series, served via `ML.FORECAST` |
+| **Stock-out alerts** | **REAL** | Lead-time reorder points, VEN-weighted. `get_demo_alerts` deleted |
+| **Transfer recommendations** | **REAL** | FEFO batch selection, ATC substitution. `get_demo_recommendations` deleted |
+| **Reporting consistency** | **REAL** | Measured from `count` events in the ledger |
+| **Waste avoided** | **REAL** | 94,542 units, measured against a FIFO replay |
+| **Lead times** | **REAL DISTANCE, ASSUMED CONVERSION** | Distance to district HQ is real; days-per-km is a documented proxy |
+| **VEN classification** | **DERIVED** | Ours, not MoHFW's — NLEM does not publish VEN |
+| **Daily stock events** | **GENERATED** | Anchored to real HMIS demand; see `Data/README.md` §9 |
+| **`captures_today`** | **GENERATED** | The only fabricated figure left, flagged in the API response |
 
 ### What was actually wrong with the previous version
 
