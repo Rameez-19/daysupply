@@ -118,8 +118,10 @@ async function loadDistricts() {
     const res = await fetch(`/api/v1/districts?state=${encodeURIComponent(currentState)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { districts } = await res.json();
+    // display_name differs from district only where two government sources
+    // spell it differently; the value posted back is always the stored one.
     setOptions(sel, `All Districts (${districts.length})`, districts, 'district',
-      r => `${r.district} — ${r.phc_count} PHCs`);
+      r => `${r.display_name || r.district} — ${r.phc_count} PHCs`);
   } catch (e) {
     console.error('Failed to load districts', e);
     setDropdownError(sel, 'Districts unavailable');
@@ -738,23 +740,48 @@ function setChartNote(id, text) {
 // ===== Barcode Scanner =====
 let html5QrcodeScanner = null;
 
+const CAPTURE_MODES = ['voice', 'scan', 'chat'];
+
 function switchCaptureMode(mode) {
-  document.getElementById('tab-voice').classList.remove('active');
-  document.getElementById('tab-scan').classList.remove('active');
-  document.getElementById('tab-voice').style.borderBottom = 'none';
-  document.getElementById('tab-scan').style.borderBottom = 'none';
-  document.getElementById(`tab-${mode}`).classList.add('active');
-  document.getElementById(`tab-${mode}`).style.borderBottom = '2px solid var(--brand-500)';
-  
-  if (mode === 'voice') {
-    document.getElementById('mode-voice').style.display = 'block';
-    document.getElementById('mode-scan').style.display = 'none';
-    stopScanner();
-  } else {
-    document.getElementById('mode-voice').style.display = 'none';
-    document.getElementById('mode-scan').style.display = 'block';
+  CAPTURE_MODES.forEach(m => {
+    const tab = document.getElementById(`tab-${m}`);
+    if (tab) { tab.classList.remove('active'); tab.style.borderBottom = 'none'; }
+    const panel = document.getElementById(`mode-${m}`);
+    if (panel) panel.style.display = 'none';
+  });
+  const tab = document.getElementById(`tab-${mode}`);
+  if (tab) {
+    tab.classList.add('active');
+    tab.style.borderBottom = '2px solid var(--brand-500)';
+  }
+  const panel = document.getElementById(`mode-${mode}`);
+  if (panel) panel.style.display = 'block';
+  if (mode !== 'scan') stopScanner();
+}
+
+// Chat capture. Same endpoint family as voice and barcode, same
+// {events, review_queue} response shape.
+async function sendChatNote() {
+  const box = document.getElementById('chat-input');
+  const message = (box.value || '').trim();
+  if (!message) return;
+  const status = document.getElementById('mic-status');
+  if (status) status.textContent = 'Extracting…';
+  try {
+    const fd = new FormData();
+    fd.append('message', message);
+    fd.append('facility_id', currentPHC || 'IN-155740');
+    const res = await fetch('/api/v1/chat-note', { method: 'POST', body: fd });
+    const data = await res.json();
+    showCaptureResult(data);
+    if (!data.error) box.value = '';
+  } catch (e) {
+    showCaptureResult({ error: e.message, events: [], review_queue: [] });
+  } finally {
+    if (status) status.textContent = 'Press and hold to record';
   }
 }
+window.sendChatNote = sendChatNote;
 
 function startScanner() {
   if (html5QrcodeScanner) stopScanner();
@@ -770,13 +797,29 @@ function stopScanner() {
   }
 }
 
-function onScanSuccess(decodedText, decodedResult) {
+// The scanned code is resolved server-side against the catalogue, exactly like
+// a spoken name. It is never turned into an item in the browser: an
+// unrecognised code has to reach the review queue, not the ledger.
+async function onScanSuccess(decodedText) {
   stopScanner();
-  const scanData = { events: [{ item_name: "Scanned Item: " + decodedText.substring(0, 15), quantity: 100, unit: "units", event_type: "stock_received" }] };
+  const status = document.getElementById('mic-status');
+  if (status) status.textContent = `Scanned ${decodedText.substring(0, 24)} — matching…`;
   switchCaptureMode('voice');
-  document.getElementById('mic-status').textContent = 'Barcode Scanned Successfully!';
-  showCaptureResult(scanData);
-  setTimeout(() => { document.getElementById('mic-status').textContent = 'Press and hold to record'; }, 4000);
+  try {
+    const fd = new FormData();
+    fd.append('code', decodedText);
+    fd.append('facility_id', currentPHC || 'IN-155740');
+    const qty = window.prompt(`Scanned ${decodedText}
+
+How many units?`, '');
+    if (qty !== null && qty !== '') fd.append('quantity', parseInt(qty, 10));
+    const res = await fetch('/api/v1/barcode-scan', { method: 'POST', body: fd });
+    showCaptureResult(await res.json());
+  } catch (e) {
+    showCaptureResult({ error: e.message, events: [], review_queue: [] });
+  } finally {
+    if (status) status.textContent = 'Press and hold to record';
+  }
 }
 
 function onScanFailure(error) { /* Silently ignore scan misses */ }

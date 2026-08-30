@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile, Form
@@ -12,11 +13,15 @@ from app import facilities as facility_repo
 from app import forecast
 from app import stock_health
 from app import supply
+from app import exchange
+from app import items
+from app import quality
 from app.bq import QueryTooExpensive
-from app.capture import handle_capture
+from app import capture_pipeline
+from app.capture import handle_capture, handle_chat
 from app.forecast import get_forecast_daily_demand
 from app.patterns import get_local_patterns, ingest_peer_pattern, PatternNode
-from app.demo_data import get_demo_stats, get_demo_review_queue
+from app.demo_data import get_demo_review_queue
 
 log = logging.getLogger(__name__)
 
@@ -128,16 +133,16 @@ async def get_stats(state: str = "Telangana", district: str = "",
                     phc: str = ""):
     """Dashboard summary.
 
-    Facility counts come from the facility master; alerts, transfers and waste
-    avoided come from the supply engine. The only remaining generated figure is
-    `captures_today`, which has no data source until voice capture is writing
-    events in production — it is labelled as such in the response.
+    Every figure is now real. Facility counts come from the facility master,
+    alerts and transfers from the supply engine, and `captures_today` is
+    counted from capture-sourced events in the ledger — legitimately zero
+    until someone captures something.
     """
     counts = _facility_query(
         facility_repo.facility_counts, state, district, phc)
     engine = _facility_query(supply.get_summary, state, district, phc)
+    captures = _facility_query(quality.captures_today)
 
-    demo = get_demo_stats(state, district, phc)
     return {
         **engine,
         "facilities": counts["facilities"],
@@ -146,9 +151,12 @@ async def get_stats(state: str = "Telangana", district: str = "",
         "districts": counts["districts"],
         "population_served": counts["population_served"],
         "stockout_alerts": engine["open_alerts"],
-        "captures_today": demo["captures_today"],
-        "captures_today_is_generated": True,
-        "last_sync": demo["last_sync"],
+        "captures_today": captures["captures_today"],
+        "captures_last_7_days": captures["captures_last_7_days"],
+        "captures_all_time": captures["captures_all_time"],
+        "captures_by_mode": captures["by_mode"],
+        "captures_today_is_generated": False,
+        "last_sync": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -163,6 +171,76 @@ async def post_voice_note(
     content_type = file.content_type or "audio/mp3"
     results = handle_capture(audio_bytes, facility_id, content_type)
     return results
+
+
+@app.post("/api/v1/chat-note")
+async def post_chat_note(message: str = Form(...),
+                         facility_id: str = Form(...)):
+    """Chat capture — for a shared room, a night shift, a noisy clinic.
+
+    Same extraction prompt, same catalogue matcher, same confidence gate and
+    same review queue as voice. Only the input differs.
+    """
+    return handle_chat(message, facility_id)
+
+
+@app.post("/api/v1/barcode-scan")
+async def post_barcode_scan(code: str = Form(...),
+                            facility_id: str = Form(...),
+                            quantity: int = Form(None),
+                            event_type: str = Form("received"),
+                            unit: str = Form("unknown")):
+    """Barcode capture — the most accurate mode when stock is labelled.
+
+    The scanned code is resolved against the catalogue by the same matcher at
+    the same threshold. An unrecognised code goes to the review queue rather
+    than being written as an invented item.
+    """
+    return capture_pipeline.handle_barcode(
+        code, facility_id, quantity, event_type, unit)
+
+
+@app.get("/api/v1/capture-modes")
+async def capture_modes():
+    """The degradation hierarchy, and the pipeline all three share."""
+    return {
+        "shared_pipeline": [
+            "extract (Gemini for voice and chat; the code itself for barcode)",
+            f"match against all {len(_facility_query(items.catalog))} NLEM "
+            f"medicines at threshold {items.MATCH_THRESHOLD}",
+            f"gate on confidence < {capture_pipeline.CONFIDENCE_THRESHOLD}",
+            "route to the ledger or the review queue",
+        ],
+        "modes": [
+            {
+                "mode": "barcode",
+                "rank": 1,
+                "accuracy": "highest",
+                "requires": "labelled stock and a working camera",
+                "extraction_confidence": capture_pipeline.BARCODE_CONFIDENCE,
+                "why": "the code identifies the product outright, so there is "
+                       "no speech to mis-hear",
+            },
+            {
+                "mode": "voice",
+                "rank": 2,
+                "accuracy": "high",
+                "requires": "30 seconds and any language",
+                "extraction_confidence": "returned by the model per item",
+                "why": "works when nothing else does — no labels, no keyboard, "
+                       "no connectivity",
+            },
+            {
+                "mode": "chat",
+                "rank": 3,
+                "accuracy": "high, but slower to enter",
+                "requires": "a keyboard",
+                "extraction_confidence": "returned by the model per item",
+                "why": "when audio is impractical: a shared room, a night "
+                       "shift, a noisy clinic",
+            },
+        ],
+    }
 
 
 # ── Review queue ─────────────────────────────────────────────────────
@@ -240,6 +318,62 @@ async def fetch_reporting(state: str = "", district: str = "",
                           phc: str = "", limit: int = 200):
     """Reporting consistency per facility over the last 90 days."""
     return _facility_query(supply.get_reporting, state, district, phc, limit)
+
+
+@app.get("/api/v1/exchange/evaluation")
+async def fetch_exchange_evaluation():
+    """The four-arm hold-out behind the pattern-exchange claim."""
+    return _facility_query(exchange.evaluation_summary)
+
+
+@app.get("/api/v1/exchange/demo")
+async def fetch_exchange_demo(state: str = "", district: str = "",
+                              atc_class: str = ""):
+    """Actual, flat and borrowed curves for one thin-history district."""
+    result = _facility_query(exchange.thin_history_demo, state, district,
+                             atc_class)
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail="No district in this scope where borrowing helps.")
+    return result
+
+
+@app.get("/api/v1/exchange/vector")
+async def fetch_published_vector(state: str, district_key: str,
+                                 atc_class: str):
+    """Exactly what one district publishes: 12 multipliers, nothing else."""
+    return _facility_query(exchange.published_vector, state, district_key,
+                           atc_class)
+
+
+@app.get("/api/v1/export/stock-events")
+async def export_stock_events(state: str = "", district: str = "",
+                              phc: str = "", days: int = 30,
+                              limit: int = 5000):
+    """Stock events for ingestion by DVDMS / e-Aushadhi.
+
+    StockPulse is a capture and intelligence layer above the systems a state
+    already runs, not a replacement for them. This is how the data gets back.
+    """
+    return _facility_query(exchange.export_stock_events, state, district, phc,
+                           days, limit)
+
+
+@app.get("/api/v1/data-quality")
+async def fetch_data_quality():
+    """Defects found in the source data, and what each one is excluded from.
+
+    Surfaced rather than hidden: a figure that silently ignores 633 facilities
+    is worse than one that says so.
+    """
+    return _facility_query(quality.data_quality)
+
+
+@app.get("/api/v1/captures")
+async def fetch_captures():
+    """Real capture counts by mode. Zero until someone captures something."""
+    return _facility_query(quality.captures_today)
 
 
 @app.get("/api/v1/impact")

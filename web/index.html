@@ -186,6 +186,7 @@
         <div class="capture-tabs" style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 1px solid var(--border);">
           <button class="capture-tab-btn active" id="tab-voice" onclick="switchCaptureMode('voice')" style="padding: 12px 24px; background: none; border: none; border-bottom: 2px solid var(--brand-500); color: var(--brand-500); font-weight: 600; cursor: pointer;">🎙️ Voice</button>
           <button class="capture-tab-btn" id="tab-scan" onclick="switchCaptureMode('scan')" style="padding: 12px 24px; background: none; border: none; color: var(--gray-400); font-weight: 500; cursor: pointer;">📷 Scan Barcode</button>
+          <button class="capture-tab-btn" id="tab-chat" onclick="switchCaptureMode('chat')" style="padding: 12px 24px; background: none; border: none; color: var(--gray-400); font-weight: 500; cursor: pointer;">⌨️ Chat</button>
         </div>
 
         <div class="capture-card" id="mode-voice">
@@ -213,6 +214,20 @@
              <button onclick="startScanner()" style="padding: 12px 24px; background: var(--brand-500); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">Start Camera</button>
              <button onclick="stopScanner()" style="padding: 12px 24px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-left: 8px;">Stop</button>
           </div>
+        </div>
+
+        <div class="capture-card hidden" id="mode-chat" style="display: none;">
+          <p class="capture-hint">
+            For when audio is impractical — a shared room, a night shift, a
+            noisy clinic. Type it the way you would say it.
+          </p>
+          <textarea id="chat-input" rows="3" class="chat-input"
+            placeholder="e.g. paracetamol ke do sau tablet aaye hain, ORS ka packet khatam ho gaya"></textarea>
+          <button class="btn btn-primary btn-full" onclick="sendChatNote()">Send</button>
+          <p class="chart-note">
+            Same extraction, same catalogue matcher, same review queue as
+            voice — only the input differs.
+          </p>
         </div>
 
         <div class="how-it-works">

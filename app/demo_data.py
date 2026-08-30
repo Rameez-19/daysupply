@@ -1,22 +1,20 @@
 """
-The last generated figures in the product, and the only ones.
+Worked examples for the review-queue screen. Nothing else.
 
-Stock-out alerts, transfer recommendations, days of cover, reorder points,
-waste avoided and reporting consistency are all real — computed in BigQuery
-from the ledger and the trained model. See `app/supply.py`.
+Every figure in the product is now computed: alerts, transfers, days of cover,
+reorder points, waste avoided, reporting consistency and capture counts. See
+`app/supply.py` and `app/quality.py`.
 
-What remains here:
+What remains is three example low-confidence extractions, so the review-queue
+screen is demonstrable before a live Gemini call has produced any. Real
+extractions land in Firestore and take precedence over these — they are only
+returned when the queue is genuinely empty.
 
-* `captures_today` — how many voice notes were recorded today. There is no
-  source for this until capture is running in production against real users.
-  The API marks it `captures_today_is_generated: true`.
-* `get_demo_review_queue` — three worked examples of low-confidence extractions
-  so the review-queue screen is demonstrable before a live Gemini call.
-  Real extractions land in Firestore and take precedence over these.
-
-`get_demo_alerts` and `get_demo_recommendations` were deleted in Block C. If
-BigQuery is unreachable those endpoints now report the failure rather than
-inventing a stock-out.
+Deleted from this module as their real implementations landed:
+`get_demo_alerts` and `get_demo_recommendations` (Block C, replaced by the
+redistribution engine), `get_demo_forecast_chart` and `get_demo_expiry_chart`
+(Block B), `get_demo_stats` (Block D — `captures_today` is now counted from
+the ledger), and `STATE_HIERARCHY` (Block A).
 """
 
 import hashlib
@@ -54,17 +52,6 @@ def _names(scope: list[dict]) -> list[dict]:
         }
         for f in scope
     ]
-
-
-def get_demo_stats(state: str = "Telangana", district: str = "", phc: str = ""):
-    seed = _seed_from(state, district, phc)
-    base_captures = 47 if not district else (18 if not phc else 6)
-    base_alerts = 12 if not district else (5 if not phc else 2)
-    base_transfers = 5 if not district else (2 if not phc else 1)
-    return {
-        "captures_today": base_captures + (seed % 15),
-        "last_sync": datetime.utcnow().isoformat() + "Z",
-    }
 
 
 def get_demo_review_queue(scope: list[dict]):

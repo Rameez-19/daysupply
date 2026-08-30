@@ -27,16 +27,35 @@ at the person holding the register and works upward.
 
 ## Capture degrades gracefully
 
-Three modes, one extraction and validation pipeline, in order of accuracy:
+Three ways in, **one pipeline**. The modes differ only in how the text is
+obtained; everything after that is the same code path, in `app/capture_pipeline.py`:
 
-| Mode | When it wins | Needs |
-|---|---|---|
-| **Barcode** | Labelled stock, good light | Camera, printed barcode |
-| **Voice** | Anything else — the hero path | 30 seconds, any language |
-| **Chat** | Noisy room, shared clinic, night shift | A keyboard |
+```
+extract  →  match against all 385 NLEM medicines  →  confidence gate  →  write
+            (two-stage, thresholds 85 / 90)          (below 0.6)         or review
+```
 
-All three produce the same structured record, run through the same confidence
-threshold, and land in the same review queue below 0.6 confidence.
+| Rank | Mode | When it wins | Needs | Extraction confidence |
+|---|---|---|---|---|
+| 1 | **Barcode** | Most accurate — the code names the product, there is no speech to mis-hear | Labelled stock, working camera | 1.0 |
+| 2 | **Voice** | **Works when nothing else does.** No labels, no keyboard, no connectivity | 30 seconds, any language | Per item, from the model |
+| 3 | **Chat** | When audio is impractical — shared room, night shift, noisy clinic | A keyboard | Per item, from the model |
+
+The hierarchy is only meaningful because a worse input mode yields a
+*lower-confidence record*, not a differently-shaped one. Below 0.6 confidence,
+or where the spoken name does not resolve to a medicine, the record goes to the
+review queue instead of the ledger — including an unrecognised barcode. A wrong
+`item_id` is the worst output this system can produce, so the bias is always
+toward asking a human.
+
+**Matching is two-stage**, because real speech comes in two shapes. A clean
+name is compared whole (`token_sort_ratio`, threshold 85). A name buried in a
+phrase — *"paracetamol ke do sau tablet"*, *"sugar ki goli metformin"* — is
+caught by containment (`token_set_ratio`, threshold 90). Across a corpus of
+unrelated clinic speech (*"haan ji boliye"*, *"doctor sahab nahi aaye"*,
+*"wo neeli wali dawai"*) the best score is 60, so the gap is wide.
+
+Verify the modes agree: `GET /api/v1/capture-modes`.
 
 ## What is real
 
@@ -48,12 +67,52 @@ This matters more than any feature list, and the full accounting is in
 | **200,438 facilities** | Every health facility in India, from the government directory. 37 states, 668 districts. Not a sample |
 | **HMIS 2019-20 seasonality** | Real monthly morbidity from MoHFW, driving demand shape |
 | **385 medicines** | The complete National List of Essential Medicines 2022 |
-| **A trained ARIMA_PLUS model** | 3,725 series, trained in BigQuery ML on the project's own history |
-| **Generated** | Daily dispensing and receipt events for 200 PHCs — anchored to the real HMIS series above, and labelled as generated everywhere it appears |
+| **A trained ARIMA_PLUS model** | 3,362 series, trained in BigQuery ML on the project's own history |
+| **Supply-chain logic** | Lead-time reorder points, VEN ranking, FEFO, ATC substitution, reporting consistency — all computed |
+| **Generated** | Daily dispensing, receipt and expiry events for 200 PHCs — anchored to the real HMIS series above, and labelled as generated everywhere it appears |
 
-Forecasting is active where sufficient signal exists. Every essential medicine
-is tracked; 39 are forecast, across 200 PHCs in Telangana, which is where real
-HMIS demand data has been loaded.
+HMIS is loaded for **five states — 137 districts, 18,084 rows** — and 6,989 of
+the 7,092 demo PHCs (98.5%) join to it. Forecasting is active where sufficient
+signal exists: every essential medicine is tracked, 39 are forecast, across 200
+PHCs spanning 5 states and 116 districts.
+
+`captures_today` counts real capture events and is **legitimately zero** until
+someone captures something. It is not a placeholder number.
+
+## Integration posture
+
+Every state already runs DVDMS or e-Aushadhi, under HMIS and ABDM. StockPulse
+is a **capture and intelligence layer above those systems, not a replacement**
+— see [`docs/architecture.png`](docs/architecture.png). What those systems lack
+is data from the last mile, because the person who should enter it is running a
+clinic alone.
+
+`GET /api/v1/export/stock-events` emits events in a documented interchange
+format (`stockpulse.stock-events.v1`) keyed on the NHM directory's own facility
+identifiers, so a state system can match them against its existing facility
+master without knowing anything about StockPulse.
+
+## Cross-district pattern exchange
+
+Districts publish a **12-element monthly multiplier per ATC class** and nothing
+else — no facility rows, no patient records, no stock levels. A district with
+three months of history borrows the network's pooled seasonal vector as a prior.
+
+The improvement is measured, not asserted. Districts with full history are
+truncated to three months and the rest predicted four ways
+(`GET /api/v1/exchange/evaluation`):
+
+| Arm | Weighted MAPE |
+|---|---|
+| flat — own three months, no seasonality | 25.8% |
+| nearest demographic match, different state | 45.1% — **19.3pt worse** |
+| nearest demographic match, same state | 32.5% — 6.7pt worse |
+| **pooled — mean vector across all districts** | **23.2% — 2.6pt better** |
+
+Single-donor demographic matching *loses*. Seasonality here is climate-driven
+and population density does not predict climate; a single donor also carries
+all of its own reporting noise. Pooling wins, so pooling is what ships. The
+losing arms are kept because a claim is only worth what it beats.
 
 ## Architecture
 
@@ -83,10 +142,16 @@ pip install -r requirements.txt
 # Ingestion — in order
 python -m ingestion.load_facilities        # 200,438 facilities
 python -m ingestion.build_geo_summary      # dropdown cache
+python -m ingestion.parse_hmis             # HMIS, 5 states
 python -m ingestion.build_items            # full NLEM 2022 catalogue
 python -m ingestion.set_forecast_facilities
-python -m ingestion.generate_usage         # stock_events
+python -m ingestion.set_lead_times         # distance to district HQ
+python -m ingestion.generate_usage         # stock_events + expiry
+python -m ingestion.build_current_stock    # batch-level stock, FEFO
 python -m ingestion.train_forecast         # ARIMA_PLUS
+python -m ingestion.build_supply_plan      # reorder points, transfers
+python -m ingestion.build_facility_metrics # reporting consistency
+python -m ingestion.build_pattern_exchange # cross-district vectors
 
 # Serve
 uvicorn app.main:app --reload
@@ -94,8 +159,36 @@ uvicorn app.main:app --reload
 
 Environment: `GEMINI_API_KEY`, `GCP_PROJECT`. See `.env.example`.
 
+> **`GEMINI_API_KEY` must be set on the Cloud Run service.** It is not, at the
+> time of writing, so voice and chat capture return a 403 from the Generative
+> Language API in production while working locally. Barcode capture is
+> unaffected — it needs no model. Set it with:
+> ```
+> gcloud run services update daysupply --region asia-south1 >   --set-env-vars GEMINI_API_KEY=...
+> ```
+
 **Health check:** `/api/v1/healthz`. Google's frontend intercepts the bare
 `/healthz` path in production, so probe the versioned one.
+
+## Known data-quality exclusions
+
+Loading all 200,438 facilities rather than a convenient subset surfaces real
+defects in the source. They are excluded from specific calculations and
+**never corrected** — inferring that a Mizoram row reading `92.41, 23.25` was
+meant to be `23.25, 92.41` is a guess. `GET /api/v1/data-quality`.
+
+| Defect | Rows | Excluded from |
+|---|---|---|
+| Coordinates missing | 80 | Distance and transfer matching |
+| Latitude outside ±90 | 224 | Distance and transfer matching |
+| Longitude outside ±180 | 248 | Distance and transfer matching |
+| Inside the globe but outside India (some transposed) | 287 | Distance and transfer matching |
+| Over 200 km from own district HQ (95th pct is 97 km) | 4 | Lead time marked `estimated` |
+| Population not published (Delhi CHC average is `NA`) | 73 | Demand scaling |
+| No ATC code assignable with confidence | 121 | Therapeutic substitution |
+
+Every facility remains loaded and searchable. **633** are excluded from
+distance maths, one of them a demo facility.
 
 ## Cost discipline
 

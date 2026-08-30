@@ -63,11 +63,27 @@ _STRENGTH = re.compile(
     r"\b\d+(?:\.\d+)?\s*(?:mg|ml|mcg|g|gm|iu|lac|%)?\b", re.I
 )
 
-# Matching threshold. Real spoken names score 90-100 against this index;
-# unrelated speech scores in the 50s-70s. 85 sits in the gap. Anything below it
-# goes to the review queue instead of being guessed at — a wrong item_id is the
-# worst failure this system can produce, so the bias is toward asking a human.
+# Matching runs in two stages, because real speech comes in two shapes.
+#
+# Stage 1 compares the whole utterance. A clean extraction — "paracetamol",
+# "dolo 650" — scores 90-100 here, and unrelated speech scores in the 50s-70s,
+# so 85 sits comfortably in the gap.
+#
+# Stage 2 exists because the drug name is often *inside* a longer phrase:
+# "paracetamol ke do sau tablet", "sugar ki goli metformin". Whole-string
+# comparison scores those in the 50s-70s and rejects them, which is wrong — the
+# medicine is named, plainly. `token_set_ratio` asks the different question of
+# whether a catalogue name appears within the utterance, and it separates the
+# two groups sharply: embedded names score 100, while the worst score across a
+# corpus of unrelated clinic speech ("haan ji boliye", "doctor sahab nahi
+# aaye", "wo neeli wali dawai") is 60. The threshold is set at 90, inside that
+# gap and deliberately nearer the top of it.
 MATCH_THRESHOLD = 85
+CONTAINED_THRESHOLD = 90
+
+# A catalogue entry shorter than this can be "contained" in almost anything,
+# so stage 2 ignores them and leaves stage 1 to judge.
+MIN_CONTAINED_LENGTH = 4
 
 
 def _key(text: str) -> str:
@@ -108,13 +124,23 @@ def match(local_name: str, threshold: int = MATCH_THRESHOLD) -> str | None:
     from thefuzz import fuzz, process
 
     names, index = _build_index()
-    if not names:
+    key = _key(local_name)
+    if not names or not key:
         return None
-    best = process.extractOne(
-        _key(local_name), names, scorer=fuzz.token_sort_ratio
-    )
+
+    # Stage 1 — the whole utterance is the drug name.
+    best = process.extractOne(key, names, scorer=fuzz.token_sort_ratio)
     if best and best[1] >= threshold:
         return index[best[0]]
+
+    # Stage 2 — the drug name sits inside a longer phrase.
+    contained = process.extractOne(
+        key,
+        [n for n in names if len(n) >= MIN_CONTAINED_LENGTH],
+        scorer=fuzz.token_set_ratio,
+    )
+    if contained and contained[1] >= CONTAINED_THRESHOLD:
+        return index[contained[0]]
     return None
 
 

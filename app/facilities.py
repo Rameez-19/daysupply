@@ -20,6 +20,22 @@ COUNTRY = "IN"
 # PHCs are the unit the product is built around.
 PHC_TYPE = "phc"
 
+# District spellings that differ between government sources. Both are real and
+# both stay in the data: HMIS says "Ahmadnagar", the facility directory says
+# "Ahmednagar", and rewriting either to fit a join is how undetectable errors
+# get introduced. This map is presentation only — it changes what a dropdown
+# shows, never what is stored or joined on.
+DISTRICT_DISPLAY_NAMES = {
+    ("Maharashtra", "AHMADNAGAR"): "Ahmednagar",
+}
+
+
+def display_district(state: str, district: str) -> str:
+    """The spelling to show a user. The stored value is untouched."""
+    return DISTRICT_DISPLAY_NAMES.get(
+        (state, (district or "").upper().strip()), district)
+
+
 FACILITY_TYPE_LABELS = {
     "sub_cen": "Sub-Centre",
     "phc": "Primary Health Centre",
@@ -73,6 +89,7 @@ def list_districts(state: str) -> list[dict]:
     return [
         {
             "district": row["district"],
+            "display_name": display_district(state, row["district"]),
             "facility_count": row["facility_count"],
             "phc_count": row["phc_count"],
         }
