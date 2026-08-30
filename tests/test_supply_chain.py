@@ -194,9 +194,25 @@ class TestFefo:
 
 
 class TestSubstitution:
+    def test_zinc_is_never_substituted_by_magnesium(self):
+        """ATC level 3 would allow it; level 4 must not.
+
+        A12C is "other mineral supplements" — zinc (A12CB) and magnesium
+        (A12CC) sit in it together and are not interchangeable.
+        """
+        rows = run_query("""
+            SELECT COUNT(*) AS n
+            FROM `daysupply.daysupply.recommendations`
+            WHERE is_substitution
+              AND SUBSTR(requested_item_id, 1, 4) != SUBSTR(supplied_item_id, 1, 4)
+              AND (LOWER(requested_item_name) LIKE '%zinc%'
+                   AND LOWER(supplied_item_name) LIKE '%magnesium%')
+        """)
+        assert rows[0]["n"] == 0
+
     def test_substitutes_share_an_atc_class(self):
         rows = run_query("""
-            SELECT COUNTIF(SUBSTR(alternative_atc_code, 1, 4) != atc_class)
+            SELECT COUNTIF(SUBSTR(alternative_atc_code, 1, 5) != atc_class)
                      AS mismatched,
                    COUNT(*) AS total
             FROM `daysupply.daysupply.substitutes`

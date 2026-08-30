@@ -62,9 +62,19 @@ by this definition, and 72,408 units were actually written off over the year.
 **Therapeutic substitution** (step 12)
 
 Where no donor holds the exact item, donors holding a different item in the
-same ATC subgroup (first four characters of the code) are considered. Those
-rows carry `is_substitution = TRUE` and both the requested and the supplied
-item name. Nothing downstream may present a substitute as the requested item.
+same **ATC level 4** chemical subgroup are considered — the first *five*
+characters of the code, e.g. `C09AA` for ACE inhibitors.
+
+Level 4 and not level 3. Matching on four characters put Zinc Sulphate
+(`A12CB01`) and Magnesium sulphate (`A12CC02`) in the same bucket, because ATC
+level 3 `A12C` is "other mineral supplements" — a heterogeneous group, not a
+therapeutic class. Offering magnesium to a facility short of zinc is not a
+substitution, it is a different drug. Level 4 is the granularity at which two
+substances are genuinely interchangeable.
+
+Substitution rows carry `is_substitution = TRUE` plus both the requested and
+the supplied item name, and the UI states that clinical suitability must be
+confirmed. Nothing may present a substitute as the requested item.
 """
 
 from __future__ import annotations
@@ -153,7 +163,9 @@ SELECT
   i.unit,
   i.ven_class,
   i.atc_code,
-  SUBSTR(i.atc_code, 1, 4) AS atc_class,
+  -- ATC level 4 (chemical subgroup), not level 3. See the module
+  -- docstring: level 3 groups drugs that are not interchangeable.
+  SUBSTR(i.atc_code, 1, 5) AS atc_class,
   IFNULL(s.on_hand, 0)     AS on_hand,
   s.soonest_expiry,
   s.days_to_soonest_expiry,

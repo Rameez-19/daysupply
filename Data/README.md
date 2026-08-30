@@ -399,6 +399,23 @@ marked `lead_time_is_estimated`. Four of the 200 forecast facilities.
 
 ---
 
+## 12a. Therapeutic substitution — ATC LEVEL 4
+
+Substitution matches on the **first five characters** of the ATC code (level 4,
+chemical subgroup), not four.
+
+Level 3 was wrong and the live output proved it: it paired Zinc Sulphate
+(`A12CB01`) with Magnesium sulphate (`A12CC02`), because ATC level 3 `A12C` is
+"other mineral supplements" — a heterogeneous bucket, not a therapeutic class.
+Offering magnesium to a facility short of zinc is not a substitution.
+
+At level 4 the substitutions that survive are genuine: Artemether-Lumefantrine
+against Artesunate-Sulphadoxine-Pyrimethamine, Chloroquine against Primaquine —
+all antimalarials. Both the requested and the supplied item are always shown,
+and the UI states that clinical suitability must be confirmed before dispensing.
+
+---
+
 ## 12. VEN classification — DERIVED, NOT PUBLISHED
 
 Vital / Essential / Desirable per WHO and MoHFW practice: **109 Vital, 249
