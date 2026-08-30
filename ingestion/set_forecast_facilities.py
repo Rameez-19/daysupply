@@ -5,19 +5,17 @@ Two flags, two different jobs:
 * `is_demo_facility` — 7,092 PHCs across five states. The reach story.
 * `is_forecast_facility` — ~200 PHCs. The forecasting story.
 
-The forecast set is drawn **only from Telangana**, and that is a data
-constraint, not a preference. `demand_reference` holds HMIS 2019-20 monthly
-indicators for 31 Telangana districts and nowhere else, because only
-`Telangana.xls` has been parsed. Seasonality for the usage generator comes from
-a real join against that table, so a facility outside Telangana has no real
-demand signal to join to. Rather than fall back to a synthetic seasonal curve
-for those facilities, the forecast set is restricted to where the real signal
-exists.
+The forecast set spans **all five demo states** — Telangana, Maharashtra,
+Rajasthan, Delhi and Assam — because `demand_reference` now holds real HMIS
+2019-20 indicators for all five (137 districts). Seasonality comes from a real
+join against that table, so a facility is only eligible where a real demand
+signal exists to join to; 6,989 of the 7,092 demo PHCs qualify.
 
-All 817 Telangana PHCs join to `demand_reference` on a case-insensitive
-district match, so the sample is drawn from a fully covered population.
-Selection is deterministic: the N PHCs with the lowest `FARM_FINGERPRINT` of
-their id, evenly spread across districts.
+Selection is deterministic and spread across states and districts: PHCs are
+ranked by `FARM_FINGERPRINT` of their id within each district, then the
+lowest-ranked are taken round-robin so no single district dominates. Every
+district that contributes gets at least one facility, which keeps
+same-district transfer pairs available for the redistribution demo.
 """
 
 from __future__ import annotations
@@ -33,7 +31,7 @@ LOCATION = os.getenv("BQ_LOCATION", "asia-south1")
 FACILITIES = f"`{PROJECT}.{DATASET}.facilities`"
 DEMAND_REF = f"`{PROJECT}.{DATASET}.demand_reference`"
 
-FORECAST_STATE = "Telangana"
+FORECAST_STATES = ["Telangana", "Maharashtra", "Rajasthan", "Delhi", "Assam"]
 TARGET_COUNT = 200
 
 ADD_COLUMN = f"""
@@ -41,8 +39,10 @@ ALTER TABLE {FACILITIES}
 ADD COLUMN IF NOT EXISTS is_forecast_facility BOOL
 """
 
-# Evenly spread across districts so the demo has neighbouring facilities to
-# recommend transfers between, rather than 200 PHCs in one district.
+# Spread across states and districts so the demo has neighbouring facilities to
+# recommend transfers between, rather than 200 PHCs in one district. Ranking
+# within district first, then ordering by that rank, fills one facility per
+# district before taking a second from any of them.
 SELECT_AND_FLAG = f"""
 UPDATE {FACILITIES} AS f
 SET is_forecast_facility = (f.facility_id IN (
@@ -50,18 +50,20 @@ SET is_forecast_facility = (f.facility_id IN (
     SELECT
       facility_id,
       ROW_NUMBER() OVER (
-        PARTITION BY admin_l2
+        PARTITION BY admin_l1, admin_l2
         ORDER BY FARM_FINGERPRINT(facility_id)
       ) AS rank_in_district
     FROM {FACILITIES}
     WHERE country_code = 'IN'
-      AND admin_l1 = @state
+      AND admin_l1 IN UNNEST(@states)
       AND facility_type = 'phc'
       AND latitude IS NOT NULL
       AND longitude IS NOT NULL
       AND population_served IS NOT NULL
-      AND UPPER(TRIM(admin_l2)) IN (
-        SELECT DISTINCT UPPER(TRIM(admin_l2)) FROM {DEMAND_REF}
+      AND EXISTS (
+        SELECT 1 FROM {DEMAND_REF} d
+        WHERE d.admin_l1 = {FACILITIES}.admin_l1
+          AND d.district_key = UPPER(TRIM({FACILITIES}.admin_l2))
       )
   )
   ORDER BY rank_in_district, facility_id
@@ -73,7 +75,8 @@ WHERE country_code = 'IN'
 VERIFY = f"""
 SELECT
   COUNT(*)                                 AS forecast_facilities,
-  COUNT(DISTINCT admin_l2)                 AS districts,
+  COUNT(DISTINCT admin_l1)                 AS states,
+  COUNT(DISTINCT CONCAT(admin_l1, '|', admin_l2)) AS districts,
   COUNTIF(population_served IS NULL)       AS missing_population,
   COUNTIF(latitude IS NULL)                AS missing_coords,
   MIN(population_served)                   AS min_pop,
@@ -88,9 +91,17 @@ UNJOINABLE = f"""
 SELECT COUNT(*) AS n
 FROM {FACILITIES} f
 WHERE f.is_forecast_facility
-  AND UPPER(TRIM(f.admin_l2)) NOT IN (
-    SELECT DISTINCT UPPER(TRIM(admin_l2)) FROM {DEMAND_REF}
+  AND NOT EXISTS (
+    SELECT 1 FROM {DEMAND_REF} d
+    WHERE d.admin_l1 = f.admin_l1
+      AND d.district_key = UPPER(TRIM(f.admin_l2))
   )
+"""
+
+PER_STATE = f"""
+SELECT admin_l1, COUNT(*) AS n, COUNT(DISTINCT admin_l2) AS districts
+FROM {FACILITIES} WHERE is_forecast_facility
+GROUP BY admin_l1 ORDER BY admin_l1
 """
 
 
@@ -100,11 +111,12 @@ def run() -> None:
     print("Adding is_forecast_facility column ...")
     client.query(ADD_COLUMN).result()
 
-    print(f"Flagging {TARGET_COUNT} {FORECAST_STATE} PHCs ...")
+    print(f"Flagging {TARGET_COUNT} PHCs across "
+          f"{', '.join(FORECAST_STATES)} ...")
     job = client.query(
         SELECT_AND_FLAG,
         job_config=bigquery.QueryJobConfig(query_parameters=[
-            bigquery.ScalarQueryParameter("state", "STRING", FORECAST_STATE),
+            bigquery.ArrayQueryParameter("states", "STRING", FORECAST_STATES),
             bigquery.ScalarQueryParameter("n", "INT64", TARGET_COUNT),
         ]),
     )
@@ -112,7 +124,11 @@ def run() -> None:
 
     row = next(iter(client.query(VERIFY).result()))
     print(f"  forecast facilities: {row.forecast_facilities}")
+    print(f"  states:              {row.states}")
     print(f"  districts:           {row.districts}")
+    for per in client.query(PER_STATE).result():
+        print(f"    {per.admin_l1:14s} {per.n:>4} PHCs across "
+              f"{per.districts} districts")
     print(f"  missing population:  {row.missing_population}")
     print(f"  missing coords:      {row.missing_coords}")
     print(f"  population range:    {row.min_pop:,} - {row.max_pop:,}")

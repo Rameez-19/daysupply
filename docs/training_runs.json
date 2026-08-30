@@ -28,5 +28,15 @@
     "duration_seconds": 15.5,
     "bytes_processed": 1226301108,
     "job_id": "6734ed4e-9148-4f85-b27c-7e443c7379a1"
+  },
+  {
+    "trained_at": "2026-08-30T09:29:57.546619+00:00",
+    "model": "daysupply.daysupply.demand_forecast",
+    "series": 4295,
+    "horizon": 30,
+    "min_days": 300,
+    "duration_seconds": 15.4,
+    "bytes_processed": 1367636664,
+    "job_id": "d52a1910-f6b9-447f-8a05-bd21c25927bd"
   }
 ]

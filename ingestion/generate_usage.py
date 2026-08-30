@@ -134,7 +134,8 @@ SCHEMA = [
 # ---------------------------------------------------------------------------
 def fetch_inputs(client: bigquery.Client):
     facilities = client.query(f"""
-        SELECT facility_id, admin_l2 AS district, population_served
+        SELECT facility_id, admin_l1 AS state, admin_l2 AS district,
+               UPPER(TRIM(admin_l2)) AS district_key, population_served
         FROM {FACILITIES}
         WHERE is_forecast_facility
         ORDER BY facility_id
@@ -150,32 +151,34 @@ def fetch_inputs(client: bigquery.Client):
     # PHCs per district — the real denominator turning a district's reported
     # patient volume into a per-facility load.
     phc_counts = client.query(f"""
-        SELECT UPPER(TRIM(admin_l2)) AS district_key, COUNT(*) AS phcs
+        SELECT admin_l1 AS state, UPPER(TRIM(admin_l2)) AS district_key,
+               COUNT(*) AS phcs
         FROM {FACILITIES}
-        WHERE country_code = 'IN' AND admin_l1 = 'Telangana'
-          AND facility_type = 'phc'
-        GROUP BY district_key
+        WHERE country_code = 'IN' AND facility_type = 'phc'
+        GROUP BY state, district_key
     """).to_dataframe()
 
     # Real HMIS monthly series, with the Apr-Dec baseline used for the
     # seasonal multiplier.
     hmis = client.query(f"""
         WITH baseline AS (
-          SELECT UPPER(TRIM(admin_l2)) AS district_key, indicator,
+          SELECT admin_l1 AS state, district_key, indicator,
                  AVG(value) AS baseline
           FROM {DEMAND_REF}
           WHERE month IN UNNEST(@clean_months)
-          GROUP BY district_key, indicator
+          GROUP BY state, district_key, indicator
         )
         SELECT
-          UPPER(TRIM(d.admin_l2)) AS district_key,
+          d.admin_l1 AS state,
+          d.district_key,
           d.indicator,
           d.month,
           d.value,
           b.baseline
         FROM {DEMAND_REF} d
         JOIN baseline b
-          ON UPPER(TRIM(d.admin_l2)) = b.district_key
+          ON d.admin_l1 = b.state
+         AND d.district_key = b.district_key
          AND d.indicator = b.indicator
     """, job_config=bigquery.QueryJobConfig(query_parameters=[
         bigquery.ArrayQueryParameter(
@@ -186,9 +189,10 @@ def fetch_inputs(client: bigquery.Client):
 
 
 def build_seasonality(hmis: pd.DataFrame) -> dict:
-    """(district, indicator) -> 12 monthly multipliers, index 0 = January."""
-    table: dict[tuple[str, str], np.ndarray] = {}
-    for (district, indicator), grp in hmis.groupby(["district_key", "indicator"]):
+    """(state, district, indicator) -> 12 monthly multipliers, Jan first."""
+    table: dict[tuple[str, str, str], np.ndarray] = {}
+    for (state, district, indicator), grp in hmis.groupby(
+            ["state", "district_key", "indicator"]):
         baseline = grp["baseline"].iloc[0]
         multipliers = np.ones(12)
         if baseline and baseline > 0:
@@ -200,19 +204,23 @@ def build_seasonality(hmis: pd.DataFrame) -> dict:
                 if value is not None and not pd.isna(value):
                     multipliers[idx] = value / baseline
         # Keep the shape sane if a district reports erratically.
-        table[(district, indicator)] = np.clip(multipliers, 0.25, 4.0)
+        table[(state, district, indicator)] = np.clip(multipliers, 0.25, 4.0)
     return table
 
 
 def build_scale(hmis: pd.DataFrame, phc_counts: pd.DataFrame) -> dict:
-    """(district, indicator) -> real monthly patients per PHC."""
-    phcs = dict(zip(phc_counts["district_key"], phc_counts["phcs"]))
-    scale: dict[tuple[str, str], float] = {}
-    for (district, indicator), grp in hmis.groupby(["district_key", "indicator"]):
+    """(state, district, indicator) -> real monthly patients per PHC."""
+    phcs = {
+        (row.state, row.district_key): row.phcs
+        for row in phc_counts.itertuples()
+    }
+    scale: dict[tuple[str, str, str], float] = {}
+    for (state, district, indicator), grp in hmis.groupby(
+            ["state", "district_key", "indicator"]):
         baseline = grp["baseline"].iloc[0]
-        count = phcs.get(district, 0)
+        count = phcs.get((state, district), 0)
         if baseline and count:
-            scale[(district, indicator)] = float(baseline) / count
+            scale[(state, district, indicator)] = float(baseline) / count
     return scale
 
 
@@ -266,7 +274,8 @@ def generate(dry_run: bool = False) -> None:
     unmatched: set[tuple[str, str]] = set()
 
     for f_idx, facility in facilities.reset_index(drop=True).iterrows():
-        district_key = str(facility["district"]).upper().strip()
+        district_key = str(facility["district_key"])
+        state = str(facility["state"])
         fac_mult = facility_multiplier[f_idx]
 
         for _, item in items.iterrows():
@@ -274,7 +283,7 @@ def generate(dry_run: bool = False) -> None:
             unit = item["unit"]
 
             if driver and not pd.isna(driver):
-                key = (district_key, driver)
+                key = (state, district_key, driver)
                 monthly_patients = scale.get(key)
                 season = seasonality.get(key)
                 if monthly_patients is None or season is None:
@@ -352,7 +361,7 @@ def generate(dry_run: bool = False) -> None:
     if unmatched:
         raise SystemExit(
             "Missing HMIS series for: " + ", ".join(sorted(
-                f"{d}/{i}" for d, i in unmatched)[:10])
+                f"{s}/{d}/{i}" for s, d, i in unmatched)[:10])
         )
 
     frame = pd.concat(chunks, ignore_index=True)
@@ -383,7 +392,7 @@ def _pick_scenarios(facilities: pd.DataFrame):
     """
     ordered = facilities.sort_values("facility_id").reset_index(drop=True)
     deficit, surplus = [], []
-    for _, grp in ordered.groupby("district"):
+    for _, grp in ordered.groupby(["state", "district"]):
         if len(grp) >= 2 and len(deficit) < 3:
             deficit.append(grp.iloc[0]["facility_id"])
             surplus.append(grp.iloc[1]["facility_id"])

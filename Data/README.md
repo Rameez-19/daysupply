@@ -128,9 +128,28 @@ and stroke; malaria positives by species (microscopy and RDT); childhood
 diseases; and inpatient counts.
 
 Each forecast item names one of these as its `demand_driver`, so monthly demand
-shape is taken from real reported incidence rather than invented. **Only
-Telangana has been parsed** — 31 districts, 4,092 rows — which is why the
-forecast set is Telangana-only (§9).
+shape is taken from real reported incidence rather than invented.
+
+**Five states are parsed** — the same five flagged `is_demo_facility`:
+
+| State | Districts | Rows |
+|---|---|---|
+| Maharashtra | 35 | 4,620 |
+| Rajasthan | 33 | 4,356 |
+| Telangana | 31 | 4,092 |
+| Assam | 27 | 3,564 |
+| Delhi | 11 | 1,452 |
+| **Total** | **137** | **18,084** |
+
+**6,989 of the 7,092 demo PHCs (98.5%) join to real HMIS data** on
+`admin_l1` + `district_key`. `admin_l1` is essential: 33 district names recur
+across states, so a district-only join would silently mix states.
+
+`district_key` is the reconciled join key; `admin_l2` keeps the value exactly as
+the government file reports it. One reconciliation exists so far —
+Maharashtra's `Ahmadnagar` (HMIS) against `Ahmednagar` (facility master), worth
+103 PHCs. It is listed in `DISTRICT_ALIASES` in `parse_hmis.py`, not applied by
+silently rewriting the source value.
 
 ⚠️ **2019-20 means April 2019 – March 2020.** February and March 2020 are
 COVID-affected. Use April–December or smooth those two months explicitly.

@@ -1,6 +1,6 @@
 # StockPulse — Project Handover
 
-> Supersedes the agent-written handover. Place at `docs/HANDOVER.md`.
+> Supersedes the agent-written handover. Now at `docs/HANDOVER.md`.
 > Read alongside `docs/MASTER_PROMPT.md` (governing spec) and
 > `BUILD_PROMPT_BLOCKS_A-E.md` (the work queue).
 >
@@ -267,6 +267,22 @@ scalability slide; do not build against it.
 gcloud run deploy daysupply --source . --region asia-south1 \
   --min-instances 0 --allow-unauthenticated
 ```
+
+**Health check — read this before wiring any monitor.**
+
+`/healthz` **does not work in production.** Google's frontend intercepts that
+exact path and returns a Google-branded 404 without the request ever reaching
+the container. The giveaway is that the 404 response carries no
+`server: Google Frontend` header, while real responses do — and `/healthz2`,
+`/healthz/` and `/health` all pass through normally.
+
+| Path | Local | Cloud Run |
+|---|---|---|
+| `/healthz` | works | **intercepted, 404** |
+| `/api/v1/healthz` | works | **works — use this** |
+
+Both are served by the same handler in `app/main.py`. Probe
+`/api/v1/healthz` in production and in any uptime check.
 
 **Run locally:**
 ```
