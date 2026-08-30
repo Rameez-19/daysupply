@@ -15,6 +15,11 @@ This section matters more than anything else in this document. The product looks
 substantially more complete than it is, and anyone continuing without knowing the
 difference will overclaim in the submission.
 
+> **Revised 30 August 2026, after Block A.** The previous version of this
+> section was wrong on a central point — it said there was no BigQuery in the
+> stack and that the facilities had never been loaded. Both claims were false
+> when written. Corrected below.
+
 | Component | Status | Notes |
 |---|---|---|
 | Gemini voice extraction | **REAL** | Live Gemini API calls, audio → structured JSON |
@@ -24,19 +29,47 @@ difference will overclaim in the submission.
 | Review queue | **REAL** | Confidence-threshold routing implemented |
 | Cloud Run deployment | **REAL** | Live, containerised, `asia-south1` |
 | Haversine distance maths | **REAL** | Correct calculation |
-| **Facility data** | **GENERATED** | `app/demo_data.py`, ~229 facilities across 5 states, seeded |
-| **All KPI figures** | **GENERATED** | Active facilities, captures today, alerts, transfers, % deltas |
-| **Demand forecast** | **GENERATED** | Backend logic imitating ARIMA_PLUS. **No BigQuery ML model exists** |
-| **Stock levels** | **GENERATED** | Network stock health, critical shortages |
-| **Expiry data** | **GENERATED** | No expiry data source exists anywhere |
-| **Transfer recommendations** | **PARTLY REAL** | Real algorithm, generated inputs |
+| **Facility data** | **REAL** | All 200,438 facilities in BigQuery; dashboard queries them directly |
+| **Facility counts / geography** | **REAL** | 37 states, 668 districts, from `daysupply.facilities` |
+| **HMIS seasonality reference** | **REAL** | `demand_reference`, 4,092 rows — **Telangana only** |
+| **Item catalogue** | **PARTIAL** | 15 items loaded; full NLEM 2022 catalogue is Block B |
+| **Captures / alerts / transfers counters** | **GENERATED** | `app/demo_data.py` — no event data source yet |
+| **Demand forecast** | **GENERATED** | Sine wave in `get_demo_forecast_chart`. **No BigQuery ML model exists** |
+| **Network stock health, critical shortages** | **GENERATED IN THE BROWSER** | Hardcoded arrays in `web/app.js` `loadChart()` |
+| **Expiry data** | **GENERATED** | `random.randint` — no expiry data source exists anywhere |
+| **Transfer recommendations** | **PARTLY REAL** | Real algorithm and real facility names; generated stock levels |
 
-**There is currently no BigQuery in the stack.** No dataset, no tables, no
-trained model. The 200,438 real Indian facilities on disk have never been loaded.
+### What was actually wrong with the previous version
 
-Closing this gap is Blocks A and B and is the top priority. Until it is closed,
-the words "real data" and "AI forecasting" must not appear in the deck, the video
-or the README.
+The `daysupply` dataset existed in `asia-south1` the whole time, with three
+populated tables: `facilities`, `items` (15 rows) and `demand_reference`
+(4,092 rows). India's 200,438 facilities **had** been loaded. So had Brazil's
+50,697 — the table held **251,135 rows**, because `ingestion/load_india.py` used
+`WRITE_APPEND` with no preceding delete, and had been run more than once.
+
+The real gap was never ingestion. It was that **nothing in the application
+queried any of it** — `app/demo_data.py` held a hardcoded five-state hierarchy
+and the dashboard read from that. Block A closed the wiring gap, not a data gap.
+
+Two smaller corrections:
+
+- The facility master has **80 rows with unusable coordinates**, not 15. They
+  are loaded regardless and excluded from distance maths.
+- The venv was missing `google-generativeai`, `google-cloud-firestore` and
+  `thefuzz`, so **the app could not start locally at all**. `requirements.txt`
+  was correct; only the environment was stale. Reinstall with
+  `.venv/Scripts/python -m pip install -r requirements.txt`.
+
+### Current state after Block A
+
+`daysupply.facilities` holds 200,438 Indian rows (37 states, 668 district names,
+701 state×district pairs) plus 50,697 Brazilian rows retained but never queried —
+every application query filters `country_code = 'IN'`. `is_demo_facility` is
+TRUE for **7,092** rows: PHCs in Telangana, Maharashtra, Rajasthan, Delhi, Assam.
+`daysupply.geo_summary` is a ~738-row derived table backing the dropdowns.
+
+**Still true:** there is no trained model. Until Block B lands, "AI forecasting"
+must not appear in the deck, the video or the README.
 
 ---
 
@@ -107,16 +140,20 @@ Health worker (PWA, offline-first)
    │  voice note | barcode scan | chat text
    ▼
 Cloud Run — FastAPI (asia-south1)
-   ├─► Gemini API           audio/text → structured JSON   [REAL]
-   ├─► app/demo_data.py     seeded generator               [TO BE REPLACED]
-   └─► BigQuery             does not exist yet             [BLOCK A/B]
+   ├─► Gemini API           audio/text → structured JSON       [REAL]
+   ├─► BigQuery facilities  200,438 rows, all geography        [REAL]
+   ├─► BigQuery geo_summary ~738-row dropdown cache            [REAL]
+   ├─► BigQuery items       item catalogue                     [15 rows; full NLEM is Block B]
+   ├─► BigQuery demand_ref  HMIS 2019-20 seasonality           [REAL, Telangana only]
+   ├─► app/demo_data.py     operational counters only          [TO BE REPLACED, Block B]
+   └─► BigQuery ML          ARIMA_PLUS                         [NOT BUILT — Block B]
    ▼
 Dashboard — Chart.js, cascading state/district/PHC filters
 ```
 
-**Target architecture after Blocks A–B:** the same, with `app/demo_data.py`
-removed and BigQuery as the single source of truth for facilities, stock events,
-forecasts and recommendations.
+**Target architecture after Block B:** the same, with `app/demo_data.py` removed
+and BigQuery as the single source of truth for stock events, forecasts and
+recommendations as well as facilities.
 
 ### Stack
 
@@ -147,7 +184,7 @@ daysupply/
 │   ├── app.js           views, Chart.js, MediaRecorder, IndexedDB queue
 │   ├── styles.css       "Deep Blue" NHM-style design system
 │   └── sw.js            Service Worker, offline cache
-├── ingestion/           ⚠️ EMPTY — Block A lives here
+├── ingestion/           load_facilities.py, build_geo_summary.py, parse_nlem.py, ...
 ├── config/              country abstraction (India only in use)
 ├── docs/
 │   ├── MASTER_PROMPT.md governing spec
@@ -155,7 +192,7 @@ daysupply/
 │   ├── PROGRESS.md      one line per session
 │   ├── pitch_deck.md    ⚠️ currently OUTSIDE the repo — move it in
 │   └── video_script.md  ⚠️ currently OUTSIDE the repo — move it in
-├── Data/                ⚠️ GITIGNORED — see §6
+├── Data/                raw files gitignored; Data/README.md IS tracked — see §6
 ├── Dockerfile
 └── .gitignore
 ```
@@ -167,7 +204,7 @@ as the same folder, so raw data and ingestion code cannot share a name.
 
 ## 6. Data inventory
 
-All under `Data/` — **gitignored**, not in the repo. `cnes_estabelecimentos.csv`
+Raw files under `Data/` are **gitignored**. `Data/README.md` is tracked and records provenance. `cnes_estabelecimentos.csv`
 alone is 229 MB and GitHub rejects files over 100 MB.
 
 ### India — `Data/India/` (all currently unused by the application)
@@ -176,10 +213,10 @@ alone is 229 MB and GitHub rejects files over 100 MB.
 |---|---|---|
 | `geocode_health_centre.csv` | **200,438 facilities**, 37 states, 668 districts. 29,733 PHCs, 5,389 CHCs, 163,131 sub-centres | Only 15 rows lack coordinates. Columns: State Name, District Name, Subdistrict Name, Facility Type, Facility Name, Latitude, Longitude, ActiveFlag_C, Location Type, Type Of Facility |
 | `<State>.xls` × 36 + `All_India.xls` | HMIS 2019-20 monthly data, ~120 MB each | **NOT Excel.** SAS-generated HTML with `.xls` extension, `latin-1`. Parse with `pandas.read_html` / BeautifulSoup. Districts × data items × 12 months, split Public/Private and Urban/Rural |
-| `rural-population-centre_2017.xls` | Population covered per centre | Verify whether rows are facility-level or state-level |
+| `rural-population-centre_2017.csv` | Population covered per centre | **State-level, not facility-level.** Applied as a state x facility-type average — see `Data/README.md` §2 |
 | `pharmacists-PHCS-CHCS_2017.xls` | Pharmacist counts and vacancies | Deck evidence only |
 | `facilities-PHCS_2017.xls` | PHC infrastructure/functioning | Deck evidence only |
-| `nlem2022.pdf` | National List of Essential Medicines 2022 | Source for the 15-item master |
+| `nlem2022.pdf` / `nlem2022.xlsx` | National List of Essential Medicines 2022 | Use the **.xlsx**. 30 sheets, a PDF table extraction — see `ingestion/parse_nlem.py` for its many conversion artefacts |
 
 **Usable HMIS indicators:** `Outpatient - Diabetes`, `- Hypertension`,
 `- Epilepsy`, `- Mental illness`, `- Dental`, `- Ophthalmic Related`,
@@ -285,5 +322,5 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
 6. **Lead-time data does not exist publicly.** Block C derives it from distance
    to district HQ. This is a proxy and must be labelled as an assumption in
    `Data/README.md`, never presented as measured.
-7. **`Data/README.md` does not exist yet.** It should record provenance and every
-   real-vs-generated decision. It is a credibility asset for judging.
+7. ~~`Data/README.md` does not exist yet.~~ **Done.** It records provenance and
+   every real-vs-generated decision, and is now tracked in git.

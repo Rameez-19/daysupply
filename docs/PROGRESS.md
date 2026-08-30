@@ -12,3 +12,4 @@
 | 2026-08-25 | 8 ✅ | `app/patterns.py` and `POST /api/v1/patterns` endpoints added | Block 9: Submission Package |
 | 2026-08-25 | 9 ✅ | Project `README.md` and complete Walkthrough finalized | Submit! |
 | 2026-08-29 | A ✅ | All 200,438 real facilities in BigQuery (37 states, 668 districts, 7,092 demo PHCs). Dashboard geography rewired to BigQuery — no hardcoded arrays. Cost guard rails + caching. `Data/README.md` now tracked | Block B: real ARIMA_PLUS forecasting |
+| 2026-08-30 | A+ ✅ | `geo_summary` pre-aggregate + startup prewarm: dropdown reads 10.9 MB → 21.6 KB, 1.7–6.5s → <1 ms. Corrected handover §1 (BigQuery did exist; 251,135 rows from a double-append) | Block B: NLEM catalogue, usage generator, ARIMA_PLUS |

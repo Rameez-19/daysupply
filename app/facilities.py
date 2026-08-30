@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from google.cloud import bigquery
 
-from app.bq import FACILITIES, run_query
+from app.bq import FACILITIES, GEO_SUMMARY, run_query
 
 COUNTRY = "IN"
 
@@ -29,50 +29,56 @@ FACILITY_TYPE_LABELS = {
 }
 
 
-def list_states() -> list[dict]:
-    """Every state/UT present in the facility master, with facility counts."""
+def _geo_rows() -> list[dict]:
+    """The whole geo summary — ~740 rows, fetched once and held in process.
+
+    One small query serves every state and district dropdown for the life of
+    the container, so a visitor never waits on a BigQuery round trip for
+    geography after the first.
+    """
     return run_query(
         f"""
-        SELECT
-          admin_l1                  AS state,
-          COUNT(*)                  AS facility_count,
-          COUNTIF(facility_type = @phc) AS phc_count,
-          COUNT(DISTINCT admin_l2)  AS district_count
-        FROM {FACILITIES}
-        WHERE country_code = @cc AND admin_l1 != ''
-        GROUP BY state
-        ORDER BY state
+        SELECT level, state, district, facility_count, phc_count,
+               district_count, demo_count, population_served
+        FROM {GEO_SUMMARY}
+        ORDER BY state, district
         """,
-        [
-            bigquery.ScalarQueryParameter("cc", "STRING", COUNTRY),
-            bigquery.ScalarQueryParameter("phc", "STRING", PHC_TYPE),
-        ],
-        cache_key="states",
+        cache_key="geo_summary",
     )
+
+
+def prewarm() -> int:
+    """Populate the geography cache. Called at startup, off the request path."""
+    return len(_geo_rows())
+
+
+def list_states() -> list[dict]:
+    """Every state/UT present in the facility master, with facility counts."""
+    return [
+        {
+            "state": row["state"],
+            "facility_count": row["facility_count"],
+            "phc_count": row["phc_count"],
+            "district_count": row["district_count"],
+        }
+        for row in _geo_rows()
+        if row["level"] == "state"
+    ]
 
 
 def list_districts(state: str) -> list[dict]:
     """Districts within a state, with facility counts."""
     if not state:
         return []
-    return run_query(
-        f"""
-        SELECT
-          admin_l2                      AS district,
-          COUNT(*)                      AS facility_count,
-          COUNTIF(facility_type = @phc) AS phc_count
-        FROM {FACILITIES}
-        WHERE country_code = @cc AND admin_l1 = @state AND admin_l2 != ''
-        GROUP BY district
-        ORDER BY district
-        """,
-        [
-            bigquery.ScalarQueryParameter("cc", "STRING", COUNTRY),
-            bigquery.ScalarQueryParameter("state", "STRING", state),
-            bigquery.ScalarQueryParameter("phc", "STRING", PHC_TYPE),
-        ],
-        cache_key=f"districts:{state}",
-    )
+    return [
+        {
+            "district": row["district"],
+            "facility_count": row["facility_count"],
+            "phc_count": row["phc_count"],
+        }
+        for row in _geo_rows()
+        if row["level"] == "district" and row["state"] == state
+    ]
 
 
 def list_facilities(state: str, district: str,
@@ -109,81 +115,67 @@ def list_facilities(state: str, district: str,
     )
 
 
+def _totals(rows: list[dict]) -> dict:
+    return {
+        "facilities": sum(r["facility_count"] for r in rows),
+        "phcs": sum(r["phc_count"] for r in rows),
+        "demo_facilities": sum(r["demo_count"] for r in rows),
+        "population_served": sum(r["population_served"] or 0 for r in rows),
+    }
+
+
 def facility_counts(state: str = "", district: str = "",
                     facility_id: str = "") -> dict:
     """Facility counts for the current filter scope.
 
-    Narrowing to a single facility returns 1 — the count is always the real
-    number of facilities the dashboard is currently looking at.
+    Served from the geo summary, so changing the state filter does not cost a
+    BigQuery round trip. Narrowing to a single facility returns that facility.
     """
-    where = ["country_code = @cc"]
-    params = [bigquery.ScalarQueryParameter("cc", "STRING", COUNTRY)]
-
     if facility_id:
-        where.append("facility_id = @fid")
-        params.append(
-            bigquery.ScalarQueryParameter("fid", "STRING", facility_id)
-        )
-    else:
-        if state:
-            where.append("admin_l1 = @state")
-            params.append(
-                bigquery.ScalarQueryParameter("state", "STRING", state)
-            )
-        if district:
-            where.append("admin_l2 = @district")
-            params.append(
-                bigquery.ScalarQueryParameter("district", "STRING", district)
-            )
-    params.append(bigquery.ScalarQueryParameter("phc", "STRING", PHC_TYPE))
+        facility = get_facility(facility_id)
+        if facility is None:
+            return {"facilities": 0, "phcs": 0, "demo_facilities": 0,
+                    "states": 0, "districts": 0, "population_served": 0}
+        is_phc = facility.get("facility_type") == PHC_TYPE
+        return {
+            "facilities": 1,
+            "phcs": 1 if is_phc else 0,
+            "demo_facilities": 1 if facility.get("is_demo_facility") else 0,
+            "states": 1,
+            "districts": 1,
+            "population_served": int(facility.get("population_served") or 0),
+        }
 
-    rows = run_query(
-        f"""
-        SELECT
-          COUNT(*)                      AS facilities,
-          COUNTIF(facility_type = @phc) AS phcs,
-          COUNTIF(is_demo_facility)     AS demo_facilities,
-          COUNT(DISTINCT admin_l1)      AS states,
-          COUNT(DISTINCT admin_l2)      AS districts,
-          SUM(population_served)        AS population_served
-        FROM {FACILITIES}
-        WHERE {' AND '.join(where)}
-        """,
-        params,
-        cache_key=f"counts:{state}:{district}:{facility_id}",
-    )
-    row = rows[0] if rows else {}
+    rows = _geo_rows()
+    if district:
+        scope = [r for r in rows if r["level"] == "district"
+                 and r["state"] == state and r["district"] == district]
+        districts = len(scope)
+    elif state:
+        scope = [r for r in rows if r["level"] == "state" and r["state"] == state]
+        districts = sum(r["district_count"] for r in scope)
+    else:
+        scope = [r for r in rows if r["level"] == "state"]
+        districts = sum(r["district_count"] for r in scope)
+
     return {
-        "facilities": int(row.get("facilities") or 0),
-        "phcs": int(row.get("phcs") or 0),
-        "demo_facilities": int(row.get("demo_facilities") or 0),
-        "states": int(row.get("states") or 0),
-        "districts": int(row.get("districts") or 0),
-        "population_served": int(row.get("population_served") or 0),
+        **_totals(scope),
+        "states": len({r["state"] for r in scope}),
+        "districts": districts,
     }
 
 
 def national_summary() -> dict:
     """Headline national coverage figures — every facility in the country."""
-    rows = run_query(
-        f"""
-        SELECT
-          COUNT(*)                  AS facilities,
-          COUNT(DISTINCT admin_l1)  AS states,
-          COUNT(DISTINCT admin_l2)  AS districts,
-          COUNTIF(is_demo_facility) AS demo_facilities
-        FROM {FACILITIES}
-        WHERE country_code = @cc
-        """,
-        [bigquery.ScalarQueryParameter("cc", "STRING", COUNTRY)],
-        cache_key="national_summary",
-    )
-    row = rows[0] if rows else {}
+    states = [r for r in _geo_rows() if r["level"] == "state"]
+    districts = [r for r in _geo_rows() if r["level"] == "district"]
+    totals = _totals(states)
     return {
-        "facilities": int(row.get("facilities") or 0),
-        "states": int(row.get("states") or 0),
-        "districts": int(row.get("districts") or 0),
-        "demo_facilities": int(row.get("demo_facilities") or 0),
+        "facilities": totals["facilities"],
+        "states": len(states),
+        # District names are counted globally: 33 names recur across states.
+        "districts": len({r["district"] for r in districts}),
+        "demo_facilities": totals["demo_facilities"],
     }
 
 

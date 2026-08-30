@@ -28,6 +28,7 @@ DATASET = os.getenv("BQ_DATASET", "daysupply")
 LOCATION = os.getenv("BQ_LOCATION", "asia-south1")
 
 FACILITIES = f"`{PROJECT}.{DATASET}.facilities`"
+GEO_SUMMARY = f"`{PROJECT}.{DATASET}.geo_summary`"
 
 # Refuse anything that would scan more than 10 GB. Nothing this application
 # does legitimately comes close; crossing it means a query lost its filter.

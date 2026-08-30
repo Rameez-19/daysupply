@@ -1,7 +1,9 @@
 """StockPulse — FastAPI backend."""
 
+import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile, Form
 from fastapi.staticfiles import StaticFiles
@@ -19,7 +21,29 @@ from app.demo_data import (
 
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="StockPulse", version="0.4.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Warm the geography cache off the request path.
+
+    Cloud Run runs at --min-instances 0, so every judge opening the live URL
+    hits a cold container. Fetching the geo summary during startup — in the
+    background, so readiness is not delayed — means the dropdowns are served
+    from memory by the time the browser has loaded the page and asked for them.
+    """
+    async def warm():
+        try:
+            count = await asyncio.to_thread(facility_repo.prewarm)
+            log.info("Geography cache warmed: %d rows", count)
+        except Exception:
+            log.exception("Geography prewarm failed; will load on first request")
+
+    task = asyncio.create_task(warm())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="StockPulse", version="0.4.0", lifespan=lifespan)
 
 
 @app.get("/healthz")
