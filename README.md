@@ -67,11 +67,12 @@ This matters more than any feature list, and the full accounting is in
 | **200,438 facilities** | Every health facility in India, from the government directory. 37 states, 668 districts. Not a sample |
 | **HMIS 2019-20 seasonality** | Real monthly morbidity from MoHFW, driving demand shape |
 | **385 medicines** | The complete National List of Essential Medicines 2022 |
-| **A trained ARIMA_PLUS model** | 3,362 series, trained in BigQuery ML on the project's own history |
+| **A trained ARIMA_PLUS model** | 2,794 series, trained in BigQuery ML on the project's own history |
 | **Supply-chain logic** | Lead-time reorder points, VEN ranking, FEFO, ATC substitution, reporting consistency — all computed |
 | **Generated** | Daily dispensing, receipt and expiry events for 200 PHCs — anchored to the real HMIS series above, and labelled as generated everywhere it appears |
 
-HMIS is loaded for **five states — 137 districts, 18,084 rows** — and 6,989 of
+HMIS is loaded for **five states — 137 districts, 34,524 rows across 21 demand
+drivers** — and 6,989 of
 the 7,092 demo PHCs (98.5%) join to it. Forecasting is active where sufficient
 signal exists: every essential medicine is tracked, 39 are forecast, across 200
 PHCs spanning 5 states and 116 districts.

@@ -29,9 +29,9 @@ worth anything next to the arms it beats.
 
 **What moves between districts is a 12-number vector per ATC class.** Nothing
 else. No facility rows, no patient records, no stock levels, no names. The
-vector is a multiplier per calendar month — 1.53 in September for
-antimalarials, say — and it is derived from aggregate HMIS reporting that is
-already public. That is the whole point of the design: the useful signal in
+vector is a multiplier per calendar month — 1.61 in September for
+antimalarials, against confirmed cases — and it is derived from aggregate HMIS
+reporting that is already public. That is the whole point of the design: the useful signal in
 demand data is its *shape*, and shape does not identify anyone.
 
 **Matching is demographic, not geographic.** Each district is profiled on

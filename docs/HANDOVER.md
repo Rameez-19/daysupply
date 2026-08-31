@@ -33,7 +33,7 @@ difference will overclaim in the submission.
 | **Facility counts / geography** | **REAL** | 37 states, 668 districts, from `daysupply.facilities` |
 | **HMIS seasonality reference** | **REAL** | `demand_reference`, 4,092 rows — **Telangana only** |
 | **Item catalogue** | **PARTIAL** | 15 items loaded; full NLEM 2022 catalogue is Block B |
-| **Demand forecast** | **REAL** | BigQuery ML ARIMA_PLUS, 3,362 series, served via `ML.FORECAST` |
+| **Demand forecast** | **REAL** | BigQuery ML ARIMA_PLUS, 2,794 series, served via `ML.FORECAST` |
 | **Stock-out alerts** | **REAL** | Lead-time reorder points, VEN-weighted. `get_demo_alerts` deleted |
 | **Transfer recommendations** | **REAL** | FEFO batch selection, ATC substitution. `get_demo_recommendations` deleted |
 | **Reporting consistency** | **REAL** | Measured from `count` events in the ledger |
@@ -230,6 +230,18 @@ positives by species; Childhood Diseases; Inpatient counts.
 These map to drug categories — hypertension outpatients drive antihypertensive
 demand, malaria positives drive antimalarial demand. **This is the real
 seasonality signal.**
+
+> **Read §16 of `Data/README.md` before trusting any driver.** The first
+> implementation selected indicators by matching words in the HMIS label, and
+> that was wrong in three places. The malaria driver summed *blood smears
+> examined* with *cases confirmed*, making it 99.8% testing effort; "Childhood
+> Diseases" averaged fourteen unrelated conditions; "Inpatient counts" added
+> deaths to admissions. Drivers are now selected by **item code** in
+> `ingestion/hmis_drivers.py`, each with its clinical rationale.
+>
+> Three items previously recorded as having no available driver — paracetamol,
+> ibuprofen and IFA — turned out to have exact indicators in the same file that
+> had simply never been parsed. The full file carries 368 data items, not 11.
 
 ⚠️ 2019-20 = April 2019 to March 2020. Feb–Mar 2020 is COVID-affected. Use
 April–December or smooth explicitly.

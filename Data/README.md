@@ -268,8 +268,15 @@ starting point; the overrides carry sections that mix criticality.
    volumes vary 12× to 1750× across Telangana, so this carries genuine
    geographic variation.
 3. **Seasonality** — the month-by-month shape of the same real HMIS series,
-   joined per district. Generated antimalarial demand peaks in September at
-   1.53× baseline against the real HMIS figure of 1.58×.
+   joined per district.
+
+> **Corrected.** This section previously read: "Generated antimalarial demand
+> peaks in September at 1.53x baseline against the real HMIS figure of 1.58x."
+> The match was real, but both sides of it were the seasonality of **blood
+> smears collected**, not of malaria. The driver was 99.8% testing effort — see
+> §16.1. Against confirmed cases the September index is **1.61x** and the
+> annual amplitude is 3.9x rather than 1.6x, so the corrected model carries
+> roughly three times the monsoon swing the old one did.
 
 **Why Telangana only.** `demand_reference` holds HMIS 2019-20 for 31 Telangana
 districts and nowhere else, because only `Telangana.xls` has been parsed. A
@@ -486,7 +493,7 @@ it is not padded to look better.
 | Item catalogue | **Real** — all 385 NLEM 2022 medicines |
 | ATC codes | **Real where assigned** — 264 of 385, null never guessed |
 | VEN classification | **Derived** — ours, not MoHFW's (§12) |
-| Forecasts | **Real** — BigQuery ML ARIMA_PLUS, 3,362 series |
+| Forecasts | **Real** — BigQuery ML ARIMA_PLUS, 2,794 series |
 | Reorder points, safety stock | **Computed** from forecast, observed variance, lead time |
 | Lead time | **Real distance, assumed conversion** (§11) |
 | Alerts, transfers, substitutes | **Computed** — no fabricated path remains |
@@ -494,3 +501,181 @@ it is not padded to look better.
 | Waste avoided | **Measured counterfactual** (§14) |
 | Daily stock events | **Generated** from real anchors (§9) |
 | `captures_today` | **Generated** — the only one left, and flagged in the API |
+
+---
+
+## 16. Demand driver corrections
+
+The 11 indicators originally parsed were selected by matching words in the HMIS
+label. The full file carries **368 distinct data items**; parsing all of them
+revealed that substring matching had been quietly wrong in three places, and
+that three items marked "no driver available" had exact indicators sitting
+unparsed. Drivers are now defined by **item code** in
+`ingestion/hmis_drivers.py`, and every item assignment carries a clinical
+rationale in `ingestion/build_items.py`.
+
+### 16.1 Malaria — the driver was 99.8% testing effort
+
+The worst of the three, and it affected four **Vital** medicines.
+
+`Malaria` matched any label containing the word. In Maharashtra that summed:
+
+| Code | Item | Annual |
+|---|---|---|
+| 11.1.1.a | Total Blood Smears Examined for Malaria | 14,525,963 |
+| 11.1.2.a | RDT conducted for Malaria | 1,087,554 |
+| 11.1.1.b/c, 11.1.2.b/c | **Confirmed positives** | **24,831** |
+| 10.10, 14.4.1, 16.8.1/2 | Childhood, inpatient, deaths | 12,220 |
+
+**Confirmed cases were 0.16% of the total.** Antimalarial demand was being
+forecast from how many blood smears a district collected — a function of
+surveillance campaigns, not of disease. Substring matching cannot distinguish
+"Total Blood Smears Examined for Malaria" from "Malaria (RDT) test positive".
+
+Correcting it changes the answer, not just the provenance:
+
+| Series | Apr | Jun | Aug | Sep | Dec | Feb | Amplitude |
+|---|---|---|---|---|---|---|---|
+| Old (tests-dominated) | 0.79 | 0.86 | 1.25 | 1.23 | 0.97 | 0.90 | **1.6x** |
+| New (confirmed cases) | 0.43 | 0.68 | 1.70 | 1.61 | 0.78 | 0.69 | **3.9x** |
+
+Monsoon antimalarial demand was understated roughly threefold.
+
+**Species split: clinically ideal, rejected on data density.** India's NVBDCP
+protocol is chloroquine plus 14-day primaquine for *P. vivax* and artemisinin
+combination therapy for *P. falciparum*, so splitting the driver by species
+would be more correct still. It was tested and rejected: *P. falciparum*
+positives are **69-76% zero cells** at district-month level (6,833 cases across
+35 districts x 12 months), and the resulting index carried a 4.25x January
+spike that is small-number noise rather than seasonality. All four antimalarials
+therefore share **combined confirmed positives**, and the species split is
+carried in the per-item consumption rates instead — chloroquine is dosed for the
+~71% of cases that are vivax, the ACTs for the ~29% that are falciparum.
+
+### 16.2 "Childhood Diseases" was fourteen conditions in one number
+
+`Childhood Diseases` summed 10.1-10.14: pneumonia, asthma, sepsis, diphtheria,
+pertussis, tetanus, TB, AFP, measles, malaria, diarrhoea, dysentery, URI and
+severe acute malnutrition. Four medicines shared it, none of which treats more
+than one of those conditions.
+
+| Item | Was | Now | Why |
+|---|---|---|---|
+| ORS, Zinc Sulphate | Childhood Diseases | 10.11 + 10.12 **diarrhoea** | Diarrhoea is the sole indication for both under the WHO/MoHFW protocol |
+| Amoxicillin | Childhood Diseases | 10.1 + 10.13 **pneumonia and URI** | WHO first-line for childhood pneumonia |
+| Vitamin A | Childhood Diseases | 9.8.1-9.8.3 **doses administered** | Counts the doses actually given; supplementation follows the immunisation calendar, not disease |
+| Albendazole | Childhood Diseases | 9.10 **children dewormed** | Counts the doses actually given; deworming is a campaign |
+
+The aggregate hid genuinely opposite seasonality. Diarrhoea peaks in the
+pre-monsoon (Jul 1.41); pneumonia and URI peak in the cool months (Sep-Jan,
+1.05-1.23). Averaging them produced a flat 1.4x curve that matched neither.
+
+**Albendazole is the clearest case.** Against the aggregate it looked flat.
+Against doses actually administered it has an amplitude of **22.3x**, with a
+**6.24x spike in August** — National Deworming Day, which India runs on
+10 August and 10 February. That is a real, planned, forecastable procurement
+event that the old driver made invisible.
+
+### 16.3 "Inpatient counts" summed admissions, deaths and bed-days
+
+`Inpatient counts` matched anything containing "inpatient", which mixed
+admissions (14.3.x), disease-specific admissions (14.4.x, double-counting the
+same patients), inpatient deaths (14.9.x) and childhood diarrhoea inpatients.
+Deaths are an outcome, not an admission, and adding them to admissions is not a
+quantity that means anything.
+
+| Item | Was | Now | Why |
+|---|---|---|---|
+| Ringer lactate, Sodium chloride | Inpatient counts | 14.3.1.a/b + 14.3.2.a/b **total admissions** | IV fluid use scales with bed occupancy regardless of diagnosis |
+| Ceftriaxone | Inpatient counts | 14.4.1-14.4.8 **infectious admissions** | Empirical IV antibiotics go to infectious admissions, not the whole ward |
+
+Splitting them matters: total admissions is nearly flat at 1.3x, while
+infectious admissions swing 2.5x with a monsoon peak (Aug 1.49). Ceftriaxone
+demand follows the second, not the first.
+
+### 16.4 Three items had exact indicators that were never parsed
+
+Block B recorded these as having "no plausible HMIS driver" and gave them a
+flat seasonal baseline. That conclusion was drawn from the 11 selected
+indicators, not from the file.
+
+| Item | Was | Now | Amplitude |
+|---|---|---|---|
+| Paracetamol, Ibuprofen | flat baseline | 14.2.1 **Allopathic outpatient attendance** | 1.5x |
+| Ferrous Salt + Folic acid | flat baseline | 1.2.4 **PW given the 180-tablet IFA course** | 1.1x |
+| Oxytocin | flat baseline | 2.2 **Institutional deliveries** | 1.2x |
+| Magnesium sulphate | flat baseline | 1.3.2 **Eclampsia cases managed** | 1.2x |
+| Salbutamol | flat baseline | 10.2 + 14.4.4 **asthma and COPD** | 1.5x |
+
+`14.2.1 Allopathic — Outpatient attendance` is a total-OPD count of 105 million
+attendances in Maharashtra alone. The Block B note that "HMIS publishes no
+total-OPD indicator, only disease-specific columns" was wrong.
+
+**Magnesium sulphate is the clearest instance of choosing indication over
+convenience.** Deliveries (2.2) would have been the obvious driver and is what
+was first proposed. Magnesium sulphate treats eclampsia, not delivery: there
+are 1,787,203 institutional deliveries in Maharashtra against 5,482 eclampsia
+cases, so deliveries would have overstated demand roughly **300-fold**. The
+narrower indicator is right even though it is a much smaller and noisier series.
+
+**Ferrous Salt + Folic acid** now has the most direct relationship in the
+catalogue: indicator 1.2.4 counts women given the full 180-tablet course, so
+the driver counts the drug itself rather than a proxy for it.
+
+### 16.5 Two marginal additions
+
+Aspirin, glyceryl trinitrate and atorvastatin now also count acute cardiac
+emergencies (14.6.5) alongside cardiac outpatients; clopidogrel also counts
+cerebrovascular emergencies (14.6.7). Both drug groups are started in either
+setting.
+
+### 16.6 What is deliberately excluded, and why
+
+Recorded so each exclusion is a decision on the record rather than an omission
+(`DELIBERATE_EXCLUSIONS` in `ingestion/hmis_drivers.py`):
+
+| Code | Excluded from | Because |
+|---|---|---|
+| 11.1.1.a, 11.1.2.a | Malaria | Testing effort, not cases |
+| 14.9.1, 14.9.2 | Inpatient admissions | Deaths are an outcome, not an admission |
+| 16.8.1, 16.8.2 | Malaria | Deaths are an outcome, not a case |
+| 14.10 | Inpatient admissions | Bed-days; would double-count against admissions |
+| 14.2.2 | Outpatient attendance | AYUSH is not served by the allopathic essential-medicines supply chain |
+
+### 16.7 Consumption rates replaced the even split
+
+The old generator split a driver's patients evenly between the items sharing it
+and multiplied by a per-unit-type constant. That could not survive a total-OPD
+driver: 105 million attendances and 5,482 eclampsia cases cannot be treated
+alike. Each item now carries `units_per_driver_event` — how much of it one unit
+of its driver consumes — combining the clinical course with the share of that
+driver's patients who receive that particular drug. Every value and its
+reasoning is in `FORECAST_DRIVERS` in `ingestion/build_items.py`.
+
+A second assumption is separated out: `PHC_SHARE` in
+`ingestion/hmis_drivers.py` records how much of a district's activity for each
+driver actually flows through a PHC, since sub-centres do much of antenatal
+care and district hospitals take most admissions. Keeping it separate means the
+consumption rates stay clinically pure — 180 tablets is a course, not a blend.
+
+### 16.8 Consequences
+
+**The training threshold moved.** Correct drivers produce lower and more
+realistic volumes: a PHC uses about seventeen ampoules of oxytocin a month, not
+one a day. At the old 300-day threshold — calibrated when coarse aggregates
+inflated volumes — only 1,421 series qualified and the Vital antimalarials
+dropped out entirely. The threshold is now **180 days**, half the year showing
+dispensing activity, giving **2,794 series**, 56% of the 5,000-series ceiling.
+
+**Thirteen districts now generate no demand for a driver at all**, because they
+reported zero for it in every month of the year — ten for confirmed malaria,
+three for eclampsia. Those facility-item pairs produce no events and are not
+forecast. That is the honest outcome of a narrow driver, not an error: a
+district with no confirmed malaria has no antimalarial demand.
+
+**Therapeutic substitution is now structurally limited.** At ATC level 4, only
+one class — P01BA, chloroquine and primaquine — contains more than one forecast
+item, so substitution has almost nothing to match on within the forecast subset.
+The logic is implemented and correct; it simply fires rarely. Widening to ATC
+level 3 would create matches, but that is exactly the change that paired zinc
+with magnesium sulphate (§12a), so it stays at level 4.

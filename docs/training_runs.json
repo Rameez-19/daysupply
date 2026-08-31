@@ -108,5 +108,25 @@
     "duration_seconds": 14.1,
     "bytes_processed": 1293764496,
     "job_id": "6d479537-30e8-477f-882e-8b0f7127b5f5"
+  },
+  {
+    "trained_at": "2026-08-31T14:33:04.416826+00:00",
+    "model": "daysupply.daysupply.demand_forecast",
+    "series": 1421,
+    "horizon": 30,
+    "min_days": 300,
+    "duration_seconds": 18.3,
+    "bytes_processed": 757319928,
+    "job_id": "d766cb66-f71f-4fda-99eb-daa86c26b2a9"
+  },
+  {
+    "trained_at": "2026-08-31T14:34:54.865674+00:00",
+    "model": "daysupply.daysupply.demand_forecast",
+    "series": 2794,
+    "horizon": 30,
+    "min_days": 180,
+    "duration_seconds": 21.8,
+    "bytes_processed": 757319928,
+    "job_id": "b7806d15-3b99-43b6-8534-76c64f7137d1"
   }
 ]

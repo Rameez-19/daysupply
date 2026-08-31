@@ -32,7 +32,8 @@ def _load() -> list[dict]:
     return run_query(
         f"""
         SELECT item_id, display_name, local_name_in, spoken_variants,
-               unit, ven_class, atc_code, demand_driver, is_forecast_item
+               unit, ven_class, atc_code, demand_driver, is_forecast_item,
+               units_per_driver_event, driver_rationale
         FROM `{PROJECT}.{DATASET}.{PROJECT_TABLE}`
         ORDER BY display_name
         """,

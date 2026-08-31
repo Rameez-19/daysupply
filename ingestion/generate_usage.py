@@ -26,8 +26,15 @@ curve.
 * *Day-of-week shape* — no HMIS data is daily. Weekday/weekend pattern applied
   from standard PHC operating practice.
 * *Daily noise* — Poisson around the expected value.
-* *Units per patient* — how many tablets one patient consumes. Clinical dosing
-  convention, not data.
+* *Units per driver event* — how much of a medicine one unit of its driver
+  consumes: a 14-day zinc course is 14 tablets, one delivery needs about one
+  ampoule of oxytocin. Clinical dosing convention combined with the share of
+  that driver's patients who receive this particular drug. Stated per item in
+  `ingestion/build_items.py` with its reasoning.
+* *PHC share of district activity* — the generator divides a district total by
+  the number of PHCs in it, so it needs to know how much of that activity a PHC
+  actually sees. Sub-centres do much of antenatal care; district hospitals take
+  most admissions. Per driver in `ingestion/hmis_drivers.py`.
 * *Batch expiry* — no expiry data exists in any public Indian dataset. Each
   receipt is given a shelf life drawn from a fixed-seed distribution: most
   batches arrive with 12-24 months, **15% short-dated at 2-5 months**, and
@@ -64,6 +71,8 @@ import numpy as np
 import pandas as pd
 from google.cloud import bigquery
 
+from ingestion.hmis_drivers import phc_share
+
 PROJECT = os.getenv("GCP_PROJECT", "daysupply")
 DATASET = os.getenv("BQ_DATASET", "daysupply")
 LOCATION = os.getenv("BQ_LOCATION", "asia-south1")
@@ -83,22 +92,6 @@ MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
 # The month whose reported value is a lockdown artefact rather than seasonality.
 COVID_MONTH = "March"
 CLEAN_BASELINE_MONTHS = MONTH_NAMES[3:12]  # April - December
-
-# Units one patient consumes per encounter. Clinical dosing convention.
-UNITS_PER_PATIENT_BY_UNIT = {
-    "tablet": 30.0,    # one month of a chronic oral medicine
-    "capsule": 15.0,
-    "sachet": 4.0,
-    "vial": 1.0,
-    "bottle": 1.0,
-    "tube": 1.0,
-    "inhaler": 1.0,
-    "unit": 1.0,
-    "patch": 1.0,
-}
-# Acute courses are shorter than a chronic month's supply.
-ACUTE_DRIVERS = {"Malaria", "Childhood Diseases", "Inpatient counts"}
-ACUTE_UNITS_PER_PATIENT = 10.0
 
 # Monday..Sunday. PHC outpatient load is heaviest early in the week and
 # minimal on Sunday.
@@ -150,16 +143,6 @@ REPORT_PERIOD_DAYS = 30
 COMPLIANCE_START = (0.72, 0.99)    # per-facility baseline, uniform
 COMPLIANCE_DECAY = (0.00, 0.055)   # probability lost per period
 
-# Baseline daily units at an average PHC for items with no HMIS driver.
-FLAT_BASE_DAILY = {
-    "PARACETAMOL": 140.0,
-    "IBUPROFEN": 60.0,
-    "FERROUS-SALT-A-FOLIC-ACID-B": 110.0,
-    "OXYTOCIN": 4.0,
-    "MAGNESIUM-SULPHATE": 1.5,
-    "SALBUTAMOL": 12.0,
-}
-
 SCHEMA = [
     bigquery.SchemaField("event_id", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("facility_id", "STRING", mode="REQUIRED"),
@@ -188,7 +171,8 @@ def fetch_inputs(client: bigquery.Client):
     """).to_dataframe()
 
     items = client.query(f"""
-        SELECT item_id, display_name, unit, demand_driver, ven_class
+        SELECT item_id, display_name, unit, demand_driver, ven_class,
+               units_per_driver_event
         FROM {ITEMS}
         WHERE is_forecast_item
         ORDER BY item_id
@@ -289,7 +273,6 @@ def generate(dry_run: bool = False) -> None:
     scale = build_scale(hmis, phc_counts)
 
     # Items sharing a driver split that driver's patients between them.
-    driver_counts = items["demand_driver"].value_counts().to_dict()
 
     rng = np.random.default_rng(SEED)
     dates = pd.date_range(end=END_DATE, periods=DAYS, freq="D")
@@ -352,26 +335,23 @@ def generate(dry_run: bool = False) -> None:
 
             if driver and not pd.isna(driver):
                 key = (state, district_key, driver)
-                monthly_patients = scale.get(key)
+                monthly_events = scale.get(key)
                 season = seasonality.get(key)
-                if monthly_patients is None or season is None:
+                if monthly_events is None or season is None:
                     unmatched.add(key)
                     continue
-                share = 1.0 / driver_counts.get(driver, 1)
-                per_patient = (
-                    ACUTE_UNITS_PER_PATIENT if driver in ACUTE_DRIVERS
-                    else UNITS_PER_PATIENT_BY_UNIT.get(unit, 1.0)
-                )
+                # Units of this item consumed per unit of its driver, times the
+                # share of the district's driver activity a PHC actually sees.
+                rate = float(item["units_per_driver_event"] or 0.0)
                 base_daily = (
-                    monthly_patients * share * per_patient / days_in_month
+                    monthly_events * phc_share(driver) * rate / days_in_month
                 )
                 seasonal = season[month_index]
             else:
-                # Flat baseline — no HMIS indicator counts these patients.
-                base_daily = np.full(
-                    DAYS, FLAT_BASE_DAILY.get(item["item_id"], 20.0)
-                )
-                seasonal = np.ones(DAYS)
+                # No forecast item should reach here: every one now has a real
+                # HMIS driver. Fail loudly rather than silently flat-lining.
+                raise SystemExit(
+                    f"{item['item_id']} is a forecast item with no driver")
 
             expected = base_daily * seasonal * dow * fac_mult
             expected = np.clip(expected, 0.0, None)
@@ -498,10 +478,19 @@ def generate(dry_run: bool = False) -> None:
                   f"{total_rows:,} rows")
 
     if unmatched:
-        raise SystemExit(
-            "Missing HMIS series for: " + ", ".join(sorted(
-                f"{s}/{d}/{i}" for s, d, i in unmatched)[:10])
-        )
+        # A district that reported no confirmed malaria all year genuinely has
+        # no antimalarial demand, and narrower drivers mean more such cases:
+        # eclampsia and confirmed malaria are rare events, so some districts
+        # report zero every month. Those facility-items get no events, fall
+        # below the 300-day training threshold, and are simply not forecast —
+        # which is the honest outcome, not an error.
+        by_driver: dict[str, int] = {}
+        for _, _, driver in unmatched:
+            by_driver[driver] = by_driver.get(driver, 0) + 1
+        print(f"\n  {len(unmatched)} district x driver combinations report "
+              "zero all year, so no demand was generated for them:")
+        for driver, n in sorted(by_driver.items(), key=lambda kv: -kv[1]):
+            print(f"    {driver:48s} {n:>3} districts")
 
     frame = pd.concat(chunks, ignore_index=True)
     frame["event_ts"] = pd.to_datetime(frame["event_ts"], utc=True)

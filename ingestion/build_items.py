@@ -81,93 +81,198 @@ DESIRABLE_OVERRIDES = {
 }
 
 # ---------------------------------------------------------------------------
-# Forecast subset — item -> HMIS indicator in `demand_reference`
+# Forecast subset — driver, consumption rate, and the clinical reason
 # ---------------------------------------------------------------------------
-# The 11 indicators actually available are the only permitted values. An item
-# is only given a driver where the clinical link is direct: the indicator counts
-# the patients who consume that medicine.
-FORECAST_DRIVERS: dict[str, str] = {
-    # Malaria — RDT and microscopy positives drive antimalarial consumption
-    "Chloroquine": "Malaria",
-    "Primaquine": "Malaria",
-    "Artemether (A) + Lumefantrine (B)": "Malaria",
-    "Artesunate (A) + Sulphadoxine - Pyrimethamine (B)": "Malaria",
+# Each entry is (HMIS driver, units consumed per driver event, why this driver).
+#
+# `units_per_driver_event` replaces the earlier scheme, which split a driver's
+# patients evenly between the items sharing it and multiplied by a generic
+# per-unit figure. That could not survive the arrival of a total-outpatient
+# driver: 105 million OPD attendances and 5,482 eclampsia cases cannot be
+# treated the same way. An explicit rate per item states, in the open, how much
+# of a medicine one unit of its driver actually consumes.
+#
+# The rates encode two things at once: the clinical course (a 14-day zinc
+# course is 14 tablets) and the share of that driver's patients who receive
+# this particular medicine (four antihypertensives share one driver, so each
+# gets a fraction of a month's supply). Both are assumptions and both are
+# stated in `Data/README.md`.
+FORECAST_DRIVERS: dict[str, tuple[str, float, str]] = {
 
-    # Hypertension outpatients drive antihypertensive consumption
-    "Amlodipine": "Outpatient - Hypertension",
-    "Enalapril": "Outpatient - Hypertension",
-    "Hydrochlorothiazide": "Outpatient - Hypertension",
-    "Telmisartan": "Outpatient - Hypertension",
+    # --- Antimalarials: confirmed cases, not tests conducted ---------------
+    # India's NVBDCP protocol: chloroquine + 14-day primaquine for P. vivax,
+    # artemisinin combination therapy for P. falciparum. Vivax is roughly 71%
+    # of confirmed cases in this data, and the rates carry that split.
+    "Chloroquine": (
+        "Malaria - confirmed cases", 18.0,
+        "25-tablet adult course for the ~71% of confirmed cases that are "
+        "P. vivax, for which chloroquine is first-line."),
+    "Primaquine": (
+        "Malaria - confirmed cases", 10.0,
+        "14-day radical cure for P. vivax hypnozoites, plus a single "
+        "gametocytocidal dose for falciparum cases."),
+    "Artemether (A) + Lumefantrine (B)": (
+        "Malaria - confirmed cases", 3.5,
+        "24-tablet ACT course for the ~29% of cases that are P. falciparum, "
+        "shared with the other ACT presentation."),
+    "Artesunate (A) + Sulphadoxine - Pyrimethamine (B)": (
+        "Malaria - confirmed cases", 1.0,
+        "Three-day ACT course for P. falciparum, the alternative "
+        "presentation to artemether-lumefantrine."),
 
-    # Diabetes outpatients drive oral hypoglycaemics and insulin
-    "Metformin": "Outpatient - Diabetes",
-    "Glimepiride": "Outpatient - Diabetes",
-    "Insulin (Soluble)": "Outpatient - Diabetes",
+    # --- Hypertension: one month's supply, split across the four agents ----
+    "Amlodipine": (
+        "Outpatient - Hypertension", 12.0,
+        "30-tablet month for the ~40% of hypertensive reviews started on a "
+        "calcium channel blocker."),
+    "Enalapril": (
+        "Outpatient - Hypertension", 6.0,
+        "30-tablet month for the ~20% started on an ACE inhibitor."),
+    "Hydrochlorothiazide": (
+        "Outpatient - Hypertension", 4.5,
+        "30-tablet month for the ~15% started on a thiazide."),
+    "Telmisartan": (
+        "Outpatient - Hypertension", 7.5,
+        "30-tablet month for the ~25% started on an ARB."),
 
-    # Epilepsy outpatients drive anticonvulsants
-    "Phenytoin": "Outpatient - Epilepsy",
-    "Carbamazepine": "Outpatient - Epilepsy",
-    "Sodium Valproate": "Outpatient - Epilepsy",
-    "Phenobarbitone": "Outpatient - Epilepsy",
+    # --- Diabetes ----------------------------------------------------------
+    "Metformin": (
+        "Outpatient - Diabetes", 18.0,
+        "30-tablet month for the ~60% of diabetic reviews on metformin, "
+        "which is first-line."),
+    "Glimepiride": (
+        "Outpatient - Diabetes", 7.5,
+        "30-tablet month for the ~25% on a sulfonylurea."),
+    "Insulin (Soluble)": (
+        "Outpatient - Diabetes", 0.15,
+        "One vial per month for the ~15% of reviews requiring insulin."),
 
-    # Mental illness outpatients drive psychotropics
-    "Amitriptyline": "Outpatient - Mental illness",
-    "Fluoxetine": "Outpatient - Mental illness",
-    "Haloperidol": "Outpatient - Mental illness",
-    "Risperidone": "Outpatient - Mental illness",
+    # --- Epilepsy ----------------------------------------------------------
+    "Phenytoin": (
+        "Outpatient - Epilepsy", 9.0,
+        "30-tablet month for the ~30% of epilepsy reviews on phenytoin."),
+    "Carbamazepine": (
+        "Outpatient - Epilepsy", 9.0,
+        "30-tablet month for the ~30% on carbamazepine."),
+    "Sodium Valproate": (
+        "Outpatient - Epilepsy", 7.5,
+        "30-tablet month for the ~25% on valproate."),
+    "Phenobarbitone": (
+        "Outpatient - Epilepsy", 4.5,
+        "30-tablet month for the ~15% on phenobarbitone."),
 
-    # Ophthalmic outpatients drive topical eye medicines
-    "Timolol": "Outpatient - Ophthalmic Related",
+    # --- Mental illness ----------------------------------------------------
+    "Amitriptyline": (
+        "Outpatient - Mental illness", 9.0,
+        "30-tablet month for the ~30% of psychiatric reviews on a tricyclic."),
+    "Fluoxetine": (
+        "Outpatient - Mental illness", 7.5,
+        "30-capsule month for the ~25% on an SSRI."),
+    "Haloperidol": (
+        "Outpatient - Mental illness", 7.5,
+        "30-tablet month for the ~25% on a typical antipsychotic."),
+    "Risperidone": (
+        "Outpatient - Mental illness", 6.0,
+        "30-tablet month for the ~20% on an atypical antipsychotic."),
 
-    # Dental outpatients drive oral antiseptic use
-    "Chlorhexidine": "Outpatient - Dental",
+    # --- Eye and dental ----------------------------------------------------
+    "Timolol": (
+        "Outpatient - Ophthalmic Related", 0.05,
+        "One bottle lasting a month for the ~5% of ophthalmic attendances "
+        "that are glaucoma, which is what timolol treats."),
+    "Chlorhexidine": (
+        "Outpatient - Dental", 0.10,
+        "One bottle for the ~10% of dental attendances prescribed an "
+        "antiseptic mouthwash."),
 
-    # Acute heart disease outpatients drive antiplatelets, nitrates, statins
-    "Acetylsalicylic acid": "Outpatient - Acute Heart Diseases",
-    "Glyceryl trinitrate": "Outpatient - Acute Heart Diseases",
-    "Atorvastatin": "Outpatient - Acute Heart Diseases",
+    # --- Cardiovascular ----------------------------------------------------
+    "Acetylsalicylic acid": (
+        "Cardiac - outpatient and emergency", 24.0,
+        "30-tablet month for the ~80% of cardiac presentations started on "
+        "aspirin."),
+    "Glyceryl trinitrate": (
+        "Cardiac - outpatient and emergency", 0.20,
+        "Sublingual tablets are used as needed and one supply lasts several "
+        "months, so consumption per presentation is low."),
+    "Atorvastatin": (
+        "Cardiac - outpatient and emergency", 18.0,
+        "30-tablet month for the ~60% started on a statin."),
+    "Clopidogrel": (
+        "Stroke - outpatient and emergency", 21.0,
+        "30-tablet month for the ~70% of stroke presentations on "
+        "secondary-prevention antiplatelet therapy."),
 
-    # Stroke outpatients drive secondary-prevention antiplatelets
-    "Clopidogrel": "Outpatient - Stroke (Paralysis)",
+    # --- Paediatric --------------------------------------------------------
+    "Oral rehydration salts": (
+        "Childhood diarrhoea", 4.0,
+        "Four sachets per episode, the WHO/MoHFW standard course."),
+    "Zinc Sulphate": (
+        "Childhood diarrhoea", 14.0,
+        "14-day zinc course co-administered with ORS under the WHO/MoHFW "
+        "diarrhoea protocol."),
+    "Amoxicillin": (
+        "Childhood pneumonia and respiratory infection", 15.0,
+        "Five-day twice-daily paediatric course; amoxicillin is WHO "
+        "first-line for childhood pneumonia."),
+    "Vitamin A": (
+        "Vitamin A doses administered", 1.0,
+        "One dose per dose administered — the driver counts the "
+        "administration itself, so the rate is exactly one."),
+    "Albendazole": (
+        "Albendazole doses administered", 1.0,
+        "One tablet per child dewormed — again the driver counts the "
+        "administration itself."),
+    "Salbutamol": (
+        "Asthma and COPD", 20.0,
+        "About a month of relief medication per obstructive airway "
+        "presentation."),
 
-    # Childhood disease counts drive paediatric staples
-    "Oral rehydration salts": "Childhood Diseases",
-    "Zinc Sulphate": "Childhood Diseases",
-    "Amoxicillin": "Childhood Diseases",
-    "Vitamin A": "Childhood Diseases",
-    "Albendazole": "Childhood Diseases",
+    # --- Inpatient ---------------------------------------------------------
+    "Ceftriaxone": (
+        "Inpatient admissions - infectious", 6.0,
+        "Three days of twice-daily empirical intravenous cover per "
+        "infectious admission."),
+    "Ringer lactate": (
+        "Inpatient admissions - total", 2.0,
+        "Two units of resuscitation fluid per admission on average."),
+    "Sodium chloride": (
+        "Inpatient admissions - total", 3.0,
+        "Three units per admission; normal saline is the default carrier "
+        "fluid as well as a resuscitation fluid."),
 
-    # Inpatient counts drive injectables and IV fluids
-    "Ceftriaxone": "Inpatient counts",
-    "Ringer lactate": "Inpatient counts",
-    "Sodium chloride": "Inpatient counts",
+    # --- General outpatient load -------------------------------------------
+    "Paracetamol": (
+        "Outpatient attendance - allopathic", 1.20,
+        "About 15% of outpatient attendances leave with roughly eight "
+        "tablets of paracetamol. It is the highest-volume item in the "
+        "catalogue and tracks total attendance, not any one diagnosis."),
+    "Ibuprofen": (
+        "Outpatient attendance - allopathic", 0.35,
+        "A smaller share of attendances than paracetamol, mostly "
+        "musculoskeletal pain."),
+
+    # --- Maternal ----------------------------------------------------------
+    "Ferrous Salt (A)+ Folic acid (B)": (
+        "IFA tablets issued to pregnant women", 180.0,
+        "The driver counts women given the full 180-tablet course, so the "
+        "rate is the course itself. This is the most direct item-to-driver "
+        "relationship in the catalogue: the indicator counts the drug."),
+    "Oxytocin": (
+        "Institutional deliveries", 1.20,
+        "One ampoule per delivery for active management of the third stage "
+        "of labour, with an allowance for repeat doses in haemorrhage."),
+    "Magnesium sulphate": (
+        "Eclampsia cases managed", 14.0,
+        "The Pritchard regimen is a 14 g loading dose plus maintenance, so "
+        "roughly 14 ampoules per eclampsia case. Institutional deliveries "
+        "would have overstated demand around 300-fold."),
 }
 
-# Forecast items with NO honest HMIS driver. These are high-volume PHC staples
-# that must be forecast, but `demand_reference` contains no indicator that
-# counts the patients who consume them. They get a flat seasonal baseline —
-# explicitly, rather than being quietly attached to a loosely related indicator.
-FLAT_BASELINE_ITEMS: dict[str, str] = {
-    "Paracetamol":
-        "Universal antipyretic and analgesic. Consumption tracks total "
-        "outpatient attendance, and HMIS publishes no total-OPD indicator — "
-        "only disease-specific columns.",
-    "Ibuprofen":
-        "General analgesic, mostly musculoskeletal pain. No HMIS indicator "
-        "counts that presentation.",
-    "Ferrous Salt (A)+ Folic acid (B)":
-        "Driven by the antenatal and anaemia control programmes, not by any "
-        "outpatient morbidity column present in demand_reference.",
-    "Oxytocin":
-        "Driven by the number of deliveries. HMIS reports delivery counts, but "
-        "they are not among the 11 indicators parsed into demand_reference.",
-    "Magnesium sulphate":
-        "Driven by eclampsia and pre-eclampsia cases during delivery. Same gap "
-        "as Oxytocin.",
-    "Salbutamol":
-        "Driven by asthma and COPD presentations. demand_reference holds no "
-        "respiratory outpatient indicator.",
-}
+# Every forecast item now has a real driver. The flat-baseline fallback is
+# gone: the three items that needed it — paracetamol and ibuprofen on total
+# outpatient attendance, IFA on tablets issued — turned out to have exact
+# indicators in the HMIS file that had simply never been parsed.
+FLAT_BASELINE_ITEMS: dict[str, str] = {}
 
 # ---------------------------------------------------------------------------
 # Spoken variants — how health workers actually say these names
@@ -281,7 +386,10 @@ def build_items() -> list[dict]:
     items: list[dict] = []
     for row in merged.values():
         name = row["medicine"]
-        driver = FORECAST_DRIVERS.get(name)
+        spec = FORECAST_DRIVERS.get(name)
+        driver = spec[0] if spec else None
+        units_per_event = spec[1] if spec else None
+        rationale = spec[2] if spec else None
         is_forecast = name in FORECAST_DRIVERS or name in FLAT_BASELINE_ITEMS
         items.append({
             "item_id": make_item_id(name, taken),
@@ -292,6 +400,8 @@ def build_items() -> list[dict]:
             "unit": infer_unit(row["dosage_forms"]),
             "ven_class": classify_ven(name, row["section_no"]),
             "demand_driver": driver,
+            "units_per_driver_event": units_per_event,
+            "driver_rationale": rationale,
             "is_forecast_item": is_forecast,
             "flat_baseline_reason": FLAT_BASELINE_ITEMS.get(name),
             "nlem_section": int(row["section_no"]) if str(
@@ -321,16 +431,19 @@ def _assert_curation_matches(items: list[dict]) -> None:
             + ", ".join(missing)
         )
 
-    allowed_indicators = {
-        "Malaria", "Childhood Diseases", "Inpatient counts",
-        "Outpatient - Acute Heart Diseases", "Outpatient - Dental",
-        "Outpatient - Diabetes", "Outpatient - Epilepsy",
-        "Outpatient - Hypertension", "Outpatient - Mental illness",
-        "Outpatient - Ophthalmic Related", "Outpatient - Stroke (Paralysis)",
-    }
-    bad = set(FORECAST_DRIVERS.values()) - allowed_indicators
+    from ingestion.hmis_drivers import DRIVERS
+    bad = {spec[0] for spec in FORECAST_DRIVERS.values()} - set(DRIVERS)
     if bad:
-        raise SystemExit(f"Unknown HMIS indicators in driver map: {sorted(bad)}")
+        raise SystemExit(f"Unknown HMIS drivers in item map: {sorted(bad)}")
+
+    missing_rate = [n for n, s in FORECAST_DRIVERS.items() if not s[1]]
+    if missing_rate:
+        raise SystemExit(f"Items with no consumption rate: {missing_rate}")
+    missing_why = [n for n, s in FORECAST_DRIVERS.items() if not s[2]]
+    if missing_why:
+        raise SystemExit(
+            "Every driver assignment must carry a clinical rationale; "
+            f"missing for: {missing_why}")
 
 
 def get_items_data() -> list[dict]:
@@ -348,6 +461,8 @@ SCHEMA = [
     bigquery.SchemaField("unit", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("ven_class", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("demand_driver", "STRING"),
+    bigquery.SchemaField("units_per_driver_event", "FLOAT64"),
+    bigquery.SchemaField("driver_rationale", "STRING"),
     bigquery.SchemaField("is_forecast_item", "BOOL", mode="REQUIRED"),
     bigquery.SchemaField("flat_baseline_reason", "STRING"),
     bigquery.SchemaField("nlem_section", "INT64"),

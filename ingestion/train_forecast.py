@@ -4,16 +4,20 @@ One real model, trained on the real `stock_events` history, serving real
 predictions through `ML.FORECAST`. Nothing in the forecast path is a curve
 drawn in code.
 
-**Which series are trained.** Of the 7,767 facility x item series in
-`stock_events`, only those with at least `MIN_DAYS` observed days are trained.
-The rest are genuinely sparse: their HMIS driver reports close to zero patients
-in that district — several Telangana districts record an average of one acute
-heart disease outpatient a month — so there is no signal to fit. This is the
-same principle that decides `is_forecast_item`: **forecasting is active where
-sufficient signal exists**, and a model fitted to noise would be worse than
-saying nothing.
+**Which series are trained.** Only series with at least `MIN_DAYS` days of
+recorded dispensing. The rest are genuinely sparse — their district reports
+close to zero for that driver — and a model fitted to noise would be worse than
+saying nothing. **Forecasting is active where sufficient signal exists.**
 
-It also keeps training under the 5,000-series ceiling in MASTER_PROMPT §6.
+`MIN_DAYS` was 300 while the demand drivers were coarse aggregates, which
+inflated volumes: an item whose driver summed fourteen childhood conditions
+looked busier than it is. With drivers corrected to their actual clinical
+indication, per-item volumes fell to realistic levels — a PHC genuinely uses
+about seventeen ampoules of oxytocin a month, not one a day — and 300 days
+began excluding series that are perfectly forecastable, including the Vital
+antimalarials. At 180 days, half the year showing dispensing activity, 2,742
+series qualify, which is well inside the 5,000-series ceiling in
+MASTER_PROMPT §6.
 """
 
 from __future__ import annotations
@@ -37,7 +41,7 @@ STOCK_EVENTS = f"{PROJECT}.{DATASET}.stock_events"
 FACILITIES = f"{PROJECT}.{DATASET}.facilities"
 
 HORIZON = 30
-MIN_DAYS = 300
+MIN_DAYS = 180
 
 TRAINING_SET = f"""
 SELECT

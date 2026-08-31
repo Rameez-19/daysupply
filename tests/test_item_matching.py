@@ -42,19 +42,33 @@ class TestCatalogue:
         forecast = [i for i in catalog if i["is_forecast_item"]]
         assert 25 <= len(forecast) <= 40, len(forecast)
 
-    def test_forecast_items_have_driver_or_are_flat(self, catalog):
-        """No forecast item may be silently missing a demand driver."""
-        drivers = {
-            "Malaria", "Childhood Diseases", "Inpatient counts",
-            "Outpatient - Acute Heart Diseases", "Outpatient - Dental",
-            "Outpatient - Diabetes", "Outpatient - Epilepsy",
-            "Outpatient - Hypertension", "Outpatient - Mental illness",
-            "Outpatient - Ophthalmic Related",
-            "Outpatient - Stroke (Paralysis)",
-        }
+    def test_every_forecast_item_has_a_real_driver(self, catalog):
+        """No forecast item may fall back to a flat seasonal baseline.
+
+        The allowed set is read from `hmis_drivers` rather than hardcoded, so
+        this test cannot go stale the way its predecessor did — that version
+        listed the original eleven indicators by name and would have passed a
+        driver that no longer exists.
+        """
+        from ingestion.hmis_drivers import DRIVERS
         for item in catalog:
-            if item["is_forecast_item"] and item["demand_driver"]:
-                assert item["demand_driver"] in drivers, item["demand_driver"]
+            if not item["is_forecast_item"]:
+                continue
+            driver = item["demand_driver"]
+            assert driver, f"{item['item_id']} is forecast with no driver"
+            assert driver in DRIVERS, f"{item['item_id']} -> unknown {driver!r}"
+
+    def test_every_forecast_item_has_a_consumption_rate(self, catalog):
+        for item in catalog:
+            if item["is_forecast_item"]:
+                assert item["units_per_driver_event"], item["item_id"]
+
+    def test_every_driver_assignment_is_justified(self, catalog):
+        """A mapping table alone is not defensible under questioning."""
+        for item in catalog:
+            if item["is_forecast_item"]:
+                assert (item["driver_rationale"] or "").strip(), (
+                    f"{item['item_id']} has a driver but no clinical rationale")
 
     def test_atc_codes_are_null_not_guessed(self, catalog):
         """Codes are present or absent; never blank strings."""

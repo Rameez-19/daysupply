@@ -217,8 +217,26 @@ class TestSubstitution:
                    COUNT(*) AS total
             FROM `daysupply.daysupply.substitutes`
         """)
-        assert rows[0]["total"] > 0, "no substitutes were found at all"
+        # Substitutes can legitimately be zero. At ATC level 4 only one class
+        # among the forecast items — P01BA, chloroquine and primaquine —
+        # contains more than one, so there is often nothing to match on. What
+        # must never happen is a substitute from a different class.
         assert rows[0]["mismatched"] == 0
+
+    def test_substitution_is_confined_to_classes_with_siblings(self):
+        """Substitution can only fire where two forecast items share a class."""
+        rows = run_query("""
+            SELECT COUNT(*) AS classes_with_siblings FROM (
+              SELECT atc_class
+              FROM `daysupply.daysupply.reorder_status`
+              WHERE atc_class IS NOT NULL
+              GROUP BY atc_class
+              HAVING COUNT(DISTINCT item_id) > 1
+            )
+        """)
+        # If this ever reaches zero, substitution is dead code and the UI
+        # should stop advertising it.
+        assert rows[0]["classes_with_siblings"] >= 1
 
     def test_substitute_is_never_the_same_item(self):
         rows = run_query("""

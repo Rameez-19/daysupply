@@ -165,9 +165,9 @@ def render() -> None:
 
     cards = [
         ("Real data at national scale",
-         "200,438 facilities · 37 states\n668 districts · full NLEM 2022\nHMIS 2019-20, 5 states, 137 districts"),
+         "200,438 facilities · 37 states\n668 districts · full NLEM 2022\nHMIS 2019-20, 21 drivers, 137 districts"),
         ("Forecasting",
-         "BigQuery ML ARIMA_PLUS\n3,362 series, trained on this data\nseasonality joined from real HMIS"),
+         "BigQuery ML ARIMA_PLUS\n2,794 series, trained on this data\nseasonality joined from real HMIS"),
         ("Supply-chain logic",
          "lead-time reorder points · VEN ranking\nFEFO with batch expiry\nATC substitution · reporting score"),
     ]

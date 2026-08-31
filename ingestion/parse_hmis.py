@@ -10,6 +10,14 @@ Only the `Total [(A+B) or (C+D)]` column is read.
 `admin_l1` is carried on every row. Without it districts collide: 33 district
 names recur across states, and Delhi's "Central" is not Maharashtra's.
 
+**Indicators are selected by item code, never by matching words in the label.**
+The full file carries 368 distinct data items; the 21 drivers built from them
+are defined in `ingestion/hmis_drivers.py`, each with its codes and the
+clinical reason it drives the medicines assigned to it. Substring matching is
+what previously made the malaria driver 99.8% blood-smear counts — it cannot
+tell "Total Blood Smears Examined for Malaria" from "Malaria (RDT) test
+positive".
+
 **COVID window.** HMIS 2019-20 runs April 2019 to March 2020. India's national
 lockdown began 25 March 2020, so March is a service-disruption artefact rather
 than seasonality. Every consumer of this table (`generate_usage.py`,
@@ -33,6 +41,8 @@ from pathlib import Path
 import pandas as pd
 from google.cloud import bigquery
 
+from ingestion.hmis_drivers import ALL_CODES, DRIVERS, driver_for_code
+
 PROJECT = os.getenv("GCP_PROJECT", "daysupply")
 DATASET = os.getenv("BQ_DATASET", "daysupply")
 LOCATION = os.getenv("BQ_LOCATION", "asia-south1")
@@ -47,20 +57,6 @@ MONTHS = ["April", "May", "June", "July", "August", "September", "October",
           "November", "December", "January", "February", "March"]
 
 TOTAL_COLUMN = "Total [(A+B) or (C+D)]"
-
-# The eight outpatient indicators are matched on an exact substring; the other
-# three need fuzzier handling because HMIS splits them across sub-rows
-# (malaria by species, inpatients by ward).
-OUTPATIENT_INDICATORS = [
-    "Outpatient - Diabetes",
-    "Outpatient - Hypertension",
-    "Outpatient - Epilepsy",
-    "Outpatient - Mental illness",
-    "Outpatient - Dental",
-    "Outpatient - Ophthalmic Related",
-    "Outpatient - Acute Heart Diseases",
-    "Outpatient - Stroke (Paralysis)",
-]
 
 # District spellings that differ between the HMIS files and the facility
 # master. The source value is preserved in `admin_l2`; `district_key` carries
@@ -91,20 +87,9 @@ SCHEMA = [
 ]
 
 
-def map_indicator(raw: str) -> str | None:
-    """Map an HMIS row label to one of the 11 indicators, or None to skip."""
-    text = str(raw).strip()
-    low = text.lower()
-    for key in OUTPATIENT_INDICATORS:
-        if key.lower() in low:
-            return key
-    if "malaria" in low:
-        return "Malaria"
-    if "child" in low and "disease" in low:
-        return "Childhood Diseases"
-    if "inpatient" in low:
-        return "Inpatient counts"
-    return None
+def clean_code(value) -> str:
+    """HMIS item codes arrive quoted, e.g. \'11.1.1.a\'."""
+    return str(value).strip().strip("'").strip()
 
 
 def parse_state(state: str, path: Path | None = None) -> pd.DataFrame:
@@ -122,7 +107,7 @@ def parse_state(state: str, path: Path | None = None) -> pd.DataFrame:
           f"{time.perf_counter() - started:.0f}s", flush=True)
 
     districts = frame.iloc[:, 0]
-    indicators = frame.iloc[:, 2]
+    codes = frame.iloc[:, 1]
 
     month_columns = {
         month: (month, TOTAL_COLUMN)
@@ -134,17 +119,19 @@ def parse_state(state: str, path: Path | None = None) -> pd.DataFrame:
         raise ValueError(f"{state}: missing month columns {sorted(missing)}")
 
     records: list[dict] = []
+    seen_codes: set[str] = set()
     for position in range(len(frame)):
         district = districts.iloc[position]
-        indicator_raw = indicators.iloc[position]
-        if pd.isna(district) or pd.isna(indicator_raw):
+        code = clean_code(codes.iloc[position])
+        if pd.isna(district) or not code or code == "nan":
             continue
         district = str(district).strip()
         if district.lower() in NON_DISTRICT:
             continue
-        indicator = map_indicator(indicator_raw)
+        indicator = driver_for_code(code)
         if indicator is None:
             continue
+        seen_codes.add(code)
 
         for month, column in month_columns.items():
             value = pd.to_numeric(frame.iloc[position][column], errors="coerce")
@@ -169,8 +156,12 @@ def parse_state(state: str, path: Path | None = None) -> pd.DataFrame:
                   "month", "indicator"], as_index=False)["value"]
         .sum()
     )
+    missing = ALL_CODES - seen_codes
+    if missing:
+        print(f"    WARNING: {len(missing)} expected codes absent: "
+              f"{', '.join(sorted(missing)[:8])}")
     print(f"    {result['admin_l2'].nunique()} districts, "
-          f"{result['indicator'].nunique()} indicators, {len(result):,} rows")
+          f"{result['indicator'].nunique()} drivers, {len(result):,} rows")
     return result
 
 
@@ -235,9 +226,10 @@ def load(frames: list[pd.DataFrame], replace_states: list[str]) -> None:
         if row.months != 12:
             raise SystemExit(
                 f"{row.admin_l1} has {row.months} months, expected 12")
-        if row.indicators != 11:
+        if row.indicators != len(DRIVERS):
             raise SystemExit(
-                f"{row.admin_l1} has {row.indicators} indicators, expected 11")
+                f"{row.admin_l1} has {row.indicators} drivers, "
+                f"expected {len(DRIVERS)}")
 
 
 if __name__ == "__main__":
