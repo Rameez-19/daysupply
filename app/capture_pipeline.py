@@ -19,6 +19,13 @@ Anything below `CONFIDENCE_THRESHOLD`, or whose spoken name does not resolve to
 an item, goes to the review queue instead of the ledger. A wrong item_id is the
 worst output this system can produce, so the bias is always toward asking a
 human.
+
+**Three resource types, still one pipeline.** "twelve beds occupied, three free"
+and "two ANMs present today" are extractions like any other: same confidence
+gate, same review queue, same record shape. They differ only in what the spoken
+name resolves against — a medicine resolves against the NLEM catalogue, a bed or
+a cadre against a small fixed vocabulary. Routing is by `resource_type`, and
+`medicine` remains the default so nothing already written changes.
 """
 
 from __future__ import annotations
@@ -40,6 +47,67 @@ CONFIDENCE_THRESHOLD = 0.6
 BARCODE_CONFIDENCE = 1.0
 
 SOURCES = ("barcode", "voice", "chat")
+
+RESOURCE_TYPES = ("medicine", "bed", "personnel")
+
+# Beds and staff cadres are a closed vocabulary, unlike the 385-medicine
+# catalogue, so they are matched against these directly. Keys are what a health
+# worker actually says.
+BED_VOCABULARY = {
+    "bed": "BED-INPATIENT",
+    "beds": "BED-INPATIENT",
+    "inpatient bed": "BED-INPATIENT",
+    "bistar": "BED-INPATIENT",
+    "palang": "BED-INPATIENT",
+    "day care bed": "BED-DAYCARE",
+    "daycare bed": "BED-DAYCARE",
+}
+
+PERSONNEL_VOCABULARY = {
+    "doctor": "STAFF-DOCTOR",
+    "medical officer": "STAFF-DOCTOR",
+    "mo": "STAFF-DOCTOR",
+    "daktar": "STAFF-DOCTOR",
+    "nurse": "STAFF-NURSE",
+    "staff nurse": "STAFF-NURSE",
+    "anm": "STAFF-NURSE",
+    "gnm": "STAFF-NURSE",
+    "nars": "STAFF-NURSE",
+    "pharmacist": "STAFF-PHARMACIST",
+    "compounder": "STAFF-PHARMACIST",
+    "dawa wala": "STAFF-PHARMACIST",
+    "health assistant male": "STAFF-HA-MALE",
+    "male health assistant": "STAFF-HA-MALE",
+    "mpw": "STAFF-HA-MALE",
+    "health assistant female": "STAFF-HA-FEMALE",
+    "female health assistant": "STAFF-HA-FEMALE",
+    "lhv": "STAFF-HA-FEMALE",
+}
+
+
+def match_resource(local_name: str, resource_type: str) -> str | None:
+    """Resolve a spoken name to a resource id for its type.
+
+    Medicines go to the full NLEM catalogue matcher; beds and staff cadres go
+    to their closed vocabulary. Both return None rather than guessing, and both
+    feed the same review queue.
+    """
+    if resource_type == "medicine":
+        return item_catalog.match(local_name)
+
+    vocabulary = (BED_VOCABULARY if resource_type == "bed"
+                  else PERSONNEL_VOCABULARY)
+    spoken = " ".join((local_name or "").lower().split())
+    if not spoken:
+        return None
+    if spoken in vocabulary:
+        return vocabulary[spoken]
+    # A phrase like "two nurses present" contains the term; take the longest
+    # vocabulary entry it contains so "health assistant female" beats "female".
+    hits = [term for term in vocabulary if term in spoken]
+    if hits:
+        return vocabulary[max(hits, key=len)]
+    return None
 
 
 class ExtractionError(RuntimeError):
@@ -63,7 +131,8 @@ def parse_model_json(raw: str) -> list[dict]:
 
 
 def route(extractions: list[dict], facility_id: str, source: str,
-          raw_transcript: str | None = None) -> dict:
+          raw_transcript: str | None = None,
+          resource_type: str = "medicine") -> dict:
     """Match, gate on confidence, and split into events and review items.
 
     This is the single path. `handle_capture` (voice), `handle_chat` and
@@ -72,10 +141,12 @@ def route(extractions: list[dict], facility_id: str, source: str,
     """
     if source not in SOURCES:
         raise ValueError(f"Unknown capture source: {source}")
+    if resource_type not in RESOURCE_TYPES:
+        raise ValueError(f"Unknown resource type: {resource_type}")
 
     now = datetime.now(timezone.utc).isoformat()
     result: dict = {"events": [], "review_queue": [], "errors": [],
-                    "source": source}
+                    "source": source, "resource_type": resource_type}
 
     for raw in extractions:
         try:
@@ -90,10 +161,11 @@ def route(extractions: list[dict], facility_id: str, source: str,
 
         # Server-side matching, always. The model is never asked for an
         # item_id — a hallucinated drug code is the worst failure available.
-        item_id = item_catalog.match(local_name)
+        item_id = match_resource(local_name, resource_type)
 
         record = {
             "event_id": str(uuid.uuid4()),
+            "resource_type": resource_type,
             "facility_id": facility_id,
             "local_name": local_name,
             "item_id": item_id,
@@ -107,9 +179,13 @@ def route(extractions: list[dict], facility_id: str, source: str,
         }
 
         if item_id is None:
-            record["review_reason"] = (
-                f"'{local_name}' did not match any medicine in the National "
-                "List at the matching threshold")
+            what = {
+                "medicine": "any medicine in the National List at the "
+                            "matching threshold",
+                "bed": "a known bed type",
+                "personnel": "a known staff cadre",
+            }[resource_type]
+            record["review_reason"] = f"'{local_name}' did not match {what}"
             result["review_queue"].append(record)
         elif confidence < CONFIDENCE_THRESHOLD:
             record["review_reason"] = (

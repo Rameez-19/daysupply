@@ -53,6 +53,7 @@ SCHEMA = [
     bigquery.SchemaField("admin_l2", "STRING"),
     bigquery.SchemaField("admin_l3", "STRING"),
     bigquery.SchemaField("facility_type", "STRING"),
+    bigquery.SchemaField("location_type", "STRING"),
     bigquery.SchemaField("latitude", "FLOAT64"),
     bigquery.SchemaField("longitude", "FLOAT64"),
     bigquery.SchemaField("population_served", "INT64"),
@@ -157,6 +158,13 @@ def build_facilities() -> tuple[pd.DataFrame, int]:
     )
     out["facility_type"] = (
         df["Facility Type"].fillna("unknown").astype(str).str.strip().str.lower()
+    )
+    # Rural or urban. The IPHS bed norm gives urban PHCs day-care beds rather
+    # than in-patient ones, so this drives bed capacity. Two source rows carry
+    # "Public", a value belonging to a different column; they are left NULL.
+    out["location_type"] = (
+        df["Location Type"].astype(str).str.strip().str.lower()
+        .where(lambda s: s.isin(["rural", "urban"]))
     )
     out["latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
     out["longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")

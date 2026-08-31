@@ -330,3 +330,26 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 0.82rem; color: var(--gray-500, #64748b);
   line-height: 1.5; margin: 4px 0 0;
 }
+
+
+/* ── Resource selector panel (beds, personnel) ──────────────────────── */
+.resource-tiles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px; margin-bottom: 10px;
+}
+.resource-tile {
+  border: 1px solid var(--border, #e2e8f0); border-radius: 8px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 2px;
+}
+.resource-tile.rt-alert { border-color: #ef4444; background: #fef2f2; }
+.rt-value { font-size: 1.35rem; font-weight: 800; color: #1e3a8a; }
+.rt-label {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--gray-500, #64748b); font-weight: 600;
+}
+.resource-note {
+  font-size: 0.78rem; line-height: 1.5; margin: 10px 0 6px;
+  padding: 8px 10px; border-radius: 6px;
+  background: var(--gray-50, #f8fafc);
+  border: 1px dashed var(--border, #e2e8f0);
+}

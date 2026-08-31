@@ -679,3 +679,174 @@ item, so substitution has almost nothing to match on within the forecast subset.
 The logic is implemented and correct; it simply fires rarely. Widening to ATC
 level 3 would create matches, but that is exactly the change that paired zinc
 with magnesium sulphate (§12a), so it stays at level 4.
+
+---
+
+## 17. Beds and personnel — the multi-resource dimension
+
+`stock_events` became `resource_events` with a `resource_type` of `medicine`,
+`bed` or `personnel`. Medicines are unchanged: every existing row became
+`resource_type = 'medicine'`, a view named `stock_events` still serves exactly
+what it served before, and the migration refused to finish until row counts,
+quantity totals, facility counts and event types all matched on both sides.
+
+Medicines remain the deep vertical. Beds and personnel ride the same table, the
+same capture pipeline and the same redistribution shape — they are a dimension,
+not a second product.
+
+### 17.1 Bed capacity — REAL, the government's own norm
+
+| | |
+|---|---|
+| Source | `Data/India/03_PHC_IPHS_Guidelines-2022.pdf`, pages 46-47 |
+| Provenance | Indian Public Health Standards 2022, Volume III |
+
+Quoted verbatim from page 46:
+
+> "There should be two essential and four desirable beds in a PHC while six
+> essential and four desirable beds [at 24x7 PHCs]"
+
+and from the table on page 47: *2 Beds | 4 Beds | 2 Day care Beds | 6 Beds |
+4 Beds*, with the note *"The desirable will be over and above the essential
+beds."*
+
+| Facility type | Essential | Desirable | Total |
+|---|---|---|---|
+| Rural PHC | 2 | 4 | 6 |
+| Urban PHC | 2 day-care | 4 day-care | 6 day-care |
+| 24x7 PHC | 6 | 4 | 10 |
+
+This is **not an estimate**. It is the published standard applied to real
+facilities using the facility master's own rural/urban flag: **29,733 PHCs,
+178,398 beds, of which 148,554 are overnight** and 29,844 are day-care in
+4,974 urban PHCs.
+
+**Which PHCs run 24x7 is an explicit unknown.** Nothing in the facility master
+records it and nothing else in the data implies it. Every PHC therefore carries
+the standard 2+4 norm and `is_24x7` is left NULL. Applying the 6+4 norm to a
+facility that does not run 24x7 would overstate its capacity threefold, and
+there is no basis to choose. A test asserts `is_24x7` is never populated, so
+this cannot be quietly filled in later.
+
+`location_type` had to be backfilled: the original loader dropped the source
+file's `Location Type` column. Two of the 200,438 rows carry `Public` in that
+column — a value belonging to *Type Of Facility* that has leaked across — and
+are left unclassified rather than assigned a location.
+
+### 17.2 Bed occupancy — GENERATED, anchored to real admissions
+
+Occupancy is generated and disclosed exactly as medicine consumption is. It is
+driven by the district's real HMIS `Inpatient admissions - total` volume
+(codes 14.3.1.a/b, 14.3.2.a/b), divided by the real number of PHCs and scaled by
+the same `PHC_SHARE` assumption, converted to beds occupied by an assumed
+average length of stay of 1.8 days. Urban day-care beds turn over three times a
+day and are never counted as occupied overnight.
+
+Occupancy is then **capped at capacity** — a PHC with six beds cannot have seven
+occupied — and demand above capacity becomes a `turned_away` event. That is the
+referral signal: **2,430 patients turned away across the year**, 392 in the last
+30 days, at 45 of 200 facilities. Mean occupancy is 30.5%.
+
+### 17.3 Personnel — establishment and vacancy REAL, attendance GENERATED
+
+| | |
+|---|---|
+| Source | Rural Health Statistics 2017, `Data/India/*_2017.csv` |
+| Loaded by | `ingestion/load_staffing.py` → `daysupply.staffing` |
+| Coverage | 5 cadres x 36 states = 180 rows |
+
+Every file carries Required, Sanctioned, In Position, Vacant and Shortfall.
+The vacancy rates are real, and they are the point — a vacant post cannot be
+attended, so vacancy sets the ceiling on attendance before any behaviour is
+modelled:
+
+| Cadre | Sanctioned | In position | Vacancy |
+|---|---|---|---|
+| Doctor (allopathic), PHC | 33,968 | 27,124 | **20.1%** |
+| Nursing staff, PHC+CHC | 77,956 | 70,738 | 9.3% |
+| Pharmacist, PHC+CHC | 29,315 | 25,193 | 14.1% |
+| Health assistant (male), PHC | 22,753 | 12,288 | **46.0%** |
+| Health assistant (female), PHC | 21,748 | 14,267 | **34.4%** |
+
+Pharmacists are the case the pitch already cites: sanctioned strength (29,315)
+is *below* required (31,274), so even a fully staffed network is short.
+
+**The denominator differs by cadre.** `allo-doc-PHCS` and the two
+`assistant-*-PHCS` files count PHC posts and divide by PHCs;
+`nursing-staff-PHCS-CHCS` and `pharmacists-PHCS-CHCS` cover PHCs **and** CHCs
+and divide by both. Dividing the latter two by PHCs alone would overstate
+per-PHC nursing and pharmacist strength by roughly 18%.
+
+**Granularity is state-level, exactly like `population_served`.** Per-facility
+sanctioned strength is a state x cadre average and is an assumption, not a
+measurement.
+
+**36 state-cadre rows report more staff in post than sanctioned posts** —
+contractual NHM staff over and above sanctioned strength, across all five
+cadres. Those are kept as reported rather than clipped. A related defect was
+caught by a test: rounding the sanctioned and in-position ratios independently
+can invert their order (1.4 sanctioned rounds to 1 while 1.6 in position rounds
+to 2), which claimed staff for posts that do not exist. Attendance is now capped
+at the establishment except where the source itself reports over-establishment.
+
+**Vintage.** This is the 2017 edition. MoHFW now publishes the same series as
+*Health Dynamics of India (Infrastructure and Human Resources)*. The 2017 data
+is internally consistent and adequate for a vacancy baseline; it should be
+refreshed before any real deployment, and `source_year` is carried on every row
+so nothing can quote it as current.
+
+**Attendance is generated:** a fixed-seed per-facility propensity, lower on
+Sundays, with occasional multi-day absences for leave, training and deputation.
+Network attendance runs at 56% of sanctioned posts — the product of real vacancy
+and generated presence.
+
+### 17.4 One nurse per six beds — the cross-resource link
+
+CHC IPHS 2022, page 60:
+
+> "As per the Indian Nursing Council (INC) regulations, there should be one
+> nurse for every six beds in the [inpatient department]"
+
+tabulated on page 118 as *Staff Nurses — Nurse:Bed ratio — IPD 1:6*. Note this
+is an **INC regulation cited by IPHS**, not an IPHS-originated norm.
+
+This makes a facility's nursing requirement a function of its bed capacity,
+which is the cross-resource logic the brief asks for. It is a *different*
+quantity from sanctioned strength: the bed-derived requirement is 1.0 nurse per
+PHC, the sanctioned establishment averages 2.45. Both are carried, and no
+forecast facility is sanctioned below the bed-based norm.
+
+### 17.5 What each resource does when it is short
+
+The three resources behave differently and produce different outputs:
+
+| Resource | Shortage produces | Why |
+|---|---|---|
+| Medicine | **Transfer** between facilities | Stock moves |
+| Bed | **Referral route** | A bed cannot be moved to a patient in useful time |
+| Personnel | **Reallocation** of a person | Staff move, but as people |
+
+Bed referrals: 24 facilities need one, 35 routes found, mean 33 km.
+
+**Staff reallocation currently returns nothing, and that is the honest answer.**
+Two things prevent it, both real:
+
+1. **Four of the five cadres are sanctioned one post per PHC.** No facility can
+   donate its only doctor, pharmacist or health assistant. Those vacancies need
+   recruitment, not redistribution — reallocation is structurally the wrong
+   instrument for them.
+2. **The forecast facilities are deliberately far apart.** They were chosen to
+   span 116 districts for geographic reach, so the nearest nursing-short and
+   nursing-adequate pair is **1,218 km** apart against a 60 km limit.
+
+The engine is correct and the API returns the reason rather than an empty list.
+A district-dense deployment would produce candidates; this facility set cannot.
+
+### 17.6 Beds and personnel are not ARIMA-forecast
+
+Adding 200 bed series and 1,000 personnel series would take the trained model
+from 2,794 to roughly 3,994 of the 5,000-series ceiling, for two quantities that
+are bounded small integers — a PHC has six beds and about one doctor. A time
+series model adds nothing over an occupancy rate and an attendance rate, and it
+would spend most of the remaining headroom. **Medicines keep ARIMA; beds and
+personnel use rule-based statistics.** The series count is unchanged at 2,794.

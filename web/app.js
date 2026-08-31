@@ -69,6 +69,10 @@ let currentDistrict = "";
 let currentPHC = "";
 let currentChartDays = 7;
 let currentPHCName = "";
+// Medicines, beds and personnel are one platform with one filter bar, not
+// three products with three pages. The selector swaps what the panel shows;
+// the geography filters above it are untouched.
+let currentResource = "medicine";
 
 // Geography comes from BigQuery — the real 200,438-facility national master.
 // Nothing here is hardcoded; the dropdowns list what is actually in the data.
@@ -190,6 +194,7 @@ function refreshAll() {
   loadChart(currentChartDays);
   loadLeadTimeContrast();
   loadReporting();
+  loadResourcePanel();
 }
 
 // Make filter functions global
@@ -540,6 +545,7 @@ function showCaptureResult(data) {
   loadChart(7);
   loadLeadTimeContrast();
   loadReporting();
+  loadResourcePanel();
 })();
 
 // ===== Analytics Charts =====
@@ -729,6 +735,92 @@ async function loadReporting() {
   } catch (e) {
     console.error('Reporting failed', e);
     el.innerHTML = '<p class="chart-note">Reporting data unavailable.</p>';
+  }
+}
+
+async function onResourceChange() {
+  currentResource = document.getElementById('resource-filter').value;
+  await loadResourcePanel();
+  refreshAll();
+}
+window.onResourceChange = onResourceChange;
+
+function pct(v) { return v === null || v === undefined ? '—' : `${Math.round(v)}%`; }
+
+async function loadResourcePanel() {
+  const panel = document.getElementById('resource-panel');
+  const title = document.getElementById('resource-panel-title');
+  const body  = document.getElementById('resource-panel-body');
+  if (!panel || !body) return;
+
+  if (currentResource === 'medicine') {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  body.innerHTML = '<p class="chart-note">Loading…</p>';
+
+  try {
+    if (currentResource === 'bed') {
+      title.textContent = '🛏️ Bed capacity and pressure';
+      const res = await fetch(`/api/v1/beds?${getFilterParams()}&limit=8`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { summary, facilities } = await res.json();
+      const ref = await (await fetch(`/api/v1/beds/referrals?${getFilterParams()}&limit=4`)).json();
+
+      body.innerHTML = `
+        <div class="resource-tiles">
+          <div class="resource-tile"><span class="rt-value">${(summary.total_beds ?? 0).toLocaleString('en-IN')}</span><span class="rt-label">beds (IPHS norm)</span></div>
+          <div class="resource-tile"><span class="rt-value">${pct(summary.mean_occupancy_pct)}</span><span class="rt-label">mean occupancy</span></div>
+          <div class="resource-tile"><span class="rt-value">${(summary.free_beds ?? 0).toLocaleString('en-IN')}</span><span class="rt-label">free beds</span></div>
+          <div class="resource-tile ${summary.turned_away_30d > 0 ? 'rt-alert' : ''}"><span class="rt-value">${(summary.turned_away_30d ?? 0).toLocaleString('en-IN')}</span><span class="rt-label">turned away, 30d</span></div>
+        </div>
+        <p class="chart-note">${summary.capacity_basis || ''}</p>
+        ${(ref.referrals || []).length ? `
+        <p class="resource-note"><strong>Beds cannot be transferred.</strong>
+          Where a facility is full, the answer is a referral route:</p>
+        <div class="reporting-list">${ref.referrals.map(r => `
+          <div class="reporting-row">
+            <span>${r.from_facility_name} <span class="contrast-sub">${r.from_turned_away} turned away</span></span>
+            <span class="reporting-pct">→ ${r.to_facility_name}, ${r.to_free_beds} free, ${r.distance_km} km</span>
+          </div>`).join('')}</div>` : ''}
+        <div class="reporting-list">${(facilities || []).slice(0, 6).map(f => `
+          <div class="reporting-row">
+            <span>${f.facility_name} <span class="contrast-sub">${f.district}${f.beds_are_day_care ? ' · day-care' : ''}</span></span>
+            <span class="reporting-pct ${f.status === 'over_capacity' ? 'silent' : f.status === 'under_pressure' ? 'partial' : ''}">${f.mean_occupied}/${f.bed_capacity} beds · ${pct((f.occupancy_rate || 0) * 100)}</span>
+          </div>`).join('')}</div>`;
+    } else {
+      title.textContent = '👥 Personnel establishment and attendance';
+      const res = await fetch(`/api/v1/personnel?${getFilterParams()}&limit=8`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { summary, facilities } = await res.json();
+      const alloc = await (await fetch(`/api/v1/personnel/reallocation?${getFilterParams()}&limit=4`)).json();
+
+      body.innerHTML = `
+        <div class="resource-tiles">
+          <div class="resource-tile"><span class="rt-value">${(summary.sanctioned_posts ?? 0).toLocaleString('en-IN')}</span><span class="rt-label">sanctioned posts</span></div>
+          <div class="resource-tile"><span class="rt-value">${pct(summary.attendance_pct)}</span><span class="rt-label">attendance</span></div>
+          <div class="resource-tile ${summary.unstaffed > 0 ? 'rt-alert' : ''}"><span class="rt-value">${summary.unstaffed ?? 0}</span><span class="rt-label">unstaffed posts</span></div>
+          <div class="resource-tile"><span class="rt-value">${summary.critically_short ?? 0}</span><span class="rt-label">critically short</span></div>
+        </div>
+        <p class="chart-note">${summary.basis || ''}</p>
+        <div class="reporting-list">${(summary.by_cadre || []).map(c => `
+          <div class="reporting-row">
+            <span>${c.cadre} <span class="contrast-sub">${c.sanctioned_posts} posts · ${pct(c.vacancy_pct)} vacant (RHS 2017)</span></span>
+            <span class="reporting-pct ${c.attendance_pct < 50 ? 'silent' : c.attendance_pct < 80 ? 'partial' : ''}">${pct(c.attendance_pct)} attending</span>
+          </div>`).join('')}</div>
+        ${alloc.constraint ? `
+        <p class="resource-note"><strong>No reallocation is possible here.</strong>
+          ${alloc.constraint.why}</p>` : `
+        <div class="reporting-list">${(alloc.reallocations || []).map(r => `
+          <div class="reporting-row">
+            <span>${r.to_facility_name} needs a ${r.cadre}</span>
+            <span class="reporting-pct">← ${r.from_facility_name}, ${r.distance_km} km</span>
+          </div>`).join('')}</div>`}`;
+    }
+  } catch (e) {
+    console.error('Resource panel failed', e);
+    body.innerHTML = '<p class="chart-note">Resource data unavailable.</p>';
   }
 }
 

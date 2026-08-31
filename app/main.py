@@ -16,6 +16,7 @@ from app import supply
 from app import exchange
 from app import items
 from app import quality
+from app import resources
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
 from app.capture import handle_capture, handle_chat
@@ -358,6 +359,61 @@ async def export_stock_events(state: str = "", district: str = "",
     """
     return _facility_query(exchange.export_stock_events, state, district, phc,
                            days, limit)
+
+
+@app.get("/api/v1/resources/coverage")
+async def fetch_resource_coverage():
+    """What the platform tracks per resource type."""
+    return _facility_query(resources.coverage)
+
+
+@app.get("/api/v1/beds")
+async def fetch_beds(state: str = "", district: str = "", phc: str = "",
+                     limit: int = 50):
+    """Bed capacity, occupancy and pressure.
+
+    Capacity is the IPHS 2022 norm applied to real facilities; occupancy is
+    generated from real HMIS admission volumes.
+    """
+    return {
+        "summary": _facility_query(resources.bed_summary, state, district, phc),
+        "facilities": _facility_query(
+            resources.bed_facilities, state, district, phc, limit),
+    }
+
+
+@app.get("/api/v1/beds/referrals")
+async def fetch_bed_referrals(state: str = "", district: str = "",
+                              phc: str = "", limit: int = 50):
+    """Where to send a patient when a facility has no bed.
+
+    Beds cannot be transferred, so bed pressure produces a referral route
+    rather than a movement.
+    """
+    return {
+        "referrals": _facility_query(
+            resources.bed_referrals, state, district, phc, limit),
+    }
+
+
+@app.get("/api/v1/personnel")
+async def fetch_personnel(state: str = "", district: str = "", phc: str = "",
+                          limit: int = 50):
+    """Staffing establishment, vacancy and attendance."""
+    return {
+        "summary": _facility_query(
+            resources.staff_summary, state, district, phc),
+        "facilities": _facility_query(
+            resources.staff_facilities, state, district, phc, limit),
+    }
+
+
+@app.get("/api/v1/personnel/reallocation")
+async def fetch_staff_reallocation(state: str = "", district: str = "",
+                                   phc: str = "", limit: int = 50):
+    """Proposed staff moves, with an explanation when none are possible."""
+    return _facility_query(
+        resources.staff_reallocation, state, district, phc, limit)
 
 
 @app.get("/api/v1/data-quality")
