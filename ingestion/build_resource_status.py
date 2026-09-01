@@ -196,7 +196,8 @@ SELECT
                                             AS attendance_vs_sanctioned,
   r.days_none_present,
   r.days_reported,
-  -- Nursing carries a second requirement from bed capacity (INC 1:6).
+  -- Nursing carries a second requirement from bed capacity: the Indian
+  -- Nursing Council 1:6 ratio, which IPHS cites rather than originates.
   IF(r.item_id = 'STAFF-NURSE',
      GREATEST(f.nurses_required - CAST(ROUND(r.mean_present) AS INT64), 0),
      NULL) AS nurses_short_of_bed_norm,

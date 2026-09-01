@@ -52,10 +52,12 @@ ESSENTIAL_BEDS = 2
 DESIRABLE_BEDS = 4
 ESSENTIAL_BEDS_24X7 = 6
 
-# Indian Nursing Council regulation, cited in CHC IPHS 2022 page 60 and
-# tabulated on page 118: "there should be one nurse for every six beds" in the
-# inpatient department. This is what links the two resource types — a
-# facility's nursing requirement is a function of its bed capacity.
+# "There should be one nurse for every six beds" in the inpatient department.
+# This is an **Indian Nursing Council regulation**. CHC IPHS 2022 quotes it at
+# page 60 and tabulates it at page 118, but IPHS cites the INC rather than
+# originating the norm, so it is attributed to the INC wherever it appears.
+# It is what links the two resource types: a facility's nursing requirement is
+# a function of its bed capacity.
 BEDS_PER_NURSE = 6
 
 ADD_COLUMNS = f"""
@@ -117,7 +119,8 @@ def run() -> None:
     print(f"  total beds:           {row.total_beds:,}")
     print(f"  overnight beds:       {row.overnight_beds:,}")
     print(f"  nurses required:      {row.nurses_required:,} "
-          f"(1 per {BEDS_PER_NURSE} beds, INC/IPHS)")
+          f"(1 per {BEDS_PER_NURSE} beds — Indian Nursing Council "
+          "regulation, cited by IPHS)")
 
     if row.with_capacity != row.phcs:
         raise SystemExit(

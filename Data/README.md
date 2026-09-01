@@ -807,8 +807,12 @@ CHC IPHS 2022, page 60:
 > "As per the Indian Nursing Council (INC) regulations, there should be one
 > nurse for every six beds in the [inpatient department]"
 
-tabulated on page 118 as *Staff Nurses — Nurse:Bed ratio — IPD 1:6*. Note this
-is an **INC regulation cited by IPHS**, not an IPHS-originated norm.
+tabulated on page 118 as *Staff Nurses — Nurse:Bed ratio — IPD 1:6*.
+
+**Attribution matters here.** This is an **Indian Nursing Council regulation**.
+CHC IPHS 2022 quotes and tabulates it, but IPHS cites the INC rather than
+originating the norm. It should be attributed to the INC everywhere it appears,
+including in the deck and the video.
 
 This makes a facility's nursing requirement a function of its bed capacity,
 which is the cross-resource logic the brief asks for. It is a *different*

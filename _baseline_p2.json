@@ -1,0 +1,10 @@
+{
+ "events": 1157367,
+ "qty": 32851687,
+ "batches": 7481,
+ "on_hand": 1301653,
+ "reorder_rows": 2794,
+ "alerts": 599,
+ "recs": 525,
+ "rec_units": 64211
+}

@@ -18,9 +18,10 @@ staff in post than sanctioned posts — contractual NHM staff over and above
 sanctioned strength, which five states do for nursing — the ratio is kept above
 1.0 rather than clipped, because that is what the source says.
 
-**Nursing has a second, independent requirement.** The Indian Nursing Council
-regulation cited in CHC IPHS 2022 (page 60, tabulated page 118) is one nurse per
-six beds in the inpatient department. That gives a *required* nursing strength
+**Nursing has a second, independent requirement.** One nurse per six beds in
+the inpatient department. This is an **Indian Nursing Council regulation**,
+which CHC IPHS 2022 quotes at page 60 and tabulates at page 118 — IPHS cites it
+rather than originating it, and it should be attributed to the INC. That gives a *required* nursing strength
 derived from bed capacity, which is a different quantity from the *sanctioned*
 strength derived from staffing statistics. Both are carried, and the gap between
 them is itself a finding.
@@ -117,7 +118,9 @@ SELECT
        GREATEST(1, CAST(ROUND(p.sanctioned_per_facility) AS INT64)),
        GREATEST(0, CAST(ROUND(p.in_position_per_facility) AS INT64))))
     AS expected_in_position,
-  -- Nursing only: the independent INC/IPHS requirement from bed capacity.
+  -- Nursing only: the requirement derived from bed capacity. The 1:6
+  -- ratio is an Indian Nursing Council regulation that IPHS cites; it is
+  -- not an IPHS-originated norm.
   IF(p.cadre = 'Nursing staff', f.nurses_required, NULL)
     AS nurses_required_by_beds
 FROM aliased f
@@ -172,7 +175,7 @@ def run() -> None:
     print(f"\n  Nursing, two independent requirements:")
     print(f"    sanctioned establishment (RHS 2017):  "
           f"{gap.avg_sanctioned} per facility")
-    print(f"    required by beds (INC 1:6, IPHS):     "
+    print(f"    required by beds (INC 1:6, cited by IPHS): "
           f"{gap.avg_required_by_beds} per facility")
     print(f"    facilities sanctioned below the bed-based norm: "
           f"{gap.under_norm} of {gap.facilities}")

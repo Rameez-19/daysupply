@@ -178,7 +178,8 @@ class TestPersonnel:
         assert rows[0]["impossible"] == 0
 
     def test_nursing_carries_the_bed_derived_requirement(self):
-        """INC 1:6 links the two resource types; it must be computed."""
+        """The Indian Nursing Council 1:6 ratio links the two resource
+        types. IPHS cites it; the INC originates it."""
         rows = run_query("""
             SELECT COUNTIF(nurses_required_by_beds IS NULL) AS missing,
                    COUNT(*) AS nursing_rows
