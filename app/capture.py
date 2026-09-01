@@ -1,18 +1,71 @@
+"""Gemini extraction — the only module in the app that talks to a model.
+
+Everything downstream of `parse_model_json` is model-independent: matching, the
+confidence gate, routing and the review queue all live in
+`app/capture_pipeline.py` and are covered by tests that never call Gemini. That
+boundary is deliberate, and it is what made this migration cheap.
+
+## Model pin — verified 2026-09-01
+
+`gemini-3.6-flash`. GA, not preview, and Flash-class is the right weight for
+short multilingual audio into a small JSON payload.
+
+Deliberately **not**:
+
+* `gemini-3.7-flash` — newer, but tuned for coding and agentic work rather than
+  this.
+* `gemini-3.1-pro` and the rest of the Gemini 3 Pro line — still in preview.
+
+**Fallback if Hindi audio accuracy disappoints:** `gemini-2.5-flash`, the
+cheaper proven option. Set `GEMINI_MODEL` to override without a code change.
+
+**Model pins go stale, and this one already did once.** The previous pin was
+`gemini-1.5-pro`, which Google has since shut down — every request returned
+404, a failure entirely independent of the API key. Re-verify this pin against
+the current model list before each submission or deployment, and update the
+date above when you do.
+"""
+
 import os
 import json
 import uuid
 from datetime import datetime, timezone
-import google.generativeai as genai
+
+from google import genai
+from google.genai import types
 from google.cloud import firestore
 from pydantic import ValidationError
 
 from app import capture_pipeline
 from app import items
 
-# Initialize Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# See the module docstring for why this pin and not another.
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+# Documented, not wired in: switching is a one-line env change, and an
+# automatic silent fallback would hide a model outage rather than surface it.
+FALLBACK_MODEL = "gemini-2.5-flash"
 
-model = genai.GenerativeModel('gemini-1.5-pro')
+_client: genai.Client | None = None
+
+
+def _get_client() -> genai.Client:
+    """Build the client on first use, not at import.
+
+    Constructing it at import time would make the whole module — and therefore
+    the whole app — fail to start wherever `GEMINI_API_KEY` is absent, which
+    includes the test suite and any container that has not been given the key
+    yet. The old code called `genai.configure()` at import for the same reason
+    it should not have.
+    """
+    global _client
+    if _client is None:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "GEMINI_API_KEY is not set. Voice and chat capture cannot run "
+                "without it; set it on the Cloud Run service.")
+        _client = genai.Client(api_key=api_key)
+    return _client
 
 SYSTEM_PROMPT = """
 You extract pharmacy stock updates from reports by health workers at
@@ -48,29 +101,30 @@ CHAT_INSTRUCTION = (
 
 
 def process_audio(audio_bytes: bytes, mime_type: str = "audio/mp3") -> str:
-    """Send audio to Gemini and return its raw reply."""
-    if not os.getenv("GEMINI_API_KEY"):
-        raise RuntimeError(
-            "GEMINI_API_KEY is not set. Voice and chat capture cannot run "
-            "without it; set it on the Cloud Run service."
-        )
-    response = model.generate_content([
-        SYSTEM_PROMPT,
-        {"mime_type": mime_type, "data": audio_bytes},
-    ])
-    return response.text.strip()
+    """Send audio to Gemini and return its raw reply.
+
+    The prompt is passed inline rather than as a `system_instruction`, which
+    the new SDK also supports. That is deliberate: this change is an SDK
+    migration, and moving the prompt at the same time would confound a
+    behaviour change with a library change. Worth revisiting separately.
+    """
+    response = _get_client().models.generate_content(
+        model=MODEL,
+        contents=[
+            SYSTEM_PROMPT,
+            types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+        ],
+    )
+    return (response.text or "").strip()
 
 
 def process_text(message: str) -> str:
     """Send a typed message through the same extraction prompt."""
-    if not os.getenv("GEMINI_API_KEY"):
-        raise RuntimeError(
-            "GEMINI_API_KEY is not set. Voice and chat capture cannot run "
-            "without it; set it on the Cloud Run service."
-        )
-    response = model.generate_content(
-        SYSTEM_PROMPT + CHAT_INSTRUCTION + message)
-    return response.text.strip()
+    response = _get_client().models.generate_content(
+        model=MODEL,
+        contents=SYSTEM_PROMPT + CHAT_INSTRUCTION + message,
+    )
+    return (response.text or "").strip()
 
 
 def handle_capture(audio_bytes: bytes, facility_id: str,

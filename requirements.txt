@@ -3,7 +3,7 @@ db-dtypes
 fastapi
 google-cloud-bigquery
 google-cloud-firestore
-google-generativeai
+google-genai
 lxml
 openpyxl
 pandas
