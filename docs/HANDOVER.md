@@ -22,7 +22,7 @@ difference will overclaim in the submission.
 
 | Component | Status | Notes |
 |---|---|---|
-| Gemini voice extraction | **REAL, BLOCKED IN PROD** | Code and tests are real; the production call returns 403 because the API key is scoped to Vertex AI and `generativelanguage` is not enabled. See §9.9 |
+| Gemini voice extraction | **REAL, BLOCKED IN PROD** | Code and tests are real; the production call returns 403. Cause not yet settled — leading hypothesis is the SDK (`google-generativeai` vs the current `google-genai`), not the key. See §9.9 |
 | Offline queue + sync | **REAL** | Service Worker + IndexedDB, genuinely works offline |
 | PWA / dashboard UI | **REAL** | Vanilla JS, Chart.js, deployed and functional |
 | Barcode scanning | **REAL** | `html5-qrcode` |
@@ -390,20 +390,17 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
 
 9. **⚠️ BLOCKING FOR THE DEMO — voice and chat return 403 in production.**
    Verified on the live service, 2026-09-01. `GEMINI_API_KEY` **is** set on
-   Cloud Run, so the previously logged "key not set" issue is closed, but two
-   further problems replace it and both must be fixed:
-
-   1. `generativelanguage.googleapis.com` is **not enabled** on the `daysupply`
-      project. `gcloud services list --enabled` shows only
-      `aiplatform.googleapis.com`.
-   2. The key is a **GCP API key restricted to `aiplatform.googleapis.com`**
-      (`AQ.…` prefix), not a Google AI Studio key (`AIza…`). The app uses
-      `google-generativeai`, which calls `generativelanguage.googleapis.com`.
+   Cloud Run, so the previously logged "key not set" issue is closed.
 
    Symptom: `403 … API_KEY_SERVICE_BLOCKED` from `/api/v1/voice-note` and
    `/api/v1/chat-note`. Everything else in the capture pipeline is fine —
    barcode works end to end and correctly routes an unrecognised code to the
    review queue with a reason.
+
+   **The full diagnosis, including a correction to an earlier wrong reading of
+   the key format, is in §9.9 below.** Short version: `AQ.` is the *current* AI
+   Studio key format, not a GCP-console marker, and the leading hypothesis is
+   the SDK (`google-generativeai` vs `google-genai`) rather than the key.
 
    Two fixes, either sufficient — full commands in `README.md` under
    *Environment*:
@@ -424,30 +421,61 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
     701, not 668. `docs/CLAIMS.md` is the single source of truth — anything not
     in it does not go in front of a judge.
 
-9. **Voice and chat capture return 403 in production.** `GEMINI_API_KEY` **is**
-   set on the Cloud Run service — the earlier "not set" note is out of date —
-   but there are two independent problems and both must be fixed:
+9. **Voice and chat capture return 403 in production — diagnosis open.**
+   `GEMINI_API_KEY` **is** set on the Cloud Run service, so the older "not set"
+   note is out of date. `/api/v1/voice-note` and `/api/v1/chat-note` return
+   `403 API_KEY_SERVICE_BLOCKED` from `generativelanguage.googleapis.com`.
 
-   1. **`generativelanguage.googleapis.com` is not enabled** on the `daysupply`
-      project. `gcloud services list --enabled` shows only
-      `aiplatform.googleapis.com`.
-   2. **The key is restricted to `aiplatform.googleapis.com`.** It is a GCP API
-      key (`AQ.` prefix), not a Google AI Studio key (`AIza` prefix). The app
-      uses `google-generativeai`, which calls `generativelanguage`.
+   **Key format — a correction.** Current Google AI Studio keys begin with
+   **`AQ.`**, the Auth key format Google migrated to in June 2026; the older
+   `AIza` Standard keys are being rejected outright from September 2026. An
+   earlier version of this section read the `AQ.` prefix as evidence that the
+   key came from the GCP console rather than AI Studio. **That was wrong** —
+   AI Studio issues only `AQ.` keys now, so the prefix says the key is current.
+   The reasoning was also unsound independently of the format question: it read
+   one key out of `gcloud services api-keys list` and assumed it was the one
+   deployed, without matching them.
 
-   Result: `403 API_KEY_SERVICE_BLOCKED` on `/api/v1/voice-note` and
-   `/api/v1/chat-note`. **Barcode is unaffected** and verified working in
-   production — an unrecognised code correctly routes to the review queue with
-   a reason. The extraction pipeline, matcher and confidence gate are all
-   exercised by 182 passing tests locally; only the production model call fails.
+   **Leading hypothesis: the SDK, not the key or the API.** `app/capture.py`
+   uses `google-generativeai`, the older library, and `AQ.` keys are widely
+   reported to fail against it. The current library is **`google-genai`**.
 
-   **Fix A (simplest):** create a key at `aistudio.google.com/apikey` and
-   `gcloud run services update daysupply --region asia-south1
-   --set-env-vars GEMINI_API_KEY=AIza...`
+   **Test that separates the two cases**, run before changing anything:
+   ```
+   curl.exe -H "x-goog-api-key: AQ.KEY" "https://generativelanguage.googleapis.com/v1beta/models"
+   ```
 
-   **Fix B (stay in this project):**
-   `gcloud services enable generativelanguage.googleapis.com --project daysupply`,
-   then add that service to the key's API restrictions in the Cloud console.
+   | Result | Meaning | Fix |
+   |---|---|---|
+   | Model list | Key and API are fine; the SDK is the problem | Migrate `app/capture.py` to `google-genai` |
+   | 403 | The API is genuinely blocked for this key | Enable `generativelanguage.googleapis.com` and/or widen the key's API restrictions |
+
+   **No SDK change has been made** — it waits on that result.
+
+   **If the migration is the fix, the surface is small.** The entire Gemini
+   dependency is five lines in `app/capture.py`:
+
+   | Line | Now |
+   |---|---|
+   | `capture.py:5` | `import google.generativeai as genai` |
+   | `capture.py:13` | `genai.configure(api_key=...)` |
+   | `capture.py:15` | `genai.GenerativeModel('gemini-1.5-pro')` |
+   | `capture.py:57` | `model.generate_content([...])` — audio |
+   | `capture.py:71` | `model.generate_content(...)` — text |
+
+   plus `google-generativeai` in `requirements.txt:6`. Nothing else imports the
+   SDK. `app/capture_pipeline.py` holds the matching, confidence gate and
+   routing — all model-independent, all covered by tests that never call
+   Gemini, so a migration cannot silently damage the extraction logic.
+
+   **Review the pinned model at the same time.** `gemini-1.5-pro` is several
+   generations old; if `app/capture.py` is being opened anyway, that is the
+   moment to move to a current model rather than porting the old pin forward.
+
+   **Barcode is unaffected** and verified working in production — an
+   unrecognised code correctly routes to the review queue with a reason. The
+   extraction pipeline, matcher and confidence gate are exercised by 186
+   passing tests; only the production model call fails.
 
    **This must be fixed before the demo video is recorded.** Voice is the
    product's opening claim.

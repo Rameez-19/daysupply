@@ -169,38 +169,37 @@ uvicorn app.main:app --reload
 
 Environment: `GEMINI_API_KEY`, `GCP_PROJECT`. See `.env.example`.
 
-> ### ⚠️ Voice and chat capture return 403 in production
+> ### ⚠️ Voice and chat capture return 403 in production — diagnosis open
 >
-> `GEMINI_API_KEY` **is** set on the Cloud Run service, but it is the wrong
-> *kind* of key and the API it needs is not switched on. Two independent
-> problems, both of which must be fixed:
+> `GEMINI_API_KEY` **is** set on the Cloud Run service, and
+> `/api/v1/voice-note` and `/api/v1/chat-note` return
+> `403 API_KEY_SERVICE_BLOCKED` from `generativelanguage.googleapis.com`.
+> Barcode capture is unaffected — it needs no model, and it correctly routes
+> unrecognised codes to the review queue.
 >
-> 1. **`generativelanguage.googleapis.com` is not enabled** on the `daysupply`
->    project. Only `aiplatform.googleapis.com` is.
-> 2. **The key is restricted to `aiplatform.googleapis.com`.** It is a GCP API
->    key (`AQ.…` prefix), not a Google AI Studio key (`AIza…` prefix). The
->    application uses `google-generativeai`, which calls
->    `generativelanguage.googleapis.com`.
+> **Key format — do not misread this.** Current Google AI Studio keys begin
+> with **`AQ.`**, the Auth key format Google migrated to in June 2026. The
+> older `AIza` Standard keys are being rejected outright from September 2026.
+> An `AQ.` prefix therefore means the key is *current*, not that it came from
+> the GCP console. (An earlier version of this note claimed the opposite and
+> was wrong.)
 >
-> The result is `403 API_KEY_SERVICE_BLOCKED` on `/api/v1/voice-note` and
-> `/api/v1/chat-note`. Barcode capture is unaffected — it needs no model, and it
-> correctly routes unrecognised codes to the review queue.
+> **Leading hypothesis: the SDK, not the key.** The app uses
+> `google-generativeai`, the older library. `AQ.` keys are widely reported to
+> fail against it. The current library is **`google-genai`**.
 >
-> **Fix A — simplest, no project changes.** Create a key at
-> [aistudio.google.com](https://aistudio.google.com/apikey) (it will start
-> `AIza`) and set it:
+> **Being tested first**, because it separates the two cases cleanly:
 > ```
-> gcloud run services update daysupply --region asia-south1 \
->   --set-env-vars GEMINI_API_KEY=AIza...
+> curl.exe -H "x-goog-api-key: AQ.KEY" \
+>   "https://generativelanguage.googleapis.com/v1beta/models"
 > ```
 >
-> **Fix B — stay inside this GCP project.** Enable the API, then widen the
-> existing key's restrictions to include it:
-> ```
-> gcloud services enable generativelanguage.googleapis.com --project daysupply
-> ```
-> then add `generativelanguage.googleapis.com` to the key's API restrictions in
-> the Cloud console (APIs & Services → Credentials → the key → API restrictions).
+> | Result | Meaning | Fix |
+> |---|---|---|
+> | Returns a model list | The key and the API are fine; the SDK is the problem | Migrate `app/capture.py` from `google-generativeai` to `google-genai` |
+> | 403 | The API is genuinely blocked for this key | Enable `generativelanguage.googleapis.com` on the project and/or widen the key's API restrictions |
+>
+> **No SDK change has been made yet** — it waits on that result.
 
 **Health check:** `/api/v1/healthz`. Google's frontend intercepts the bare
 `/healthz` path in production, so probe the versioned one.

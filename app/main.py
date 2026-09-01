@@ -6,10 +6,30 @@ import os
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+
 from fastapi import FastAPI, HTTPException, UploadFile, Form
 from fastapi.staticfiles import StaticFiles
 
-from app import facilities as facility_repo
+# ---------------------------------------------------------------------------
+# Load .env BEFORE importing anything from app.*
+# ---------------------------------------------------------------------------
+# This call's position is load-bearing, not stylistic. Modules under app/ read
+# their configuration at *import* time — `PROJECT = os.getenv("GCP_PROJECT")`
+# and friends run when the module is first imported, not when a function is
+# called. Moving this below the `from app import ...` block would leave those
+# constants already bound to their defaults, and the .env file would silently
+# do nothing.
+#
+# `python-dotenv` was in requirements.txt and `.env.example` existed, but
+# nothing ever called this, so a .env file was read by nobody. Fixed here.
+#
+# On Cloud Run there is no .env file and none is needed: env vars are injected
+# into the container directly. load_dotenv() finds no file, changes nothing,
+# and returns False. It never overrides a variable that is already set.
+load_dotenv()
+
+from app import facilities as facility_repo  # noqa: E402
 from app import forecast
 from app import stock_health
 from app import supply
