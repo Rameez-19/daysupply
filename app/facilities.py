@@ -187,11 +187,25 @@ def national_summary() -> dict:
     states = [r for r in _geo_rows() if r["level"] == "state"]
     districts = [r for r in _geo_rows() if r["level"] == "district"]
     totals = _totals(states)
+    # Two different counts, and only one of them answers "how many districts".
+    #
+    #   701 — state x district pairs. This is the district count.
+    #   668 — distinct district *names*. Lower, because names such as
+    #         Aurangabad and Bilaspur recur across states, so counting names
+    #         alone merges 33 genuinely different districts into one another.
+    #
+    # `districts` is the pair count, because that is the honest answer to the
+    # question the dashboard is asking. The name count is returned alongside it
+    # so the difference is visible rather than hidden, and so nothing downstream
+    # has to guess which one it is looking at. See docs/CLAIMS.md section 1.
     return {
         "facilities": totals["facilities"],
         "states": len(states),
-        # District names are counted globally: 33 names recur across states.
-        "districts": len({r["district"] for r in districts}),
+        "districts": len(districts),
+        "district_names": len({r["district"] for r in districts}),
+        "district_count_basis": (
+            "state x district pairs; 33 district names recur across states, "
+            "so counting distinct names alone undercounts by 33"),
         "demo_facilities": totals["demo_facilities"],
     }
 

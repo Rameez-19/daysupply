@@ -169,13 +169,38 @@ uvicorn app.main:app --reload
 
 Environment: `GEMINI_API_KEY`, `GCP_PROJECT`. See `.env.example`.
 
-> **`GEMINI_API_KEY` must be set on the Cloud Run service.** It is not, at the
-> time of writing, so voice and chat capture return a 403 from the Generative
-> Language API in production while working locally. Barcode capture is
-> unaffected — it needs no model. Set it with:
+> ### ⚠️ Voice and chat capture return 403 in production
+>
+> `GEMINI_API_KEY` **is** set on the Cloud Run service, but it is the wrong
+> *kind* of key and the API it needs is not switched on. Two independent
+> problems, both of which must be fixed:
+>
+> 1. **`generativelanguage.googleapis.com` is not enabled** on the `daysupply`
+>    project. Only `aiplatform.googleapis.com` is.
+> 2. **The key is restricted to `aiplatform.googleapis.com`.** It is a GCP API
+>    key (`AQ.…` prefix), not a Google AI Studio key (`AIza…` prefix). The
+>    application uses `google-generativeai`, which calls
+>    `generativelanguage.googleapis.com`.
+>
+> The result is `403 API_KEY_SERVICE_BLOCKED` on `/api/v1/voice-note` and
+> `/api/v1/chat-note`. Barcode capture is unaffected — it needs no model, and it
+> correctly routes unrecognised codes to the review queue.
+>
+> **Fix A — simplest, no project changes.** Create a key at
+> [aistudio.google.com](https://aistudio.google.com/apikey) (it will start
+> `AIza`) and set it:
 > ```
-> gcloud run services update daysupply --region asia-south1 >   --set-env-vars GEMINI_API_KEY=...
+> gcloud run services update daysupply --region asia-south1 \
+>   --set-env-vars GEMINI_API_KEY=AIza...
 > ```
+>
+> **Fix B — stay inside this GCP project.** Enable the API, then widen the
+> existing key's restrictions to include it:
+> ```
+> gcloud services enable generativelanguage.googleapis.com --project daysupply
+> ```
+> then add `generativelanguage.googleapis.com` to the key's API restrictions in
+> the Cloud console (APIs & Services → Credentials → the key → API restrictions).
 
 **Health check:** `/api/v1/healthz`. Google's frontend intercepts the bare
 `/healthz` path in production, so probe the versioned one.

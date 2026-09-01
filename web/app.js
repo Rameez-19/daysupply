@@ -338,7 +338,11 @@ async function loadReviewQueue() {
       reviewList.innerHTML = '<div class="empty-state"><p>No items to review.</p></div>';
       return;
     }
-    reviewList.innerHTML = data.items.map(item => `
+    // An unlabelled example is indistinguishable from a real pending review.
+    const exampleBanner = data.is_example_data
+      ? `<div class="example-banner"><strong>Worked examples.</strong> ${data.basis}</div>`
+      : '';
+    reviewList.innerHTML = exampleBanner + data.items.map(item => `
       <div class="item-card" id="item-${item.event_id}">
         <div class="card-header">
           <span style="font-weight:700; color:var(--gray-900);">${item.item_name || item.item_id}</span>

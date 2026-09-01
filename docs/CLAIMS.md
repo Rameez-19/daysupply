@@ -232,6 +232,12 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 | **633 facilities** excluded from distance maths | `has_valid_coords = FALSE` | **REAL** | `load_facilities.py`; served at `/api/v1/data-quality` |
 | — of which **80** | latitude/longitude blank or non-numeric | **REAL** | same |
 | — of which **553** | value present but outside plausible bounds for India | **REAL** | same |
+
+> ⚠️ **The categories at `/api/v1/data-quality` do not add up to 633, and that
+> is correct.** They overlap: 80 missing + 224 latitude beyond ±90 + 248
+> longitude beyond ±180 = 552, but **206 rows fail on both** latitude and
+> longitude, giving 346 distinct; plus 287 inside the valid globe but outside
+> India = **633**. If asked to reconcile them, give exactly that arithmetic.
 | **73 facilities** with no `population_served` | Delhi CHCs and hospitals; source records `NA` | **REAL** | same |
 | Coordinates are **never corrected** | inferring a swapped Mizoram lat/long is a guess | **policy** | same |
 | `Ahmadnagar` (HMIS) vs `Ahmednagar` (facility master) | both spellings kept; reconciled via `district_key`; UI displays one | **REAL** | `parse_hmis.py`, `app/facilities.py` |
@@ -270,6 +276,7 @@ zero, which is a stronger demo than the untraceable figure it replaces.
 | Bed **occupancy** (2,430 turned away) | derived from real HMIS admission volumes × assumed 1.8-day length of stay |
 | Staff **attendance** (56% of sanctioned) | product of real vacancy and a generated presence model |
 | `captures_today` | currently **0** and real; it counts actual capture events |
+| Review-queue items (3) | worked examples shown only when no real extraction is pending. The API returns `is_example_data: true` and the UI shows a banner saying so. **Never present these as captured.** |
 
 **The one sentence that must accompany any demo figure:**
 

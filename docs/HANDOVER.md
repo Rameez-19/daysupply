@@ -22,17 +22,17 @@ difference will overclaim in the submission.
 
 | Component | Status | Notes |
 |---|---|---|
-| Gemini voice extraction | **REAL** | Live Gemini API calls, audio → structured JSON |
+| Gemini voice extraction | **REAL, BLOCKED IN PROD** | Code and tests are real; the production call returns 403 because the API key is scoped to Vertex AI and `generativelanguage` is not enabled. See §9.9 |
 | Offline queue + sync | **REAL** | Service Worker + IndexedDB, genuinely works offline |
 | PWA / dashboard UI | **REAL** | Vanilla JS, Chart.js, deployed and functional |
 | Barcode scanning | **REAL** | `html5-qrcode` |
-| Review queue | **REAL** | Confidence-threshold routing implemented |
+| Review queue | **REAL** | Confidence-threshold routing. Falls back to three **labelled** worked examples when nothing real is pending (`is_example_data: true`) |
 | Cloud Run deployment | **REAL** | Live, containerised, `asia-south1` |
 | Haversine distance maths | **REAL** | Correct calculation |
 | **Facility data** | **REAL** | All 200,438 facilities in BigQuery; dashboard queries them directly |
-| **Facility counts / geography** | **REAL** | 37 states, 668 districts, from `daysupply.facilities` |
-| **HMIS seasonality reference** | **REAL** | `demand_reference`, 4,092 rows — **Telangana only** |
-| **Item catalogue** | **PARTIAL** | 15 items loaded; full NLEM 2022 catalogue is Block B |
+| **Facility counts / geography** | **REAL** | 37 states, **701 districts** (state×district pairs; 668 distinct names), from `daysupply.facilities` |
+| **HMIS seasonality reference** | **REAL** | `demand_reference`, **34,524 rows, 137 districts, 5 states**, 21 drivers selected by HMIS item code |
+| **Item catalogue** | **REAL** | Full NLEM 2022: **385 medicines, 264 with ATC codes**, 39 with real demand drivers |
 | **Demand forecast** | **REAL** | BigQuery ML ARIMA_PLUS, 2,794 series, served via `ML.FORECAST` |
 | **Stock-out alerts** | **REAL** | Lead-time reorder points, VEN-weighted. `get_demo_alerts` deleted |
 | **Transfer recommendations** | **REAL** | FEFO batch selection, ATC substitution. `get_demo_recommendations` deleted |
@@ -41,7 +41,7 @@ difference will overclaim in the submission.
 | **Lead times** | **REAL DISTANCE, ASSUMED CONVERSION** | Distance to district HQ is real; days-per-km is a documented proxy |
 | **VEN classification** | **DERIVED** | Ours, not MoHFW's — NLEM does not publish VEN |
 | **Daily stock events** | **GENERATED** | Anchored to real HMIS demand; see `Data/README.md` §9 |
-| **`captures_today`** | **GENERATED** | The only fabricated figure left, flagged in the API response |
+| **`captures_today`** | **REAL** | Counted from capture-sourced ledger events. Currently **0**, and legitimately so |
 
 ### What was actually wrong with the previous version
 
@@ -57,8 +57,10 @@ and the dashboard read from that. Block A closed the wiring gap, not a data gap.
 
 Two smaller corrections:
 
-- The facility master has **80 rows with unusable coordinates**, not 15. They
-  are loaded regardless and excluded from distance maths.
+- The facility master has **80 rows with missing coordinates**, not 15 — and a
+  further 553 whose coordinates are present but implausible, for **633 excluded
+  from distance maths** in total. All are loaded regardless. See
+  `docs/CLAIMS.md` §10 for the reconciliation.
 - The venv was missing `google-generativeai`, `google-cloud-firestore` and
   `thefuzz`, so **the app could not start locally at all**. `requirements.txt`
   was correct; only the environment was stale. Reinstall with
@@ -75,8 +77,12 @@ the figure we publish; `load_facilities.py` now asserts it. `is_demo_facility` i
 TRUE for **7,092** rows: PHCs in Telangana, Maharashtra, Rajasthan, Delhi, Assam.
 `daysupply.geo_summary` is a ~738-row derived table backing the dropdowns.
 
-**Still true:** there is no trained model. Until Block B lands, "AI forecasting"
-must not appear in the deck, the video or the README.
+> **Superseded.** This section previously ended "there is no trained model —
+> until Block B lands, 'AI forecasting' must not appear in the deck". Block B
+> landed. **BigQuery ML ARIMA_PLUS is trained on 2,794 series in 21.8 seconds**
+> against real HMIS seasonality, and `ML.FORECAST` serves it. "AI forecasting"
+> is now an accurate claim, provided it is said as: a real model, trained on a
+> ledger generated from real government demand drivers.
 
 ---
 
@@ -381,3 +387,71 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
    rewrite. That claim is about the code, and the code is still there; it never
    required foreign rows in a production table.
 
+
+9. **⚠️ BLOCKING FOR THE DEMO — voice and chat return 403 in production.**
+   Verified on the live service, 2026-09-01. `GEMINI_API_KEY` **is** set on
+   Cloud Run, so the previously logged "key not set" issue is closed, but two
+   further problems replace it and both must be fixed:
+
+   1. `generativelanguage.googleapis.com` is **not enabled** on the `daysupply`
+      project. `gcloud services list --enabled` shows only
+      `aiplatform.googleapis.com`.
+   2. The key is a **GCP API key restricted to `aiplatform.googleapis.com`**
+      (`AQ.…` prefix), not a Google AI Studio key (`AIza…`). The app uses
+      `google-generativeai`, which calls `generativelanguage.googleapis.com`.
+
+   Symptom: `403 … API_KEY_SERVICE_BLOCKED` from `/api/v1/voice-note` and
+   `/api/v1/chat-note`. Everything else in the capture pipeline is fine —
+   barcode works end to end and correctly routes an unrecognised code to the
+   review queue with a reason.
+
+   Two fixes, either sufficient — full commands in `README.md` under
+   *Environment*:
+   - **A (simplest):** issue a key at `aistudio.google.com/apikey` and set it.
+   - **B (stay in this project):**
+     `gcloud services enable generativelanguage.googleapis.com --project daysupply`,
+     then add that service to the key's API restrictions.
+
+   **Until this is fixed the demo video cannot show a live voice capture.** The
+   three capture modes degrade as designed — barcode still works — but voice is
+   the headline of the product and it must be working before recording.
+
+10. **Deck and video are still outside the repo and must be rebuilt against
+    `docs/CLAIMS.md`.** Several figures in any existing draft are now wrong:
+    FEFO waste is 26,612 (44.7%) not 94,542 (57%); wMAPE is 19.4/71.2/16.4/14.4
+    not 25.8/45.1/32.5/23.2; malaria amplitude is 4.52x not 3.9x; Albendazole is
+    22.64x with a 5.66x August spike, not 22.3x and 6.24x; the district count is
+    701, not 668. `docs/CLAIMS.md` is the single source of truth — anything not
+    in it does not go in front of a judge.
+
+9. **Voice and chat capture return 403 in production.** `GEMINI_API_KEY` **is**
+   set on the Cloud Run service — the earlier "not set" note is out of date —
+   but there are two independent problems and both must be fixed:
+
+   1. **`generativelanguage.googleapis.com` is not enabled** on the `daysupply`
+      project. `gcloud services list --enabled` shows only
+      `aiplatform.googleapis.com`.
+   2. **The key is restricted to `aiplatform.googleapis.com`.** It is a GCP API
+      key (`AQ.` prefix), not a Google AI Studio key (`AIza` prefix). The app
+      uses `google-generativeai`, which calls `generativelanguage`.
+
+   Result: `403 API_KEY_SERVICE_BLOCKED` on `/api/v1/voice-note` and
+   `/api/v1/chat-note`. **Barcode is unaffected** and verified working in
+   production — an unrecognised code correctly routes to the review queue with
+   a reason. The extraction pipeline, matcher and confidence gate are all
+   exercised by 182 passing tests locally; only the production model call fails.
+
+   **Fix A (simplest):** create a key at `aistudio.google.com/apikey` and
+   `gcloud run services update daysupply --region asia-south1
+   --set-env-vars GEMINI_API_KEY=AIza...`
+
+   **Fix B (stay in this project):**
+   `gcloud services enable generativelanguage.googleapis.com --project daysupply`,
+   then add that service to the key's API restrictions in the Cloud console.
+
+   **This must be fixed before the demo video is recorded.** Voice is the
+   product's opening claim.
+
+10. **Deck and video still to build**, and both must draw every figure from
+    `docs/CLAIMS.md`. Any number not in that file does not go in front of a
+    judge.

@@ -158,6 +158,24 @@ async def get_stats(state: str = "Telangana", district: str = "",
         "captures_all_time": captures["captures_all_time"],
         "captures_by_mode": captures["by_mode"],
         "captures_today_is_generated": False,
+        # Two different waste figures exist and they are not interchangeable.
+        # `waste_avoided_units` here is the sum over *pending transfers* of
+        # stock the donor could not have used before it expired — legitimately
+        # 0, because FEFO at each facility has already consumed everything
+        # short-dated. The headline 26,612 at /api/v1/impact is a different
+        # quantity: the whole year's ledger replayed under FIFO and differenced
+        # against FEFO. Naming the distinction here so the two cannot be read
+        # as contradicting each other. See docs/CLAIMS.md section 7.
+        "waste_avoided_basis": (
+            "pending transfers only; for the year-long FEFO-vs-FIFO "
+            "counterfactual see /api/v1/impact"),
+        "scope": {
+            "state": state or "(all)",
+            "district": district or "(all)",
+            "facility": phc or "(all)",
+            "note": ("counts are scoped to the filter above; state defaults to "
+                     "Telangana, so an unfiltered call is not a national total"),
+        },
         "last_sync": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -247,18 +265,40 @@ async def capture_modes():
 
 # ── Review queue ─────────────────────────────────────────────────────
 @app.get("/api/v1/review-queue")
-async def get_review_queue(state: str = "Telangana", district: str = "", phc: str = ""):
-    """Returns items that need manual review. Falls back to demo data."""
+async def get_review_queue(state: str = "Telangana", district: str = "",
+                           phc: str = ""):
+    """Low-confidence extractions awaiting a human decision.
+
+    Real extractions live in Firestore and always take precedence. When the
+    queue is genuinely empty, three worked examples are returned so the screen
+    is demonstrable — and they are **labelled as examples in the payload**,
+    because an unlabelled example is indistinguishable from a real pending
+    review and that is exactly the kind of thing this project does not do.
+    """
     from google.cloud import firestore
     try:
-        db = firestore.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply"))
-        docs = list(db.collection("review_queue").where("status", "==", "pending").stream())
+        db = firestore.Client(
+            project=os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply"))
+        docs = list(db.collection("review_queue")
+                    .where("status", "==", "pending").stream())
         if docs:
-            return {"items": [doc.to_dict() for doc in docs]}
+            return {
+                "items": [doc.to_dict() for doc in docs],
+                "is_example_data": False,
+                "basis": "Real low-confidence extractions from Firestore.",
+            }
     except Exception:
         pass
     scope = _facility_query(facility_repo.scope_facilities, state, district, phc)
-    return {"items": get_demo_review_queue(scope)}
+    return {
+        "items": [{**item, "is_example": True}
+                  for item in get_demo_review_queue(scope)],
+        "is_example_data": True,
+        "basis": (
+            "No real extraction is pending, so three worked examples are shown "
+            "to demonstrate the confidence gate. They are illustrative, not "
+            "captured. Real extractions replace them as soon as any exist."),
+    }
 
 
 # ── Forecasting ──────────────────────────────────────────────────────

@@ -292,16 +292,26 @@ starting point; the overrides carry sections that mix criticality.
 > peaks in September at 1.53x baseline against the real HMIS figure of 1.58x."
 > The match was real, but both sides of it were the seasonality of **blood
 > smears collected**, not of malaria. The driver was 99.8% testing effort — see
-> §16.1. Against confirmed cases the September index is **1.61x** and the
-> annual amplitude is 3.9x rather than 1.6x, so the corrected model carries
+> §16.1. Against confirmed cases the September index is **1.90x** and the
+> annual amplitude is **4.52x** rather than 1.6x, so the corrected model carries
 > roughly three times the monsoon swing the old one did.
+>
+> (The September and amplitude figures were themselves restated on 2026-09-01,
+> from 1.61x and 3.9x, after the HMIS coverage widened from Telangana to five
+> states. The conclusion is unchanged.)
 
-**Why Telangana only.** `demand_reference` holds HMIS 2019-20 for 31 Telangana
-districts and nowhere else, because only `Telangana.xls` has been parsed. A
-facility outside Telangana has no real demand signal to join to. Rather than
-fall back to a synthetic seasonal curve, the forecast set is restricted to where
-the real signal exists. All 817 Telangana PHCs join on a case-insensitive
-district match.
+**Why only some states.** `demand_reference` holds HMIS 2019-20 for the
+**137 districts of five states** — Maharashtra, Rajasthan, Telangana, Assam and
+Delhi — because those are the state files that have been parsed. A facility
+outside them has no real demand signal to join to. Rather than fall back to a
+synthetic seasonal curve, the forecast set is restricted to where the real
+signal exists, and the join is on `admin_l1` **and** `district_key`: 33 district
+names recur across states, so a district-only join would silently mix them.
+
+> **Superseded.** This paragraph previously read *"Why Telangana only …
+> 31 Telangana districts and nowhere else"*, which was true at Block B and
+> stopped being true at Block B+ when the coverage widened to five states. The
+> current figures are 137 districts and 34,524 driver rows.
 
 **Generated, and why:**
 
