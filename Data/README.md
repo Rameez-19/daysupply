@@ -957,12 +957,21 @@ magnitude floor is there to keep out.
 | | |
 |---|---|
 | Observed confirmed malaria | **2,345** |
-| District's own 12-month baseline | 989 |
-| Pooled January multiplier | 1.00× |
-| Expected | **988** |
+| District's own 12-month baseline | 1,400.5 |
+| Pooled January multiplier | 0.7053 |
+| Expected (1,400.5 × 0.7053) | **987.8** |
 | Surge multiplier | **2.37×** |
 | Modified z | **6.54** (fires at 3.5) |
 | Classical z | **2.58** — *a 3-sigma rule misses it entirely* |
+
+Note which way the pooled vector points. January is a **below-average** month
+for antimalarials nationally — 0.71× — because the monsoon transmission season
+is over. The seasonal model expected Brihan Mumbai to be *quiet*, and it
+recorded more than twice what its own annual level would give even before the
+seasonal discount. Against a flat district average the month is 1.67×,
+unremarkable; against the pooled seasonal expectation it is 2.37×. That gap is
+the entire argument for measuring surge against the pooled vector rather than
+against a mean.
 
 The rest of Brihan Mumbai's year sits between 0.26× and 1.16× of expectation.
 January is the one month that does not, and the modified z separates it cleanly
