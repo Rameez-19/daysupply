@@ -12,10 +12,18 @@ Pooling the vectors of every district and borrowing the average beats both:
 
 | Arm | Weighted MAPE |
 |---|---|
-| flat — own three months, no seasonality | 25.8% |
-| demographic match, different state | 45.1% (19.3pt worse) |
-| demographic match, same state | 32.5% (6.7pt worse) |
-| **pooled — mean vector across all districts** | **23.2% (2.6pt better)** |
+| flat — own three months, no seasonality | 19.4% |
+| demographic match, different state | 71.2% (51.8pt worse) |
+| demographic match, same state | 16.4% (3.0pt better) |
+| **pooled — mean vector across all districts** | **14.4% (5.0pt better)** |
+
+> **Recomputed 2026-09-01; supersedes 25.8 / 45.1 / 32.5 / 23.2.** Those were
+> correct for the demand series as it stood at Block D. The Block D+ driver
+> corrections changed the underlying series, so the evaluation was re-run. The
+> conclusion is unchanged and the margins are wider. One thing did change:
+> same-state matching now beats the flat baseline, where before it lost to it.
+> That confirms the diagnosis rather than contradicting it — what a same-state
+> donor shares with the receiver is climate, not demography.
 
 The reason is that seasonality in this data is climate-driven — malaria peaks
 with the monsoon — and population and facility density do not predict climate.

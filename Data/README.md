@@ -4,8 +4,13 @@ This file records where every number in StockPulse comes from, and — more
 importantly — which numbers are measured and which are derived or generated.
 Read it before quoting any figure from this system.
 
-Scope note: the project is **India-only**. `Data/Brazil/` remains on disk from an
-earlier cross-border framing but is not loaded and not built against.
+Scope note: the project is **India-only**. `Data/Brazil/` and
+`ingestion/load_brazil.py` remain on disk from an earlier framing — they are the
+evidence that the `config/` layer makes another country a configuration change
+rather than a rewrite — but nothing Brazilian is loaded or built against. The
+50,697 Brazilian rows that had survived in `facilities` were **deleted on
+2026-09-01**, so `SELECT COUNT(*) FROM facilities` now returns exactly the
+200,438 this document publishes.
 
 ---
 
@@ -16,7 +21,7 @@ earlier cross-border framing but is not loaded and not built against.
 | Source | `Data/India/geocode_health_centre.csv` |
 | Provenance | NHM / MoHFW health-centre directory (via Kaggle, "All India Health Centres Directory") |
 | Rows | **200,438 — all of them.** Nothing sampled, nothing filtered |
-| Coverage | 37 states/UTs, 668 districts |
+| Coverage | 37 states/UTs, **701 state×district pairs** across 668 distinct district names |
 | Loaded by | `ingestion/load_facilities.py` → `daysupply.facilities` (`asia-south1`) |
 
 Facility type breakdown as loaded:
@@ -35,9 +40,22 @@ whitespace trimming and lowercasing of the facility-type code.
 
 **Known gaps in the source data:**
 
-- **80 rows have no usable coordinates** (blank or non-numeric latitude/longitude).
-  They are still loaded — dropping them would break the row-count guarantee. They
-  are simply excluded from any distance calculation.
+- **Two different coordinate-gap figures exist and they are not the same number.
+  Quote whichever the claim needs, and say which.**
+
+  | Figure | Meaning |
+  |---|---|
+  | **80** | latitude or longitude is blank or non-numeric in the source |
+  | **553** | a value is present but falls outside plausible bounds for India |
+  | **633** | `has_valid_coords = FALSE` — the sum, and the count actually excluded from distance maths |
+
+  All 633 are still loaded; dropping them would break the row-count guarantee.
+  They are excluded from every distance calculation, which is why transfer and
+  referral coverage is quoted against the facilities that have usable
+  coordinates, not against all 200,438. Coordinates are **never corrected** —
+  inferring that a Mizoram row reading `92.41, 23.25` was meant to be
+  `23.25, 92.41` is a guess, and guesses do not go into a government dataset.
+  Surfaced at `GET /api/v1/data-quality`.
 - One state value is `Andhra Pradesh Old`, a pre-bifurcation artefact present in
   the source. It is preserved as-is rather than silently merged into
   `Andhra Pradesh`; merging would misstate what the government file actually says.
@@ -470,11 +488,20 @@ write-offs are differenced:
 
 | | Units |
 |---|---|
-| Expired under FEFO (actual) | 72,408 |
-| Expired under FIFO (counterfactual) | 166,950 |
-| **Avoided by FEFO** | **94,542 (57%)** |
+| Expired under FEFO (actual) | 32,893 |
+| Expired under FIFO (counterfactual) | 59,505 |
+| **Avoided by FEFO** | **26,612 (44.7%)** |
 
 Stored in `daysupply.impact_metrics`, served at `/api/v1/impact`.
+
+> **These figures superseded an earlier set (72,408 / 166,950 / 94,542 at 57%)
+> and the earlier ones must not be quoted.** They were correct for the ledger as
+> it stood at Block C. The Block D+ driver corrections — malaria moving from
+> blood smears to confirmed cases, "childhood diseases" splitting into four real
+> drivers, six flat-baseline items gaining drivers — changed the demand series,
+> and `generate_usage.py` regenerated the whole ledger against them. Different
+> demand produces different expiry under both policies. The current numbers are
+> what `daysupply.impact_metrics` holds today; anything else is stale.
 
 **Per-transfer `waste_avoided_units` is currently 0, and that is honest.** FEFO
 at the facility has already consumed everything short-dated, so every batch a
@@ -537,7 +564,7 @@ Correcting it changes the answer, not just the provenance:
 | Series | Apr | Jun | Aug | Sep | Dec | Feb | Amplitude |
 |---|---|---|---|---|---|---|---|
 | Old (tests-dominated) | 0.79 | 0.86 | 1.25 | 1.23 | 0.97 | 0.90 | **1.6x** |
-| New (confirmed cases) | 0.43 | 0.68 | 1.70 | 1.61 | 0.78 | 0.69 | **3.9x** |
+| New (confirmed cases) | 0.53 | 0.91 | 1.72 | 1.90 | 0.76 | 0.55 | **4.52x** |
 
 Monsoon antimalarial demand was understated roughly threefold.
 
@@ -571,8 +598,8 @@ pre-monsoon (Jul 1.41); pneumonia and URI peak in the cool months (Sep-Jan,
 1.05-1.23). Averaging them produced a flat 1.4x curve that matched neither.
 
 **Albendazole is the clearest case.** Against the aggregate it looked flat.
-Against doses actually administered it has an amplitude of **22.3x**, with a
-**6.24x spike in August** — National Deworming Day, which India runs on
+Against doses actually administered it has an amplitude of **22.64x**, with a
+**5.66x spike in August** — National Deworming Day, which India runs on
 10 August and 10 February. That is a real, planned, forecastable procurement
 event that the old driver made invisible.
 
@@ -1102,8 +1129,28 @@ same time. Two tests pin this.
 
 **Worked district: Brihan Mumbai, antimalarials.** 110 units on hand, 15.95
 units/day of demand, slowest lead time 8 days. It absorbs a spike of at most
-**0.86×** — it cannot cover even its normal demand across its own lead time.
-That is an uncomfortable finding and it is left as measured.
+**0.86×**.
+
+**That figure is a finding about the network, not a defect in the model, and it
+must not be read as one.** A `max_multiplier_absorbed` below 1.0 means the
+district's pooled stock does not cover even its *normal* demand across its own
+lead time — which is true **before any surge is applied**. The scenario did not
+produce it; the scenario revealed it. It is arithmetic over a real stock
+position (110 units) and a real forecast demand (15.95 units/day) across a real
+distance-derived lead time (8 days), and every one of those three numbers is
+computed elsewhere in this document.
+
+A district in that state is running on the assumption that resupply is
+reliable and continuous. When it is, nothing visibly breaks. When it is not —
+which is what resilience means — there is no buffer at all, and no amount of
+forecasting improves it. The honest reading is that antimalarial stock in this
+district is thin against its own lead time, and the model is doing its job by
+saying so rather than smoothing it away.
+
+`run_scenario()` returns `structurally_thin` and a `structurally_thin_note`
+alongside the verdict, and the UI renders it under the heading *"A finding
+about the network, not the model"*, so the distinction survives into the
+demo rather than living only here.
 
 ### 18.10 Scenario mode is computed, not replayed
 
@@ -1217,7 +1264,7 @@ Reach is not the same as impact, and a population count on its own says nothing
 about whether anything improved. The measured claims attached to that population,
 each from elsewhere in this document:
 
-* **94,542 units of waste avoided** through FEFO batch attribution against a
+* **26,612 units of waste avoided** through FEFO batch attribution against a
   measured FIFO counterfactual (section 14) — not modelled, ledger-walked.
 * **Reorder points that are each facility's own**, from its own lead time and
   demand variability, rather than a flat 14-day rule (section 11).

@@ -37,7 +37,7 @@ difference will overclaim in the submission.
 | **Stock-out alerts** | **REAL** | Lead-time reorder points, VEN-weighted. `get_demo_alerts` deleted |
 | **Transfer recommendations** | **REAL** | FEFO batch selection, ATC substitution. `get_demo_recommendations` deleted |
 | **Reporting consistency** | **REAL** | Measured from `count` events in the ledger |
-| **Waste avoided** | **REAL** | 94,542 units, measured against a FIFO replay |
+| **Waste avoided** | **REAL** | 26,612 units (44.7%), measured against a FIFO replay. Supersedes 94,542, which predates the Block D+ driver corrections and the ledger regeneration that followed |
 | **Lead times** | **REAL DISTANCE, ASSUMED CONVERSION** | Distance to district HQ is real; days-per-km is a documented proxy |
 | **VEN classification** | **DERIVED** | Ours, not MoHFW's — NLEM does not publish VEN |
 | **Daily stock events** | **GENERATED** | Anchored to real HMIS demand; see `Data/README.md` §9 |
@@ -66,9 +66,12 @@ Two smaller corrections:
 
 ### Current state after Block A
 
-`daysupply.facilities` holds 200,438 Indian rows (37 states, 668 district names,
-701 state×district pairs) plus 50,697 Brazilian rows retained but never queried —
-every application query filters `country_code = 'IN'`. `is_demo_facility` is
+`daysupply.facilities` holds exactly 200,438 rows, all Indian: 37 states,
+**701 state×district pairs** across **668 distinct district names**. The pair
+count is the real district count — names such as Aurangabad and Bilaspur recur
+across states, so counting distinct names alone undercounts by 33. 50,697
+Brazilian rows were deleted on 2026-09-01 so that an unscoped `COUNT(*)` returns
+the figure we publish; `load_facilities.py` now asserts it. `is_demo_facility` is
 TRUE for **7,092** rows: PHCs in Telangana, Maharashtra, Rajasthan, Delhi, Assam.
 `daysupply.geo_summary` is a ~738-row derived table backing the dropdowns.
 
@@ -357,18 +360,24 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
 7. ~~`Data/README.md` does not exist yet.~~ **Done.** It records provenance and
    every real-vs-generated decision, and is now tracked in git.
 
-8. **50,697 Brazilian facility rows are still in `facilities`.** They predate
-   the India-only scope change and survived the loader rewrite, because
-   `load_facilities.py` deletes and re-appends only `country_code = 'IN'` — by
-   design, so a re-run cannot touch anything else. They are **inert**: every
-   application query filters on `country_code`, `is_forecast_facility` or
-   `facility_type`, and none of them counts rows unfiltered, so no figure
-   anywhere is inflated by them. But `SELECT COUNT(*) FROM facilities` returns
-   251,135 rather than 200,438, which is a question waiting to be asked in a
-   demo. **Decision needed:** delete them (one statement,
-   `DELETE FROM facilities WHERE country_code = 'BR'`, and `load_brazil.py`
-   stays in the repo as the proof the country abstraction is real), or keep
-   them and say plainly that the schema is multi-country while the scope is
-   India-only. Not deleted unilaterally — it is data removal and it is the
-   owner's call.
+8. ~~**50,697 Brazilian facility rows in `facilities`.**~~ **Resolved
+   2026-09-01.** They predated the India-only scope change and survived the
+   loader rewrite, because `load_facilities.py` deletes and re-appends only
+   `country_code = 'IN'` — by design, so a re-run cannot touch anything else.
+   They were **inert**: every application query filters, and none counted rows
+   unfiltered, so no published figure was ever inflated by them. But
+   `SELECT COUNT(*) FROM facilities` returned **251,135** against a published
+   **200,438**, and explaining that costs more than the rows are worth.
+
+   **Deleted.** `COUNT(*)` is now 200,438, one country code, 200,438 distinct
+   facility ids. `load_facilities.py` asserts both conditions — the India rows
+   match the source file *and* an unscoped `COUNT(*)` gives the same number —
+   so the gap cannot reopen silently. `geo_summary` was rebuilt (738 → 738
+   rows; it already filtered to India, so its figures were always correct).
+
+   `Data/Brazil/` and `ingestion/load_brazil.py` are **retained on disk,
+   untouched**. They are the evidence for the architecture claim that the
+   `config/` layer makes another country a configuration change rather than a
+   rewrite. That claim is about the code, and the code is still there; it never
+   required foreign rows in a production table.
 

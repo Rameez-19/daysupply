@@ -21,9 +21,11 @@ sanctioned strength, which five states do for nursing — the ratio is kept abov
 **Nursing has a second, independent requirement.** One nurse per six beds in
 the inpatient department. This is an **Indian Nursing Council regulation**,
 which CHC IPHS 2022 quotes at page 60 and tabulates at page 118 — IPHS cites it
-rather than originating it, and it should be attributed to the INC. That gives a *required* nursing strength
-derived from bed capacity, which is a different quantity from the *sanctioned*
-strength derived from staffing statistics. Both are carried, and the gap between
+rather than originating it, and it should be attributed to the INC.
+
+That gives a *required* nursing strength derived from bed capacity, which is a
+different quantity from the *sanctioned* strength derived from staffing
+statistics. Both are carried, and the gap between
 them is itself a finding.
 """
 

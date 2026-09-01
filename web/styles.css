@@ -394,3 +394,4 @@ button { font-family: inherit; cursor: pointer; }
 .scenario-table tr.row-critical { background:#fef2f2; }
 .scenario-table tr.row-warn { background:#fff7ed; }
 .scenario-method { font-size:0.72rem; color:var(--gray-400); margin-top:12px; font-style:italic; }
+.scenario-finding { margin:12px 0 0; padding:10px 14px; background:var(--gray-100); border-left:3px solid var(--gray-400); border-radius:6px; font-size:0.78rem; line-height:1.55; color:var(--gray-600); }

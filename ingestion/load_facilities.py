@@ -311,7 +311,30 @@ def verify(client: bigquery.Client, expected_rows: int) -> None:
             "ROW COUNT MISMATCH: source file has "
             f"{expected_rows:,} rows, BigQuery has {row.rows_loaded:,}"
         )
-    print(f"\nOK — {row.rows_loaded:,} rows match the source file exactly.")
+
+    # The India rows matching the source is necessary but not sufficient. The
+    # scope is India-only, so an unscoped COUNT(*) — which is what anyone
+    # checking the published figure will actually run — has to give the same
+    # answer. It once did not: 50,697 Brazilian rows from an earlier
+    # multi-country scope survived here, because this loader deletes and
+    # re-appends only country_code = 'IN' by design. They were inert (every
+    # application query filters) but COUNT(*) returned 251,135 against a
+    # published 200,438. They were deleted on 2026-09-01; this assertion stops
+    # the gap reopening.
+    total = next(iter(client.query(
+        f"SELECT COUNT(*) AS n, COUNT(DISTINCT country_code) AS countries "
+        f"FROM `{FULL_TABLE}`").result()))
+    if total.n != row.rows_loaded:
+        raise LoadError(
+            f"TABLE HAS FOREIGN ROWS: COUNT(*) is {total.n:,} but only "
+            f"{row.rows_loaded:,} are {COUNTRY_CODE}. The scope is India-only; "
+            "an unscoped count must give the figure we publish.")
+    if total.countries != 1:
+        raise LoadError(
+            f"{total.countries} country codes present; expected exactly one")
+
+    print(f"\nOK — {row.rows_loaded:,} rows match the source file exactly, "
+          "and COUNT(*) on the whole table gives the same figure.")
 
 
 # ---------------------------------------------------------------------------

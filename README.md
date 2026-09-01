@@ -105,15 +105,24 @@ truncated to three months and the rest predicted four ways
 
 | Arm | Weighted MAPE |
 |---|---|
-| flat — own three months, no seasonality | 25.8% |
-| nearest demographic match, different state | 45.1% — **19.3pt worse** |
-| nearest demographic match, same state | 32.5% — 6.7pt worse |
-| **pooled — mean vector across all districts** | **23.2% — 2.6pt better** |
+| flat — own three months, no seasonality | 19.4% |
+| nearest demographic match, different state | 71.2% — **51.8pt worse** |
+| nearest demographic match, same state | 16.4% — 3.0pt better |
+| **pooled — mean vector across all districts** | **14.4% — 5.0pt better** |
 
-Single-donor demographic matching *loses*. Seasonality here is climate-driven
-and population density does not predict climate; a single donor also carries
-all of its own reporting noise. Pooling wins, so pooling is what ships. The
-losing arms are kept because a claim is only worth what it beats.
+**Cross-state demographic matching loses catastrophically** — 71.2% against a
+19.4% flat baseline, nearly four times the error of doing nothing. Seasonality
+here is climate-driven and population density does not predict climate: Assam
+and Rajasthan can be demographically near-identical and have opposite malaria
+seasons. A single donor also carries all of its own reporting noise.
+
+**Restricting the match to the same state fixes most of it** (16.4%, a modest
+3.0pt better than flat), which is the confirmation rather than the refutation:
+what a same-state donor shares with the receiver is climate, not demography.
+
+**Pooling beats both** at 14.4%, because averaging across every district cancels
+individual reporting noise while keeping the shared seasonal shape. Pooling is
+what ships. The losing arms are kept because a claim is only worth what it beats.
 
 ## Architecture
 

@@ -154,6 +154,15 @@ async function runScenario() {
           <span>district cover <strong>${r.absorption_days}</strong> days vs ${r.slowest_lead_time}-day slowest lead time</span>
           ${r.units_short ? `<span><strong>${r.units_short.toLocaleString()}</strong> units short</span>` : ''}
         </div>
+        ${r.structurally_thin ? `
+        <p class="scenario-finding">
+          <strong>A finding about the network, not the model.</strong>
+          This district absorbs at most <strong>${r.max_multiplier_absorbed}&times;</strong> &mdash;
+          below 1.0, so its pooled stock does not cover even its
+          <em>normal</em> demand across its own lead time. That is true before
+          any surge is applied, and it is measured from the real stock
+          position rather than produced by the scenario.
+        </p>` : ''}
       </div>
 
       <h4 class="section-heading">Which facilities fail, and when</h4>

@@ -390,6 +390,14 @@ def run_scenario(district: str, atc_class: str,
     first_out = min((f["days_to_stockout"] for f in facilities
                      if f["days_to_stockout"] is not None), default=None)
 
+    # How large a spike this district could take before it stops absorbing.
+    # Below 1.0 the district cannot cover its *normal* demand across its own
+    # lead time — which is a finding about the network, not a model defect,
+    # and has to be labelled as one wherever it surfaces.
+    max_absorbed = (round(district_on_hand / (district_daily * slowest), 2)
+                    if district_daily and slowest else None)
+    structurally_thin = bool(max_absorbed is not None and max_absorbed < 1.0)
+
     if holds:
         verdict = (
             f"The district holds. Pooled stock covers {absorption_days:.1f} "
@@ -411,11 +419,26 @@ def run_scenario(district: str, atc_class: str,
             "no facility has spare stock to donate. This needs stock from "
             "outside the district.")
 
+    if structurally_thin:
+        verdict += (
+            f" Note that this district absorbs at most {max_absorbed:g}x — "
+            "below 1.0, meaning its pooled stock does not cover even its "
+            "normal demand across its own lead time. That is a finding about "
+            "how thinly this district is stocked, not a consequence of the "
+            "scenario: it is true before any surge.")
+
     return {
         "district": district,
         "atc_class": atc_class,
         "multiplier": multiplier,
         "computed_live": True,
+        "max_multiplier_absorbed": max_absorbed,
+        "structurally_thin": structurally_thin,
+        "structurally_thin_note": (
+            "The district's pooled stock does not cover its normal demand "
+            "across its own lead time, before any surge is applied. This is a "
+            "measured property of the stock position, not a model artefact."
+        ) if structurally_thin else None,
         "method": (
             "reorder_point = demand x multiplier x lead_time + "
             f"{SERVICE_LEVEL_Z} x sigma x multiplier^{SURGE_SIGMA_EXPONENT:g} "
