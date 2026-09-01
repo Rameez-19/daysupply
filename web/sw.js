@@ -1,9 +1,10 @@
-const CACHE_NAME = 'stockpulse-v9';
+const CACHE_NAME = 'stockpulse-v10';
 const ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
   '/app.js',
+  '/surge.js',
   '/logo.jpg'
 ];
 

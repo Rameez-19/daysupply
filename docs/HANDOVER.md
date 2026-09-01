@@ -356,3 +356,19 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
    `Data/README.md`, never presented as measured.
 7. ~~`Data/README.md` does not exist yet.~~ **Done.** It records provenance and
    every real-vs-generated decision, and is now tracked in git.
+
+8. **50,697 Brazilian facility rows are still in `facilities`.** They predate
+   the India-only scope change and survived the loader rewrite, because
+   `load_facilities.py` deletes and re-appends only `country_code = 'IN'` — by
+   design, so a re-run cannot touch anything else. They are **inert**: every
+   application query filters on `country_code`, `is_forecast_facility` or
+   `facility_type`, and none of them counts rows unfiltered, so no figure
+   anywhere is inflated by them. But `SELECT COUNT(*) FROM facilities` returns
+   251,135 rather than 200,438, which is a question waiting to be asked in a
+   demo. **Decision needed:** delete them (one statement,
+   `DELETE FROM facilities WHERE country_code = 'BR'`, and `load_brazil.py`
+   stays in the repo as the proof the country abstraction is real), or keep
+   them and say plainly that the schema is multi-country while the scope is
+   India-only. Not deleted unilaterally — it is data removal and it is the
+   owner's call.
+

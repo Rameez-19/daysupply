@@ -1,0 +1,422 @@
+"""Part 2 — surge detection, the supply consequence, and reach.
+
+The claims this block makes that would matter if they were wrong:
+
+* the detection statistic can actually rank outbreaks (the classical one cannot)
+* a surge is not declared on three cases becoming twelve
+* a surge changes the supply answer rather than only lighting a lamp
+* where reordering physically cannot work, the system says transfer, not order
+* scenario mode computes rather than replays
+* the population figure counts each person once
+"""
+
+import math
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app import surge  # noqa: E402
+from app.bq import run_query  # noqa: E402
+
+# n = 12 monthly observations. A standardised residual cannot exceed this.
+SERIES_MONTHS = 12
+CLASSICAL_CEILING = (SERIES_MONTHS - 1) / math.sqrt(SERIES_MONTHS)
+
+
+class TestSurgeStatistic:
+    def test_classical_z_is_pinned_to_its_arithmetic_ceiling(self):
+        """The whole reason the modified z is used.
+
+        With twelve observations the largest attainable standardised residual
+        is 11/sqrt(12) = 3.175. If the observed maximum sits just under it, the
+        statistic is saturated and cannot distinguish a 12x outbreak from a 4x
+        bump — which is precisely why it is not the test that fires.
+        """
+        rows = run_query("""
+            SELECT MAX(z_classical) AS max_z, MIN(z_classical) AS min_z
+            FROM `daysupply.daysupply.surge_signals`
+        """)
+        assert rows[0]["max_z"] <= CLASSICAL_CEILING + 1e-6, (
+            "a standardised residual above the ceiling means the residual was "
+            "not centred on its own mean before dividing")
+        assert rows[0]["max_z"] > CLASSICAL_CEILING - 0.05, (
+            "the classical statistic should be saturated at its ceiling here")
+
+    def test_modified_z_is_not_bounded_and_can_rank(self):
+        """MAD is immune to the outlier, so the statistic stays informative."""
+        rows = run_query("""
+            SELECT MAX(z_modified) AS max_z,
+                   COUNT(DISTINCT ROUND(z_modified)) AS distinct_values
+            FROM `daysupply.daysupply.surge_signals` WHERE is_surge
+        """)
+        assert rows[0]["max_z"] > CLASSICAL_CEILING * 3
+        assert rows[0]["distinct_values"] > 20, "the statistic is not ranking"
+
+    def test_the_two_statistics_disagree_about_ordering(self):
+        """If they agreed, replacing one with the other would be pointless."""
+        rows = run_query("""
+            SELECT COUNT(*) AS misordered
+            FROM `daysupply.daysupply.surge_signals`
+            WHERE is_surge AND z_classical < 3.0
+        """)
+        assert rows[0]["misordered"] > 0, (
+            "no detected surge falls below a 3-sigma classical rule, so the "
+            "classical rule would have caught them all")
+
+    def test_mad_of_zero_never_produces_a_surge(self):
+        rows = run_query("""
+            SELECT COUNTIF(mad_undefined AND is_surge) AS bad
+            FROM `daysupply.daysupply.surge_signals`
+        """)
+        assert rows[0]["bad"] == 0
+
+
+class TestSurgeIsNotNoise:
+    def test_every_surge_clears_all_three_conditions(self):
+        rows = run_query("""
+            SELECT COUNTIF(NOT (passes_statistic AND passes_ratio
+                                AND passes_magnitude)) AS inconsistent
+            FROM `daysupply.daysupply.surge_signals` WHERE is_surge
+        """)
+        assert rows[0]["inconsistent"] == 0
+
+    def test_a_small_district_going_from_three_to_twelve_is_not_a_surge(self):
+        """The magnitude floor has to actually exclude something."""
+        rows = run_query("""
+            SELECT COUNT(*) AS excluded
+            FROM `daysupply.daysupply.surge_signals`
+            WHERE passes_statistic AND passes_ratio AND NOT passes_magnitude
+        """)
+        assert rows[0]["excluded"] > 0, (
+            "the magnitude floor excluded nothing, so it is not doing any work")
+
+    def test_expectation_is_the_pooled_pattern_not_a_flat_average(self):
+        """If expected == baseline, seasonality was never applied."""
+        rows = run_query("""
+            SELECT COUNTIF(ABS(pooled_multiplier - 1.0) > 0.05) AS seasonal,
+                   COUNT(*) AS total
+            FROM `daysupply.daysupply.surge_signals`
+        """)
+        assert rows[0]["seasonal"] > rows[0]["total"] * 0.5
+
+    def test_a_habitually_volatile_district_is_not_flagged_every_month(self):
+        """Gadchiroli swings 2.2x, 2.3x and 3.0x against the pooled vector.
+
+        Its malaria season is winter-peaking against a monsoon-shaped pooled
+        pattern, so its residuals are large all year and its MAD is large with
+        them. A test that called that district surging every month would be
+        measuring the wrong thing.
+        """
+        rows = run_query("""
+            SELECT COUNTIF(is_surge) AS surges, COUNT(*) AS months
+            FROM `daysupply.daysupply.surge_signals`
+            WHERE district_key = 'GADCHIROLI' AND atc_class = 'P01BA'
+        """)
+        assert rows[0]["months"] == SERIES_MONTHS
+        assert rows[0]["surges"] == 0
+
+    def test_the_malaria_worked_example_is_real_and_detected(self):
+        """Brihan Mumbai, January: 2,345 confirmed against 988 expected."""
+        rows = run_query("""
+            SELECT observed, expected, surge_multiplier, z_modified,
+                   z_classical, is_surge
+            FROM `daysupply.daysupply.surge_signals`
+            WHERE district_key = 'BRIHAN MUMBAI' AND atc_class = 'P01BA'
+              AND month = 'January'
+        """)
+        assert rows, "the worked example is missing from the data"
+        row = rows[0]
+        assert row["is_surge"]
+        assert row["observed"] > row["expected"]
+        assert row["z_classical"] < 3.0, (
+            "the example is only interesting because a 3-sigma rule misses it")
+
+
+class TestSurgeChangesTheSupplyAnswer:
+    def test_the_surge_reorder_point_is_higher_than_the_steady_one(self):
+        rows = run_query("""
+            SELECT COUNTIF(reorder_point_surge <= reorder_point) AS not_raised,
+                   COUNT(*) AS total
+            FROM `daysupply.daysupply.surge_supply_impact`
+        """)
+        assert rows[0]["total"] > 0
+        assert rows[0]["not_raised"] == 0
+
+    def test_facilities_become_at_risk_that_were_not_before(self):
+        rows = run_query("""
+            SELECT COUNTIF(newly_at_risk) AS newly
+            FROM `daysupply.daysupply.surge_supply_impact`
+        """)
+        assert rows[0]["newly"] > 0, (
+            "if nothing changes status, the surge is not reaching the plan")
+
+    def test_lead_time_decisive_means_exactly_what_it_says(self):
+        """Runs out before an indent can arrive — no other definition."""
+        rows = run_query("""
+            SELECT COUNTIF(lead_time_decisive
+                           AND days_to_stockout >= lead_time_days) AS wrong,
+                   COUNTIF(NOT lead_time_decisive
+                           AND days_to_stockout < lead_time_days) AS missed
+            FROM `daysupply.daysupply.surge_supply_impact`
+        """)
+        assert rows[0]["wrong"] == 0
+        assert rows[0]["missed"] == 0
+
+    def test_a_facility_that_cannot_be_resupplied_is_told_to_transfer(self):
+        """The UI must never show an order quantity as if it would arrive."""
+        rows = run_query("""
+            SELECT COUNTIF(lead_time_decisive
+                           AND surge_action != 'transfer_only') AS wrong
+            FROM `daysupply.daysupply.surge_supply_impact`
+        """)
+        assert rows[0]["wrong"] == 0
+
+    def test_longer_lead_times_are_more_often_transfer_only(self):
+        """The central operational claim, checked as a monotone gradient."""
+        rows = run_query("""
+            SELECT lead_time_days <= 10 AS fast,
+                   SAFE_DIVIDE(COUNTIF(lead_time_decisive), COUNT(*)) AS share
+            FROM `daysupply.daysupply.surge_supply_impact`
+            GROUP BY fast ORDER BY fast DESC
+        """)
+        assert len(rows) == 2
+        fast, slow = rows[0]["share"], rows[1]["share"]
+        assert slow > fast, (
+            f"slow facilities ({slow:.2f}) should be transfer-only more often "
+            f"than fast ones ({fast:.2f})")
+
+
+class TestSurgeRedistribution:
+    def test_a_donor_is_never_stripped_below_its_own_surge_requirement(self):
+        rows = run_query("""
+            SELECT COUNTIF(donor_cover_after < 0) AS stranded
+            FROM `daysupply.daysupply.surge_recommendations`
+        """)
+        assert rows[0]["stranded"] == 0
+
+    def test_donor_stock_is_never_promised_twice_within_an_episode(self):
+        """The steady-state engine can double-promise; this one must not.
+
+        Grouped by surge month on purpose. The table holds a row for every
+        detected surge month and those are *alternative* episodes — a donor's
+        spare stock is one current position, so it may be committed once per
+        episode but summing across months would promise it twelve times. That
+        is why every read of the table is scoped to a single month.
+        """
+        rows = run_query("""
+            SELECT COUNT(*) AS over_allocated FROM (
+              SELECT r.from_facility_id, r.supplied_item_id, r.surge_month,
+                     SUM(r.quantity) AS promised,
+                     ANY_VALUE(s.on_hand) AS donor_on_hand
+              FROM `daysupply.daysupply.surge_recommendations` r
+              JOIN `daysupply.daysupply.reorder_status` s
+                ON s.facility_id = r.from_facility_id
+               AND s.item_id = r.supplied_item_id
+              GROUP BY r.from_facility_id, r.supplied_item_id, r.surge_month
+            ) WHERE promised > donor_on_hand
+        """)
+        assert rows[0]["over_allocated"] == 0
+
+    def test_reads_of_the_transfer_table_are_scoped_to_one_month(self):
+        """A caller that forgets the month must not get a mixed list."""
+        default = surge.get_surge_transfers(limit=200)
+        months = {row["surge_month"] for row in default}
+        assert len(months) <= 1, (
+            f"the default read spans {len(months)} surge months, which would "
+            "over-promise donors")
+
+    def test_rationing_actually_happens(self):
+        """If nothing is ever rationed, the priority order is untested."""
+        rows = run_query("""
+            SELECT COUNTIF(donor_partially_exhausted) AS rationed
+            FROM `daysupply.daysupply.surge_recommendations`
+        """)
+        assert rows[0]["rationed"] > 0
+
+    def test_vital_is_never_rationed_behind_a_desirable_from_one_donor(self):
+        """Vital outranks Desirable for the same donor's finite stock."""
+        rows = run_query("""
+            SELECT COUNT(*) AS inversions
+            FROM `daysupply.daysupply.surge_recommendations` v
+            JOIN `daysupply.daysupply.surge_recommendations` d
+              ON d.from_facility_id = v.from_facility_id
+             AND d.supplied_item_id = v.supplied_item_id
+             AND d.surge_month = v.surge_month
+            WHERE v.ven_class = 'Vital' AND d.ven_class = 'Desirable'
+              AND v.claim_rank > d.claim_rank
+        """)
+        assert rows[0]["inversions"] == 0
+
+    def test_the_widened_radius_is_recorded_on_every_row(self):
+        rows = run_query("""
+            SELECT COUNTIF(distance_km > transfer_max_km) AS beyond_limit,
+                   MAX(transfer_max_km) AS limit_km
+            FROM `daysupply.daysupply.surge_recommendations`
+        """)
+        assert rows[0]["beyond_limit"] == 0
+        assert rows[0]["limit_km"] > 150, "the surge radius did not widen"
+
+
+class TestNetworkAbsorption:
+    def test_absorption_falls_as_the_spike_grows(self):
+        rows = run_query("""
+            SELECT multiplier,
+                   SAFE_DIVIDE(COUNTIF(absorbs), COUNT(*)) AS share
+            FROM `daysupply.daysupply.network_absorption`
+            GROUP BY multiplier ORDER BY multiplier
+        """)
+        shares = [r["share"] for r in rows]
+        assert len(shares) >= 3
+        assert shares == sorted(shares, reverse=True), (
+            "a bigger spike must never be easier to absorb")
+
+    def test_absorbs_agrees_with_its_own_arithmetic(self):
+        rows = run_query("""
+            SELECT COUNTIF(absorbs != (absorption_days >= slowest_lead_time))
+                     AS disagreements
+            FROM `daysupply.daysupply.network_absorption`
+            WHERE absorption_days IS NOT NULL
+        """)
+        assert rows[0]["disagreements"] == 0
+
+    def test_a_district_that_absorbs_is_never_short(self):
+        rows = run_query("""
+            SELECT COUNTIF(absorbs AND units_short > 0) AS contradictions
+            FROM `daysupply.daysupply.network_absorption`
+        """)
+        assert rows[0]["contradictions"] == 0
+
+
+class TestScenarioMode:
+    """Scenario mode must compute, not replay."""
+
+    def test_an_arbitrary_multiplier_is_accepted(self):
+        """A precomputed 2x/3x/5x lookup could not answer 2.7x."""
+        result = surge.run_scenario("Brihan Mumbai", "P01BA", 2.7)
+        assert result["multiplier"] == 2.7
+        assert result["computed_live"] is True
+        assert result["facility_count"] > 0
+
+    def test_a_bigger_spike_never_improves_the_outcome(self):
+        low = surge.run_scenario("Brihan Mumbai", "P01BA", 1.5)
+        high = surge.run_scenario("Brihan Mumbai", "P01BA", 5.0)
+        assert high["facilities_failing"] >= low["facilities_failing"]
+        assert high["absorption_days"] <= low["absorption_days"]
+        assert high["units_short"] >= low["units_short"]
+
+    def test_stockout_day_scales_with_the_multiplier(self):
+        """Doubling demand must halve the time to stockout.
+
+        Compared with an absolute tolerance, not a relative one: the figures
+        are rounded to a tenth of a day for display, and on a facility with
+        under a day of cover that rounding is most of the value.
+        """
+        one = surge.run_scenario("Brihan Mumbai", "P01BA", 1.0)
+        two = surge.run_scenario("Brihan Mumbai", "P01BA", 2.0)
+        assert one["first_stockout_days"] == pytest.approx(
+            two["first_stockout_days"] * 2, abs=0.2)
+
+    @pytest.mark.parametrize("district,atc,multiplier", [
+        ("", "P01BA", 3.0),
+        ("Brihan Mumbai", "", 3.0),
+        ("Brihan Mumbai", "P01BA", 0.5),
+        ("Brihan Mumbai", "P01BA", 999.0),
+        ("Nowhere At All", "P01BA", 3.0),
+    ])
+    def test_unanswerable_scenarios_are_refused(self, district, atc,
+                                                multiplier):
+        with pytest.raises(surge.ScenarioError):
+            surge.run_scenario(district, atc, multiplier)
+
+    def test_the_verdict_matches_the_arithmetic(self):
+        for m in (1.0, 2.0, 3.0, 5.0):
+            r = surge.run_scenario("Brihan Mumbai", "P01BA", m)
+            expected = r["absorption_days"] >= r["slowest_lead_time"]
+            assert r["district_holds"] == expected, m
+
+
+class TestPopulationReach:
+    def test_each_person_is_counted_once(self):
+        """Catchments nest. Summing every facility type triple-counts.
+
+        A correct once-only tiling lands near, and below, the Census 2011 rural
+        population. Well above it means catchments are being double-counted.
+        """
+        rows = run_query("""
+            SELECT population, census_2011_rural_india
+            FROM `daysupply.daysupply.population_reach`
+            WHERE tier = 'national_directory'
+        """)
+        ratio = rows[0]["population"] / rows[0]["census_2011_rural_india"]
+        assert 0.80 <= ratio <= 1.05, (
+            f"PHC catchments sum to {ratio:.2f}x the rural population")
+
+    def test_the_naive_figure_would_have_been_wrong_by_about_threefold(self):
+        """Recorded so the discarded number stays on the record."""
+        rows = run_query("""
+            SELECT SUM(population_served) AS naive
+            FROM `daysupply.daysupply.facilities`
+            WHERE country_code = 'IN' AND population_served IS NOT NULL
+        """)
+        national = run_query("""
+            SELECT population FROM `daysupply.daysupply.population_reach`
+            WHERE tier = 'national_directory'
+        """)[0]["population"]
+        assert rows[0]["naive"] > national * 3
+
+    def test_tiers_nest(self):
+        rows = run_query("""
+            SELECT tier, phcs, population
+            FROM `daysupply.daysupply.population_reach` ORDER BY tier_order
+        """)
+        assert [r["tier"] for r in rows] == [
+            "operating", "demand_data_footprint", "national_directory"]
+        for a, b in zip(rows, rows[1:]):
+            assert b["phcs"] > a["phcs"]
+            assert b["population"] > a["population"]
+
+    def test_no_urban_phc_contributes_to_reach(self):
+        """The Rural Health Statistics average is a rural figure."""
+        rows = run_query("""
+            SELECT COUNT(*) AS counted_phcs
+            FROM `daysupply.daysupply.facilities`
+            WHERE country_code = 'IN' AND facility_type = 'phc'
+              AND location_type = 'rural' AND population_served IS NOT NULL
+        """)
+        national = run_query("""
+            SELECT phcs FROM `daysupply.daysupply.population_reach`
+            WHERE tier = 'national_directory'
+        """)[0]["phcs"]
+        assert national == rows[0]["counted_phcs"]
+
+
+class TestMedicineVerticalUnharmed:
+    """Part 2 must not weaken what already worked."""
+
+    def test_the_steady_state_plan_is_untouched(self):
+        rows = run_query("""
+            SELECT COUNT(*) AS reorder_rows FROM
+              `daysupply.daysupply.reorder_status`
+        """)
+        assert rows[0]["reorder_rows"] == 2794
+
+    def test_steady_state_recommendations_are_untouched(self):
+        rows = run_query("""
+            SELECT COUNT(*) AS recs, SUM(quantity) AS units
+            FROM `daysupply.daysupply.recommendations`
+        """)
+        assert rows[0]["recs"] == 525
+        assert rows[0]["units"] == 64211
+
+    def test_surge_tables_are_separate_from_steady_state_ones(self):
+        """A surge recommendation must never leak into the normal queue."""
+        rows = run_query("""
+            SELECT COUNT(*) AS leaked
+            FROM `daysupply.daysupply.recommendations` r
+            JOIN `daysupply.daysupply.surge_recommendations` s
+              ON s.recommendation_id = r.recommendation_id
+        """)
+        assert rows[0]["leaked"] == 0

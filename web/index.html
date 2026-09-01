@@ -49,6 +49,11 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
           <span>Transfers</span>
         </button>
+        <button class="nav-item" data-tab="surge-view">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          <span>Surge</span>
+          <span class="nav-badge danger" id="surge-badge"></span>
+        </button>
       </nav>
       <div class="sidebar-footer">
         <div class="sync-badge" id="sync-status">
@@ -289,6 +294,55 @@
         <div id="transfer-list" class="card-list"></div>
       </section>
 
+      <!-- ═══ Surge & emergency early warning ═══ -->
+      <section id="surge-view" class="view hidden-view">
+        <div class="view-header">
+          <h2>Surge &amp; Early Warning</h2>
+          <p class="view-subtitle">
+            A surge is a month that departs from the <em>pooled</em> seasonal
+            pattern the districts share — not from a flat average
+          </p>
+        </div>
+
+        <div class="surge-method">
+          <span class="surge-method-label">How a surge is defined</span>
+          <p id="surge-method-text">
+            Expected demand is this district's own twelve-month baseline shaped
+            by the pooled monthly multiplier for the medicine class. A month is
+            a surge when the <strong>modified z-score</strong> of its residual
+            reaches <strong id="surge-thresh-z">3.5</strong>, demand is at least
+            <strong id="surge-thresh-ratio">1.5</strong>&times; expected, and at
+            least <strong id="surge-thresh-abs">100</strong> clinical events
+            were recorded. With twelve monthly observations a classical
+            standardised residual is bounded at 3.175 and saturates, so it is
+            shown for reference but is not what fires.
+          </p>
+        </div>
+
+        <h3 class="section-heading">Detected surges</h3>
+        <div id="surge-signal-list" class="card-list"></div>
+
+        <h3 class="section-heading">Facilities whose answer this changes</h3>
+        <div id="surge-impact-list" class="card-list"></div>
+
+        <h3 class="section-heading">Scenario mode</h3>
+        <p class="section-note">
+          Computed live against current stock — not a stored 2&times;/3&times;/5&times; result.
+        </p>
+        <div class="scenario-controls">
+          <label class="scenario-field">
+            <span>District &amp; medicine class</span>
+            <select id="scenario-combo"></select>
+          </label>
+          <label class="scenario-field">
+            <span>Spike size <strong id="scenario-mult-label">3&times;</strong></span>
+            <input type="range" id="scenario-mult" min="1" max="8" step="0.5" value="3">
+          </label>
+          <button class="btn-primary" id="scenario-run">Run scenario</button>
+        </div>
+        <div id="scenario-result"></div>
+      </section>
+
     </div>
 
     <!-- Bottom Nav (mobile) -->
@@ -309,11 +363,16 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>
         <span>Transfers</span>
       </button>
+      <button class="bottom-nav-item" data-tab="surge-view">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        <span>Surge</span>
+      </button>
     </nav>
 
   </div>
 
   <script src="app.js"></script>
+  <script src="surge.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(reg => {

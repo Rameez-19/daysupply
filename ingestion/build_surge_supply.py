@@ -200,11 +200,21 @@ SELECT
   ROUND(SAFE_DIVIDE(d.district_on_hand,
                     d.district_daily_demand * s.multiplier), 1)
                                        AS absorption_days,
-  (SAFE_DIVIDE(d.district_on_hand, d.district_daily_demand * s.multiplier)
+  -- Compared on the rounded figure, which is the one the UI shows. A verdict
+  -- that contradicts the number printed beside it is worse than a rounding
+  -- error.
+  (ROUND(SAFE_DIVIDE(d.district_on_hand,
+                     d.district_daily_demand * s.multiplier), 1)
    >= d.slowest_lead_time)             AS absorbs,
-  GREATEST(CAST(ROUND(d.district_daily_demand * s.multiplier
-                      * d.slowest_lead_time - d.district_on_hand) AS INT64), 0)
-                                       AS units_short,
+  -- Derived from the same rounded figure as `absorbs`, so a district cannot
+  -- be reported as absorbing the spike and short of stock at the same time.
+  IF(ROUND(SAFE_DIVIDE(d.district_on_hand,
+                       d.district_daily_demand * s.multiplier), 1)
+     >= d.slowest_lead_time,
+     0,
+     GREATEST(CAST(ROUND(d.district_daily_demand * s.multiplier
+                         * d.slowest_lead_time - d.district_on_hand) AS INT64),
+              0))                      AS units_short,
   -- How large a spike this district could take before it stops absorbing.
   ROUND(SAFE_DIVIDE(d.district_on_hand,
                     d.district_daily_demand * d.slowest_lead_time), 2)

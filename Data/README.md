@@ -854,3 +854,367 @@ are bounded small integers — a PHC has six beds and about one doctor. A time
 series model adds nothing over an occupancy rate and an attendance rate, and it
 would spend most of the remaining headroom. **Medicines keep ARIMA; beds and
 personnel use rule-based statistics.** The series count is unchanged at 2,794.
+
+---
+
+## 18. Surge detection and emergency early warning
+
+### 18.1 A surge is a departure from the *pooled* pattern, not from flat
+
+Section 16 established that the transferable signal between districts is a
+twelve-number seasonal vector per ATC class, and that the **pooled** vector —
+the mean across all districts — beats both a flat baseline and a demographically
+matched donor. That vector is therefore the network's best available statement
+of what a normal month looks like, and a surge is a month that departs from it:
+
+```
+expected(district, class, month) = baseline(district, class)
+                                 × pooled_multiplier(class, month)
+residual                         = observed − expected
+```
+
+`baseline` is the district's **own** twelve-month mean, so the expectation is
+already scaled to how much malaria that district actually has. The pooled vector
+contributes only the *shape* of the year. A surge is then "more than this
+district's own level, seasonally adjusted, can explain" — which is a materially
+harder test than "more than average", and it is the reason a monsoon peak in a
+malaria-endemic district does not trip the alarm every July.
+
+### 18.2 Why the obvious statistic does not work
+
+The natural choice is a standardised residual and a three-sigma rule:
+
+```
+z_classical = (r − mean(r)) / stddev(r)
+```
+
+**It cannot work here, and the reason is arithmetic rather than clinical.**
+Every series is exactly twelve monthly observations, and for a sample of size
+*n* the largest attainable standardised residual is bounded:
+
+```
+z_max = (n − 1) / √n = 11 / √12 = 3.175
+```
+
+A single extreme month inflates the very standard deviation it is measured
+against. Measured across all 58,932 series-months in this data, the observed
+maximum is **3.17** — pinned to its own ceiling. A genuine 12× outbreak and a
+mild 4× bump score identically, and a "3-sigma" threshold sits within 0.07 of
+being unattainable. That is not a threshold, it is a ceiling. `z_classical` is
+carried on every row for transparency and is shown in the UI, but it is not what
+fires.
+
+> An early version of the module divided the raw residual by its standard
+> deviation *without centring it on the residual mean first*. That is not a
+> standardised residual and is not bounded — it produced a maximum of 3.45. The
+> ceiling assertion in `build_surge_signals.py` caught it, and the assertion
+> stays in the build.
+
+### 18.3 What actually fires: the modified z-score
+
+Iglewicz & Hoaglin, *How to Detect and Handle Outliers*, ASQC Basic References
+in Quality Control Volume 16, 1993, section 4.4. Median and median absolute
+deviation replace mean and standard deviation:
+
+```
+MAD        = median(|r − median(r)|)
+modified_z = 0.6745 × (r − median(r)) / MAD
+```
+
+The median and MAD are unaffected by the outlier under test, so the statistic is
+unbounded and a 12× month scores far above a 4× month. The 0.6745 factor is the
+0.75 quantile of the standard normal, which makes MAD a consistent estimator of
+σ for normally distributed data, so the score reads on a familiar scale.
+Iglewicz and Hoaglin recommend **3.5** as the cut and that is the default here.
+Observed maximum in this data: **166.7**, against the classical statistic's 3.17.
+
+### 18.4 Three conditions, not one
+
+A statistical test alone flags a district that went from three cases to twelve.
+That is a large modified z and clinically nothing. A month is a surge only if it
+clears all three:
+
+| Condition | Default | Env var | Why |
+|---|---|---|---|
+| `modified_z ≥ 3.5` | 3.5 | `SURGE_Z` | Iglewicz–Hoaglin; the statistical test |
+| `observed / expected ≥ 1.5` | 1.5 | `SURGE_MIN_RATIO` | materially more, not a rounding artefact |
+| `observed ≥ 100` | 100 | `SURGE_MIN_ABSOLUTE` | enough events to be worth acting on |
+
+All three are recorded per row (`passes_statistic`, `passes_ratio`,
+`passes_magnitude`) so a reviewer can see which condition excluded a near miss.
+Where MAD is zero the modified z is undefined; those rows are excluded and
+counted, never silently passed.
+
+**Result: 1,295 surges from 58,932 series-months (2.2%).** 2,406 passed the
+statistic; 355 were rejected on ratio and 756 on magnitude. The median
+district-month for confirmed malaria is **3 cases**, which is precisely what the
+magnitude floor is there to keep out.
+
+### 18.5 Worked example — real HMIS, not a synthesised spike
+
+**Brihan Mumbai, antimalarials (P01BA), January.**
+
+| | |
+|---|---|
+| Observed confirmed malaria | **2,345** |
+| District's own 12-month baseline | 989 |
+| Pooled January multiplier | 1.00× |
+| Expected | **988** |
+| Surge multiplier | **2.37×** |
+| Modified z | **6.54** (fires at 3.5) |
+| Classical z | **2.58** — *a 3-sigma rule misses it entirely* |
+
+The rest of Brihan Mumbai's year sits between 0.26× and 1.16× of expectation.
+January is the one month that does not, and the modified z separates it cleanly
+while the classical statistic does not reach its own threshold.
+
+**The counter-example matters as much.** **Gadchiroli** — a malaria-endemic
+tribal district in eastern Maharashtra — hits 2.22×, 2.34× and 3.03× in
+January, February and December, and is **never flagged**. Its malaria season is
+winter-peaking against a monsoon-shaped pooled vector, so its residuals are
+large all year and its MAD is large with them. A detector that called that
+district "surging" every month would be measuring the mismatch between its
+season and the pooled one, not an outbreak. Both behaviours are pinned by tests.
+
+### 18.6 Surge changes the supply answer
+
+The surge multiplier is run back through the **same** reorder-point formula the
+steady-state plan uses, so the two are comparable line by line:
+
+```
+μ_surge = avg_daily_demand × m
+σ_surge = demand_std_dev  × m
+reorder_point_surge = μ_surge × L + 1.65 × σ_surge × √L
+```
+
+**Scaling σ proportionally is an assumption, and it is the conservative one.**
+Poisson arrivals would give σ ∝ √m and a smaller safety stock; outbreak arrivals
+are overdispersed and clustered rather than Poisson, so variability grows at
+least as fast as the level. Proportional scaling errs towards holding more
+stock. The Poisson alternative is available as `SURGE_SIGMA_EXPONENT=0.5`.
+
+| Under detected surge | |
+|---|---|
+| Facility-items needing reorder, steady state | 100 |
+| Facility-items needing reorder, under surge | **198** |
+| **Newly** at risk — were fine before | **98** |
+| Total shortfall | 20,623 units |
+
+### 18.7 Lead time is what decides the answer
+
+A reorder point tells a facility to order. Whether ordering *helps* is a
+different question, and under surge it is the binding one:
+
+```
+days_to_stockout = on_hand / μ_surge
+lead_time_decisive = days_to_stockout < lead_time_days
+```
+
+If a facility runs out **before an indent can physically arrive**, reordering is
+still correct but cannot be the answer for this episode. Only stock already
+inside the district reaches it in time. **145 of 322 facility-items are in that
+position**, and the UI is required to say *"Transfer only — an indent cannot
+arrive in time"* rather than showing an order quantity and implying the problem
+is handled.
+
+The gradient is monotonic in lead time, which is the claim the whole design
+rests on:
+
+| Lead time | Can only be served laterally |
+|---|---|
+| 6–10 days | 107 of 246 (**43.5%**) |
+| 11–15 days | 34 of 71 (**47.9%**) |
+| Over 15 days | 4 of 5 (**80.0%**) |
+
+**The case worth showing.** Shivaji Nagar Health Post holds 27 units of
+primaquine — 12.4 days of cover, comfortably `ok` at steady state. Under the
+2.37× January surge that becomes **5.2 days against an 8-day lead time**, and
+the status flips from `ok` straight to `transfer_only`. Nothing about the
+facility changed; the demand did, and the lead time did the rest.
+
+### 18.8 Surge redistribution differs in three deliberate ways
+
+| | Steady state | Under surge |
+|---|---|---|
+| Transfer radius | 150 km | **300 km** (`SURGE_TRANSFER_MAX_KM`) |
+| Donor stock | ranked per receiver | **allocated cumulatively, Vital first** |
+| Donor protection | steady reorder point | **its own surge reorder point** |
+
+1. **The radius widens.** At steady state a 150 km transfer is hard to justify
+   against waiting for the next indent. For a facility that will stock out
+   before an indent can arrive, a longer journey is the only option that exists.
+2. **Vital claims stock first.** A donor's spare stock is finite. The
+   steady-state engine ranks candidates per receiver and can promise the same
+   units to several of them; under scarcity that is not acceptable. Claims are
+   accumulated in VEN order and cut off when the donor is exhausted.
+3. **The donor is protected against its own surge**, so the engine cannot strip
+   a facility that is about to need the stock itself.
+
+**Result: 101 transfers, 60 receivers, 50 donors, 5,881 units.** 68 are cases
+where transfer is the *only* option. **29 are rationed by donor capacity** — the
+priority order is doing real work, not decorating the output.
+
+**Widening the radius unlocked only 2 additional transfers.** That is a modest
+result and it is reported as one. The radius is not where the value is; the
+priority ordering and the lead-time test are.
+
+> **Alternative episodes, not a plan.** `surge_recommendations` holds a row for
+> every detected surge month. Those months are *alternatives* — a donor's spare
+> stock is one current position. Committing it in January and again in June is
+> coherent; summing across all twelve months would promise the same units twelve
+> times. Every read is therefore scoped to a single surge month, defaulting to
+> the month the live stock sits in, and a test asserts the default read never
+> spans more than one.
+
+### 18.9 Network absorption
+
+The facility question is "does this PHC hold". The district question — the one a
+district programme officer actually asks — is "does the district hold":
+
+```
+absorption_days = district_on_hand / (district_daily_demand × k)
+absorbs         = absorption_days ≥ slowest facility lead time in the district
+```
+
+Stock is deliberately pooled across the district, because lateral transfer is
+what makes pooled stock reachable. This is the capacity redistribution unlocks.
+
+`absorption_days` is rounded to a tenth of a day for display, and **`absorbs`
+and `units_short` are both derived from that rounded figure**. A verdict that
+contradicts the number printed beside it is worse than a rounding error, and a
+district can never be reported as absorbing the spike and short of stock at the
+same time. Two tests pin this.
+
+| Spike | District-classes that hold | Units short |
+|---|---|---|
+| 2× | 974 of 1,652 (**59.0%**) | 66,198 |
+| 3× | 498 of 1,652 (**30.1%**) | 208,129 |
+| 5× | 71 of 1,652 (**4.3%**) | 696,902 |
+
+**Worked district: Brihan Mumbai, antimalarials.** 110 units on hand, 15.95
+units/day of demand, slowest lead time 8 days. It absorbs a spike of at most
+**0.86×** — it cannot cover even its normal demand across its own lead time.
+That is an uncomfortable finding and it is left as measured.
+
+### 18.10 Scenario mode is computed, not replayed
+
+Scenario mode takes a district, an ATC class and **any** multiplier between 1
+and 20, and evaluates the reorder point, each facility's day of stockout,
+whether an indent can beat it, which transfers are recommended and whether the
+district holds — live, against current stock, using the same formula as the
+steady-state plan. It does **not** read the precomputed 2×/3×/5× rows. The UI
+control is a continuous slider rather than three buttons, which is the honest
+affordance for something that really does recompute.
+
+The degradation is the point. Brihan Mumbai, antimalarials:
+
+| | 2× | 3× |
+|---|---|---|
+| Facility-items failing | 3 of 4 | **4 of 4** |
+| Cannot be resupplied in time | 3 | 3 |
+| First stockout | 0.4 days | 0.2 days |
+| District cover vs 8-day lead time | 3.4 days | 2.3 days |
+| **Transfers available** | **2** | **0** |
+
+At 2× the district can partly help itself: two 10 km transfers from Shivaji
+Nagar to Hari Nagar Dispensary. At 3× the donor needs its own stock and there is
+**no donor left** — the answer changes from "move stock within the district" to
+"this needs stock from outside the district", and the API says so in those
+words. That transition is not scripted; it falls out of the arithmetic.
+
+### 18.11 Cost and scale
+
+No new ARIMA series. Surge detection is arithmetic over the existing
+`pattern_vectors` table, and the supply consequence is arithmetic over the
+existing `reorder_status` table. **The trained model stays at 2,794 series of
+the 5,000 ceiling (55.9%)**, unchanged from Part 1. Scenario mode is scoped to
+one district and one ATC class per request — a few dozen rows — and goes through
+the same `app.bq` guard rails as every other query.
+
+---
+
+## 19. Population reach — counted once
+
+Impact has to be a number and the number has to survive being checked.
+
+### 19.1 The trap: catchments are nested, not additive
+
+`population_served` comes from Rural Health Statistics 2017, which publishes,
+per State/UT, the *average rural population covered by* a sub-centre, a PHC and
+a CHC. **Those three catchments cover the same people.** A villager is served by
+a sub-centre, which reports to a PHC, which refers to a CHC.
+
+Summing `population_served` across all 200,365 Indian facilities gives
+**2,920,003,021 — 3.50× the rural population of India.** That figure is recorded
+here so the discarded number is on the record rather than merely avoided. It is
+not used anywhere.
+
+**Only rural PHCs are counted.** PHC catchments tile the rural population once,
+and the PHC is the level this system operates at.
+
+### 19.2 The tiling check — the reason to believe the method
+
+Summing the PHC catchment across all 24,759 rural PHCs gives **793,668,945**
+against a Census 2011 rural population of **833,748,852** — **95.2%**.
+
+That is what a correct once-only tiling should look like: close to the whole
+rural population, slightly under because state averages times state counts do
+not perfectly reproduce a national total. Had it come out at two or three times
+the rural population, the method would have been wrong. `build_population_reach.py`
+**fails the build** if the ratio leaves [0.80, 1.05], and a test asserts the same.
+
+### 19.3 The figure, at three scopes
+
+| Scope | Rural PHCs | Districts | States | Population |
+|---|---|---|---|---|
+| **Operating** — live forecasts, stock positions, transfer recommendations | 168 | 101 | 4 | **4.8 million** |
+| **Demand-data footprint** — districts where real HMIS demand is loaded and seasonality is measured | 5,239 | 105 | 5 | **151.7 million** |
+| **National directory** — every rural PHC already loaded | 24,759 | 686 | 37 | **793.7 million** |
+
+The honest headline is the middle row: **151.7 million people across 105
+districts in 5 states**, the footprint where the demand model is grounded in real
+government data. The first row is what is running today. The third is the
+addressable network, and it is addressable rather than achieved.
+
+### 19.4 What is counted, what is assumed, what is excluded
+
+**Counted, from published sources:** which facilities exist, where, and of what
+type (national facility directory, 200,438 rows); the average rural population
+covered by a PHC in each State/UT (RHS 2017, Census 2011 base); which districts
+have real demand data (five HMIS 2019-20 state files).
+
+**Assumed:** that each PHC serves its state's average. **There is no published
+per-facility catchment anywhere in India**, so a state × facility-type average is
+the finest granularity that exists. Real catchments vary widely within a state;
+the total is sound, any individual facility's figure is an average. This is the
+same limitation already disclosed for `population_served` in section 4.
+
+**Excluded, deliberately:**
+
+* **Urban PHCs (4,974).** The RHS figure is an average *rural* population;
+  applying it to urban PHCs would be a category error. They contribute **zero**.
+  This makes the number smaller and it is the correct treatment — 32 of the 200
+  operating facilities are urban and are not counted.
+* **Sub-centres (163,131), CHCs (5,389), district and state hospitals (2,185)** —
+  nested catchments.
+
+**Direction of error.** The population base is Census 2011, now fifteen years
+old, and India's rural population has grown since. **These figures understate
+current reach.** Nothing is rounded up and no growth factor has been applied.
+
+### 19.5 What "meaningfully" means
+
+Reach is not the same as impact, and a population count on its own says nothing
+about whether anything improved. The measured claims attached to that population,
+each from elsewhere in this document:
+
+* **94,542 units of waste avoided** through FEFO batch attribution against a
+  measured FIFO counterfactual (section 14) — not modelled, ledger-walked.
+* **Reorder points that are each facility's own**, from its own lead time and
+  demand variability, rather than a flat 14-day rule (section 11).
+* **98 facility-items that a surge moves from safe to at risk**, and 145 where
+  ordering physically cannot work in time (section 18.6–18.7).
+
+MoHFW's own finding that a PHC serves **36,049 people on average against a
+20–30,000 norm** is the context for all of it: these are facilities already
+carrying more population than the standard assumes.

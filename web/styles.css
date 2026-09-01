@@ -353,3 +353,44 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--gray-50, #f8fafc);
   border: 1px dashed var(--border, #e2e8f0);
 }
+
+/* ===== Surge & early warning ===== */
+.section-heading { font-size:0.95rem; font-weight:700; color:var(--text); margin:24px 0 4px; }
+.section-note { font-size:0.78rem; color:var(--gray-500); margin:0 0 12px; }
+.alert-detail.muted { color:var(--gray-500); font-size:0.75rem; }
+
+.surge-method { background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--brand-500); border-radius:var(--radius); padding:14px 18px; margin-bottom:8px; }
+.surge-method-label { font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--brand-500); }
+.surge-method p { font-size:0.82rem; line-height:1.55; color:var(--gray-600); margin:6px 0 0; }
+
+/* The three answers a surge can produce. "Transfer only" is deliberately the
+   loudest: it is the one where ordering more cannot help. */
+.surge-badge { display:inline-block; font-size:0.7rem; font-weight:700; padding:3px 9px; border-radius:12px; margin-top:4px; }
+.surge-badge.only { background:#fef2f2; color:var(--danger); border:1px solid #fecaca; }
+.surge-badge.warn { background:#fff7ed; color:var(--warning); border:1px solid #fed7aa; }
+.surge-badge.ok   { background:#f0fdf4; color:var(--success); border:1px solid #bbf7d0; }
+
+.scenario-controls { display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; padding:16px 20px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-sm); }
+.scenario-field { display:flex; flex-direction:column; gap:6px; flex:1 1 220px; }
+.scenario-field > span { font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); }
+.scenario-field select, .scenario-field input[type=range] { width:100%; }
+.scenario-field select { padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); font-size:0.85rem; }
+
+.scenario-verdict { margin-top:16px; padding:16px 20px; border-radius:var(--radius); border:1px solid var(--border); border-left-width:4px; background:var(--surface); }
+.scenario-verdict.holds { border-left-color:var(--success); }
+.scenario-verdict.fails { border-left-color:var(--danger); }
+.scenario-verdict-head { font-weight:800; font-size:1rem; margin-bottom:4px; }
+.scenario-verdict.holds .scenario-verdict-head { color:var(--success); }
+.scenario-verdict.fails .scenario-verdict-head { color:var(--danger); }
+.scenario-verdict p { font-size:0.85rem; line-height:1.55; color:var(--gray-600); margin:0; }
+.scenario-figures { display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:12px; font-size:0.78rem; color:var(--gray-600); }
+
+/* Wide tables scroll inside their own box; the page never scrolls sideways. */
+.table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.scenario-table { width:100%; border-collapse:collapse; font-size:0.8rem; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+.scenario-table th { text-align:left; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); padding:9px 12px; border-bottom:1px solid var(--border); background:var(--gray-100); white-space:nowrap; }
+.scenario-table td { padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+.scenario-table tr:last-child td { border-bottom:none; }
+.scenario-table tr.row-critical { background:#fef2f2; }
+.scenario-table tr.row-warn { background:#fff7ed; }
+.scenario-method { font-size:0.72rem; color:var(--gray-400); margin-top:12px; font-style:italic; }

@@ -32,6 +32,8 @@ function switchTab(tabId) {
   if (tabId === 'review-view')   loadReviewQueue();
   if (tabId === 'alerts-view')   loadAlerts();
   if (tabId === 'transfer-view') loadTransfers();
+  // Defined in surge.js, which loads after this file.
+  if (tabId === 'surge-view')    loadSurge();
 }
 sidebarItems.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 bottomItems.forEach(btn  => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));

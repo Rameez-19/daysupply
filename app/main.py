@@ -17,6 +17,7 @@ from app import exchange
 from app import items
 from app import quality
 from app import resources
+from app import surge
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
 from app.capture import handle_capture, handle_chat
@@ -302,6 +303,91 @@ async def fetch_recommendations(state: str = "", district: str = "",
         "recommendations": _facility_query(
             supply.get_recommendations, state, district, phc, limit),
     }
+
+
+# ── Surge and emergency early warning ───────────────────────────────
+@app.get("/api/v1/surge/signals")
+async def fetch_surge_signals(state: str = "", district: str = "",
+                              atc_class: str = "", month: str = "",
+                              limit: int = 50):
+    """District-months whose demand departed from the pooled seasonal pattern.
+
+    The statistic is the Iglewicz-Hoaglin modified z-score, not a plain
+    standardised residual: with twelve monthly observations the classical z is
+    bounded at 3.175 and saturates, so it cannot rank outbreaks. Every
+    threshold the row was tested against is returned with it.
+    """
+    return {
+        "signals": surge.get_surge_signals(
+            state, district, atc_class, month, limit),
+    }
+
+
+@app.get("/api/v1/surge/impact")
+async def fetch_surge_impact(state: str = "", district: str = "",
+                             atc_class: str = "", limit: int = 100):
+    """What a detected surge does to each facility's supply answer.
+
+    `lead_time_decisive` is the row that matters: the facility runs out before
+    an indent can physically arrive, so ordering cannot be the answer and only
+    a lateral transfer reaches it in time.
+    """
+    return {
+        "impact": surge.get_surge_impact(state, district, atc_class, limit),
+    }
+
+
+@app.get("/api/v1/surge/transfers")
+async def fetch_surge_transfers(state: str = "", district: str = "",
+                                month: str = "", limit: int = 100):
+    """Transfers recommended under surge — Vital first, wider radius.
+
+    Scoped to one surge month, defaulting to the month the live stock sits in.
+    The months are alternative episodes, not a combined plan: a donor's spare
+    stock is one position, so mixing months would promise the same units twice.
+    """
+    resolved = month or surge.current_surge_month()
+    return {
+        "surge_month": resolved,
+        "transfers": surge.get_surge_transfers(state, district, resolved,
+                                               limit),
+    }
+
+
+@app.get("/api/v1/surge/absorption")
+async def fetch_absorption(state: str = "", district: str = "",
+                           atc_class: str = "", limit: int = 200):
+    """Whether a district's own stock can carry it until resupply lands."""
+    return {
+        "absorption": surge.get_absorption(state, district, atc_class, limit),
+    }
+
+
+@app.get("/api/v1/surge/scenario/options")
+async def fetch_scenario_options():
+    """District and ATC-class combinations that have real stock to model."""
+    return surge.get_scenario_options()
+
+
+@app.get("/api/v1/surge/scenario")
+async def fetch_scenario(district: str, atc_class: str,
+                         multiplier: float = 3.0):
+    """Run a spike of any size against current stock, computed live.
+
+    Not a lookup into precomputed rows: the reorder point, the day each
+    facility runs out, the transfers and the district verdict are all evaluated
+    at the multiplier asked for.
+    """
+    try:
+        return surge.run_scenario(district, atc_class, multiplier)
+    except surge.ScenarioError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/reach")
+async def fetch_reach():
+    """Population reached, counted once, with what is assumed stated."""
+    return surge.get_population_reach()
 
 
 @app.get("/api/v1/substitutes")
