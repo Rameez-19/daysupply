@@ -157,15 +157,21 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 | **26,612 units of waste avoided (44.7%)** | FEFO 32,893 expired vs FIFO 59,505 counterfactual, ledger replayed both ways | **MEASURED** | `generate_usage.py` → `impact_metrics`; served at `/api/v1/impact` |
 | Per-transfer `waste_avoided_units` = **0** | FEFO at the facility already consumed short-dated stock | **MEASURED, and honest** | `build_supply_plan.py` |
 | **1 substitution** across 525 transfers | ATC **level 4** matching | **MEASURED** | same |
+| The `substitutes` table is **empty (0 rows)** | only **1 of 30** ATC classes in the forecast set contains two forecast items | **MEASURED — a real limit, not a failure** | `app/supply.py`, `substitution_constraint()`; `/api/v1/substitutes` returns the reason with the empty list |
 
 > ⚠️ **26,612 supersedes 94,542, and 44.7% supersedes 57%.** The old figures were
 > correct for the Block C ledger. The Block D+ driver corrections regenerated the
 > ledger, and different demand produces different expiry under both policies.
 > **94,542 must not appear anywhere.**
 
-> ⚠️ Substitution firing once is not a bug — only one ATC level-4 class contains
-> two forecast items. Present it as a demonstrated capability with a stated
-> limit, not as a headline number.
+> ⚠️ Substitution firing once is not a bug — **only 1 of 30** ATC level-4
+> classes in the forecast set contains two forecast items, so there is almost
+> nothing to substitute *between*. Matching at ATC level 3 would produce many
+> more candidates and some would be clinically wrong (it paired Zinc Sulphate
+> with Magnesium Sulphate); the stricter rule is kept and the reach is the
+> price. **Present it as a demonstrated capability with a stated limit, and say
+> the limit out loud** — widening the forecast item set, not loosening the ATC
+> level, is what would make it fire more.
 
 ---
 

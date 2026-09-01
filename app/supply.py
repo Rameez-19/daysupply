@@ -143,6 +143,53 @@ def get_substitutes(state: str = "", district: str = "",
     )
 
 
+def substitution_constraint() -> dict:
+    """Why the substitution list is empty, when it is.
+
+    An empty list with no explanation reads as a broken feature. It is not:
+    substitution is working correctly and finding nothing, for a reason that is
+    a property of the catalogue rather than of the code.
+
+    A substitute has to be a *different* item, in the *same* ATC level-4 class,
+    at the *same* facility, held above that alternative's own reorder point.
+    Level 4 is deliberate — level 3 paired Zinc Sulphate with Magnesium
+    Sulphate, which is clinically wrong, and a regression test pins the stricter
+    rule. The cost of that correctness is reach: of the 39 forecast items, only
+    one ATC level-4 class contains two of them, so there is almost nothing to
+    substitute *between*.
+
+    Reported rather than hidden, the same way staff reallocation reports why it
+    returns nothing.
+    """
+    rows = run_query(f"""
+        SELECT
+          COUNT(DISTINCT atc_class)                       AS classes,
+          COUNTIF(items_in_class > 1)                     AS classes_with_a_pair
+        FROM (
+          SELECT atc_class, COUNT(DISTINCT item_id) AS items_in_class
+          FROM {REORDER_STATUS}
+          WHERE atc_class IS NOT NULL
+          GROUP BY atc_class
+        )
+    """, cache_key="subs:constraint")
+    row = rows[0] if rows else {"classes": 0, "classes_with_a_pair": 0}
+    return {
+        "forecast_atc_classes": row["classes"],
+        "classes_containing_two_forecast_items": row["classes_with_a_pair"],
+        "why": (
+            "A substitute must be a different item in the same ATC level-4 "
+            "class, held at the same facility above its own reorder point. "
+            f"Only {row['classes_with_a_pair']} of {row['classes']} ATC classes "
+            "in the forecast set contain two forecast items at all, so there "
+            "is almost nothing to substitute between. Matching at ATC level 3 "
+            "would produce far more candidates and some of them would be "
+            "clinically wrong — it paired Zinc Sulphate with Magnesium "
+            "Sulphate — so the stricter rule is kept and the reach is the "
+            "price. Widening the forecast item set, not loosening the ATC "
+            "level, is what would make this fire."),
+    }
+
+
 def get_reporting(state: str = "", district: str = "",
                   facility_id: str = "", limit: int = 200) -> dict:
     """Reporting consistency per facility, plus the scope summary."""

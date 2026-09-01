@@ -433,11 +433,19 @@ async def fetch_reach():
 @app.get("/api/v1/substitutes")
 async def fetch_substitutes(state: str = "", district: str = "",
                             phc: str = "", limit: int = 50):
-    """ATC-equivalent items a facility already holds for something it lacks."""
-    return {
-        "substitutes": _facility_query(
-            supply.get_substitutes, state, district, phc, limit),
-    }
+    """ATC-equivalent items a facility already holds for something it lacks.
+
+    When the list is empty the reason is returned with it. Substitution is
+    working and finding nothing, because only one ATC level-4 class in the
+    forecast set contains two forecast items — an empty list with no
+    explanation would read as a broken feature instead of a real limit.
+    """
+    rows = _facility_query(
+        supply.get_substitutes, state, district, phc, limit)
+    payload = {"substitutes": rows}
+    if not rows:
+        payload["constraint"] = supply.substitution_constraint()
+    return payload
 
 
 @app.get("/api/v1/reporting")
