@@ -396,20 +396,45 @@ class TestPopulationReach:
 class TestMedicineVerticalUnharmed:
     """Part 2 must not weaken what already worked."""
 
-    def test_the_steady_state_plan_is_untouched(self):
+    def test_the_steady_state_plan_covers_every_forecast_series(self):
         rows = run_query("""
             SELECT COUNT(*) AS reorder_rows FROM
               `daysupply.daysupply.reorder_status`
         """)
         assert rows[0]["reorder_rows"] == 2794
 
-    def test_steady_state_recommendations_are_untouched(self):
+    def test_steady_state_recommendations_remain_sane(self):
+        """Structural assertions, not frozen magic numbers.
+
+        This used to pin `recs == 525` and `units == 64211`. Those were the
+        right check while `reorder_status` was a precomputed table, because
+        nothing but a rebuild could move them. It is now a view over live
+        stock, so **every capture legitimately changes both figures** — the
+        first real capture moved them to 527 and 64,218. A test asserting the
+        old constants would fail on correct behaviour and teach people to
+        edit the number until it passes.
+
+        What must stay true is the shape of the plan, so that is what is
+        checked. The current figures live in `docs/CLAIMS.md`, which is
+        re-verified against the live dataset rather than hardcoded here.
+        """
         rows = run_query("""
-            SELECT COUNT(*) AS recs, SUM(quantity) AS units
+            SELECT COUNT(*) AS recs,
+                   SUM(quantity) AS units,
+                   COUNTIF(quantity <= 0) AS non_positive,
+                   COUNTIF(from_facility_id = to_facility_id) AS self_transfer,
+                   COUNTIF(receiver_cover_after < receiver_cover_before)
+                     AS receiver_worse_off,
+                   COUNTIF(donor_cover_after < 0) AS donor_stranded
             FROM `daysupply.daysupply.recommendations`
         """)
-        assert rows[0]["recs"] == 525
-        assert rows[0]["units"] == 64211
+        row = rows[0]
+        assert row["recs"] > 400, "the plan has collapsed"
+        assert row["units"] > 50_000
+        assert row["non_positive"] == 0
+        assert row["self_transfer"] == 0
+        assert row["receiver_worse_off"] == 0
+        assert row["donor_stranded"] == 0
 
     def test_surge_tables_are_separate_from_steady_state_ones(self):
         """A surge recommendation must never leak into the normal queue."""

@@ -163,20 +163,18 @@ class TestFefo:
         for rec in recommendations:
             assert 0 <= rec["waste_avoided_units"] <= rec["quantity"]
 
-    def test_current_stock_reconciles_with_the_seeded_ledger(self):
+    def test_current_stock_reconciles_with_the_ledger(self):
         """Batch quantities must sum to received - dispensed - expired.
 
-        **Scoped to `source = 'seed'` deliberately.** `current_stock` is
-        precomputed by `ingestion/build_current_stock.py`, while live captures
-        now write into `resource_events` synchronously. A capture therefore
-        moves the ledger immediately and does *not* move the batch table until
-        that module is re-run — see `test_captures_are_the_only_divergence`
-        below, and HANDOVER §9d.
+        **Global again, and permanently so.** This was briefly scoped to
+        `source = 'seed'` while `current_stock` was a precomputed table and
+        live captures made the two diverge. It is now a view derived from the
+        ledger at read time, so the invariant holds for every row including
+        captures — and any divergence is a real defect, not staleness.
 
-        Without this scope the test would fail every time anyone spoke into
-        the app, which would train people to ignore it. The invariant it exists
-        to protect — that FEFO batch arithmetic matches the ledger it was built
-        from — is unchanged.
+        This is the strongest single assertion about the FEFO arithmetic: if
+        batch quantities do not sum to the ledger balance, on-hand, days of
+        cover, reorder points, alerts and transfers are all wrong together.
         """
         rows = run_query("""
             WITH ledger AS (
@@ -185,7 +183,6 @@ class TestFefo:
                        - SUM(IF(event_type = 'dispensed', quantity, 0))
                        - SUM(IF(event_type = 'expired',   quantity, 0)) AS balance
               FROM `daysupply.daysupply.stock_events`
-              WHERE source = 'seed'
               GROUP BY facility_id, item_id
             ),
             batched AS (
@@ -198,33 +195,46 @@ class TestFefo:
         """)
         assert rows[0]["mismatches"] == 0
 
-    def test_captures_are_the_only_divergence_from_the_batch_table(self):
-        """Anything that does not reconcile must be explained by a capture.
+    def test_an_undated_receipt_is_counted_and_consumed_last(self):
+        """A captured receipt has no expiry date and must still be stock.
 
-        This is the half of the old assertion that still has to hold globally.
-        If a facility-item diverges and has no capture events, something has
-        corrupted the ledger and the FEFO arithmetic is no longer trustworthy.
+        The build used to filter `expiry_date IS NOT NULL`, which would have
+        dropped every captured receipt from the batch view while still counting
+        it in the ledger balance. Undated batches are included and ordered last
+        in FEFO, because a batch whose expiry is unknown cannot be claimed to
+        expire soon.
         """
         rows = run_query("""
-            WITH ledger AS (
-              SELECT facility_id, item_id,
-                     SUM(IF(event_type = 'received',  quantity, 0))
-                       - SUM(IF(event_type = 'dispensed', quantity, 0))
-                       - SUM(IF(event_type = 'expired',   quantity, 0)) AS balance,
-                     COUNTIF(source != 'seed') AS capture_events
-              FROM `daysupply.daysupply.stock_events`
-              GROUP BY facility_id, item_id
-            ),
-            batched AS (
-              SELECT facility_id, item_id, SUM(remaining_qty) AS batched
-              FROM `daysupply.daysupply.current_stock`
-              GROUP BY facility_id, item_id
-            )
-            SELECT COUNTIF(IFNULL(b.batched, 0) != l.balance
-                           AND l.capture_events = 0) AS unexplained
-            FROM ledger l LEFT JOIN batched b USING (facility_id, item_id)
+            SELECT COUNTIF(expiry_unknown) AS undated,
+                   COUNTIF(expiry_unknown AND is_expired) AS wrongly_expired,
+                   COUNTIF(expiry_unknown AND days_to_expiry IS NOT NULL)
+                     AS wrongly_dated
+            FROM `daysupply.daysupply.current_stock`
         """)
-        assert rows[0]["unexplained"] == 0
+        # No undated batch may be called expired, or given a countdown.
+        assert rows[0]["wrongly_expired"] == 0
+        assert rows[0]["wrongly_dated"] == 0
+
+    def test_current_stock_is_a_view_so_a_capture_moves_on_hand(self):
+        """If this became a table again, capture would stop moving stock."""
+        rows = run_query("""
+            SELECT table_type
+            FROM `daysupply.daysupply.INFORMATION_SCHEMA.TABLES`
+            WHERE table_name = 'current_stock'
+        """)
+        assert rows[0]["table_type"] == "VIEW"
+
+    def test_reorder_status_is_a_view_so_a_capture_moves_an_alert(self):
+        """The model half lives in `demand_baseline`; this half must stay live."""
+        rows = run_query("""
+            SELECT table_name, table_type
+            FROM `daysupply.daysupply.INFORMATION_SCHEMA.TABLES`
+            WHERE table_name IN ('reorder_status', 'demand_baseline')
+            ORDER BY table_name
+        """)
+        by_name = {r["table_name"]: r["table_type"] for r in rows}
+        assert by_name["demand_baseline"] == "BASE TABLE"
+        assert by_name["reorder_status"] == "VIEW"
 
     def test_no_negative_stock(self):
         """A facility cannot have dispensed more than it ever received."""

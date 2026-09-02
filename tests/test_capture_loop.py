@@ -42,9 +42,11 @@ class _FakeModels:
         self.exc = exc
         self.reply = reply
         self.calls: list[str] = []
+        self.configs: list[object] = []
 
-    def generate_content(self, model, contents):
+    def generate_content(self, model, contents, config=None):
         self.calls.append(model)
+        self.configs.append(config)
         if self.remaining > 0:
             self.remaining -= 1
             raise self.exc
@@ -68,6 +70,29 @@ def _install(monkeypatch, models):
 
 
 class TestRetryOn503:
+    def test_the_rules_travel_as_a_system_instruction(self, monkeypatch,
+                                                      fast_backoff):
+        """The prompt is configuration, not the first turn of the conversation.
+
+        It also has to reach the model on *every* attempt, including the ones
+        that fall back to the cheaper model — a retry that quietly dropped the
+        extraction rules would return plausible, differently-shaped JSON.
+        """
+        models = _FakeModels(failures=2, exc=_Boom(503, "UNAVAILABLE"),
+                             reply="[]")
+        _install(monkeypatch, models)
+        capture.process_text("kuch bhi")
+        assert len(models.configs) == 3
+        for config in models.configs:
+            assert config is not None
+            assert "VAGUE QUANTITIES" in config.system_instruction
+
+    def test_vague_quantity_rules_are_in_the_prompt(self):
+        """The 'teen char' gap: a range must be treated like 'aadha dabba'."""
+        for phrase in ("teen char", "do teen", "lagbhag", "aas paas", "kuch"):
+            assert phrase in capture.SYSTEM_PROMPT, phrase
+        assert "confidence <= 0.5" in capture.SYSTEM_PROMPT
+
     def test_a_transient_503_is_retried_and_succeeds(self, monkeypatch,
                                                      fast_backoff):
         models = _FakeModels(

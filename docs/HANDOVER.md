@@ -482,38 +482,71 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
    review approval. Not built; it is a design decision about whether approval is
    synchronous or batched, and that is the owner's call.
 
-9d. **The capture loop is closed as far as the ledger, not as far as stock.**
-   Verified live 2026-09-02: a chat capture writes into `resource_events`
-   synchronously and `captures_today` moves from 0 to 2 within seconds. That is
-   the loop that was open and it is now closed.
+9d. ~~**The capture loop is closed as far as the ledger, not as far as
+   stock.**~~ **Closed fully, 2026-09-02.** Verified live: a capture moves the
+   counter, on-hand *and* the alert.
 
-   **What a capture still does not move is the stock position.**
-   `current_stock` is a precomputed batch table built by
-   `ingestion/build_current_stock.py`, and `reorder_status`, alerts and
-   recommendations are built from it. A capture changes the ledger immediately
-   and none of those until the ingestion modules are re-run.
+   `current_stock` and `reorder_status` are now **views**, not tables:
 
-   So today: speak, and the capture counter moves. Speak, and *on-hand does
-   not*. A judge who reports receiving 200 paracetamol and then checks the
-   alert for that facility will not see it clear.
+   * `current_stock` derives FEFO batch positions from the ledger at read time.
+     Measured cost **149.6 MB / $0.00085 per query**; a thousand dashboard
+     queries a day is about **$26/month**, and `app/bq.py` caches on top. At
+     this volume correctness is worth far more than the compute.
+   * `reorder_status` had to be split, because `ML.FORECAST` is a table-valued
+     function and BigQuery will not allow one inside a view. Demand and
+     variability — slow-changing, model-derived — now live in a table,
+     **`demand_baseline`**. Everything that depends on on-hand is computed in
+     the view. Same name, same columns, current numbers.
 
-   `tests/test_supply_chain.py` documents this precisely rather than hiding it:
-   the FEFO reconciliation is scoped to `source = 'seed'`, and a second test
-   asserts that **any** facility-item diverging from the batch table without
-   capture events is unexplained and fails. The invariant still bites; it just
-   knows about captures now.
+   **A trap that would have made the view useless.** A captured receipt has no
+   expiry date, and the old batch query filtered `expiry_date IS NOT NULL`. It
+   would have dropped every captured receipt while still counting it in the
+   ledger balance — permanently unreconcilable, and on-hand still frozen.
+   Undated batches are now included and ordered **last** in FEFO (`NULLS LAST`),
+   which is the conservative reading: a batch whose expiry is unknown cannot be
+   claimed to expire soon.
 
-   Closing this properly is an incremental-update path for `current_stock`, or
-   making it a view over the ledger. Both are real design work. **Do not fake
-   it** by rebuilding the whole batch table per capture.
+   **A second trap, one layer up.** With the views correct, `/api/v1/alerts`
+   still reported the facility stocked out while `reorder_status` said
+   `on_hand = 1000, status = ok` — the API response was cached. `app/bq.py`
+   now exposes `invalidate_stock_reads()`, called after every ledger write,
+   which drops the stock-dependent cache prefixes and deliberately leaves the
+   geography pre-aggregate alone (~0.8s to rebuild, and no capture can change
+   it).
 
-9e. **Streaming inserts cannot be DML-deleted for up to 90 minutes.** A row
-   written via `insert_rows_json` sits in the streaming buffer, queryable by
-   SELECT immediately but immune to `DELETE`/`UPDATE` until it flushes. A bad
-   row written during testing on 2026-09-02 survived a `DELETE` that reported
-   success. This matters for any correction workflow: **a mistaken capture
-   cannot be retracted promptly.** Nothing currently offers to, which is the
-   safe default, but do not build a delete button that appears to work.
+9e. **⚠️ DESIGN CONSTRAINT: do not build a delete or retract button.**
+
+   Rows written by `insert_rows_json` sit in BigQuery's streaming buffer,
+   queryable by `SELECT` immediately but **immune to `DELETE` and `UPDATE` for
+   up to ~90 minutes**. This is not a bug to work around; it is how streaming
+   inserts behave.
+
+   Observed for real on 2026-09-02: a bad row was deleted, the `DELETE`
+   reported success and affected rows, and the row was still there afterwards.
+
+   So a retract button would *appear* to work and silently not — the worst
+   possible failure for a correction feature, because the user believes the
+   bad number is gone. **Nothing currently offers retraction, and nothing
+   should.** If a correction workflow is ever needed, the honest shapes are:
+
+   * a compensating event (a `dispensed` or adjustment row that nets it out),
+     which is what an append-only ledger is for; or
+   * a `status` column plus a filter, so a retracted row stays in the ledger
+     and stops counting.
+
+   Both keep the audit trail. Neither pretends a row can vanish.
+
+9f. **A `count` event does not reset on-hand.** "Amoxicillin khatam ho gaya" —
+   we are out of amoxicillin — extracts correctly as `quantity 0,
+   event_type 'count'` and writes to the ledger, but the balance arithmetic
+   only nets `received - dispensed - expired`. A stocktake that contradicts the
+   ledger is therefore recorded and ignored.
+
+   This is a genuine semantic gap, not a defect: making a stocktake authoritative
+   means the ledger stops being purely additive, and that is a design decision
+   about which source wins. Flagged rather than built. **In a demo, prefer
+   "we received N" over "we're out of X"** — the first moves the dashboard, the
+   second does not.
 
 10. **Deck and video still to build**, and both must draw every figure from
     `docs/CLAIMS.md`. Any number not in that file does not go in front of a

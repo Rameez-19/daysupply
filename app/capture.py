@@ -90,6 +90,17 @@ Rules:
 - If quantity is unclear, return the item with quantity null
 - Never invent items that were not mentioned
 - Transcribe the drug name as spoken; do not translate or correct it
+
+VAGUE QUANTITIES. A range or an approximation is not a number. If the
+speaker gives one, set confidence <= 0.5 so a human confirms it. This
+applies to:
+- ranges spoken as two adjacent numbers: "teen char" (three-four),
+  "do teen" (two-three), "das barah" (ten-twelve), "three or four"
+- hedges: "kuch" (some), "thoda" (a little), "lagbhag" / "karib"
+  (approximately), "aas paas" (around), "ya do" ("or two")
+- part-container amounts: "aadha dabba", "half a strip", "paav"
+A precise number stated plainly — "do sau" (200), "pachas" (50) — is NOT
+vague and keeps its normal high confidence.
 """
 
 # The extraction prompt is shared by voice and chat: the only difference is
@@ -154,11 +165,16 @@ def _generate(contents) -> str:
     """
     client = _get_client()
     last_error = ""
+    # The extraction rules now travel as a system_instruction rather than as
+    # the first element of `contents`. Done separately from the SDK migration
+    # on purpose, so a change in library and a change in prompting could not be
+    # confounded if the output shifted.
+    config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         model = MODEL if attempt <= FALLBACK_AFTER_ATTEMPTS else FALLBACK_MODEL
         try:
             response = client.models.generate_content(
-                model=model, contents=contents)
+                model=model, contents=contents, config=config)
             if attempt > 1:
                 log.info("Extraction succeeded on attempt %d using %s",
                          attempt, model)
@@ -180,21 +196,15 @@ def _generate(contents) -> str:
 
 
 def process_audio(audio_bytes: bytes, mime_type: str = "audio/mp3") -> str:
-    """Send audio to Gemini and return its raw reply.
-
-    The prompt is passed inline rather than as a `system_instruction`, which
-    the new SDK also supports. That is deliberate: the SDK migration and a
-    prompt change should not be confounded. Worth revisiting separately.
-    """
+    """Send audio to Gemini and return its raw reply."""
     return _generate([
-        SYSTEM_PROMPT,
         types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
     ])
 
 
 def process_text(message: str) -> str:
-    """Send a typed message through the same extraction prompt."""
-    return _generate(SYSTEM_PROMPT + CHAT_INSTRUCTION + message)
+    """Send a typed message through the same extraction rules."""
+    return _generate(CHAT_INSTRUCTION + message)
 
 
 def handle_capture(audio_bytes: bytes, facility_id: str,

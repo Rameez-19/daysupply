@@ -17,7 +17,34 @@ pass, with no row-by-row simulation.
 The `expired` term matters. Without it the arithmetic implies expired units
 were handed to patients, which both overstates dispensing and hides waste.
 
-Rebuild this whenever `stock_events` changes.
+## This is a VIEW, not a table, and that is the point
+
+It used to be a table rebuilt by this script. That meant a health worker could
+report receiving 200 paracetamol, watch the capture counter move, and watch
+on-hand not move — because the batch table was computed hours earlier. The
+product's claim is that capture updates stock, so stock has to be derived from
+the ledger at read time.
+
+**Cost, measured rather than assumed:** the view scans **149.6 MB** per query,
+**$0.00085** at $6.25/TiB. A thousand dashboard queries a day is **$0.85/day**,
+about **$26/month**, and `app/bq.py` caches reads on top of that. At this volume
+the correctness is worth far more than the compute. If the ledger grew by two
+orders of magnitude this would need revisiting — a materialised view, or an
+incremental merge — but it is nowhere near that.
+
+## Receipts with no expiry date
+
+A captured receipt has no expiry date: nobody says "and it expires in March"
+into a phone. The old build filtered `expiry_date IS NOT NULL`, which would
+have silently dropped every captured receipt from the batch table while still
+counting it in the ledger balance — the reconciliation would break permanently
+and on-hand still would not move. Making this a view without noticing that
+would have produced a view that did not work.
+
+So batches with an unknown expiry are **included, and ordered last**. FEFO
+consumes soonest-expiring first; a batch whose expiry we do not know cannot be
+claimed to expire soon, so it is consumed after every dated batch. That is the
+conservative reading and it keeps the ledger reconciling exactly.
 """
 
 from __future__ import annotations
@@ -35,8 +62,7 @@ STOCK_EVENTS = f"`{PROJECT}.{DATASET}.stock_events`"
 CURRENT_STOCK = f"`{PROJECT}.{DATASET}.current_stock`"
 
 BUILD = f"""
-CREATE OR REPLACE TABLE {CURRENT_STOCK}
-CLUSTER BY facility_id, item_id
+CREATE OR REPLACE VIEW {CURRENT_STOCK}
 AS
 WITH
 -- The ledger's "today": the last day any event was recorded.
@@ -63,13 +89,20 @@ batches AS (
     expiry_date,
     quantity                AS batch_qty,
     -- Running total in expiry order: FEFO consumes in exactly this sequence.
+    -- NULLS LAST is load-bearing. A captured receipt has no expiry date, and
+    -- BigQuery sorts NULLs first by default, which would consume the batch we
+    -- know least about before the ones we know are about to expire — the exact
+    -- opposite of FEFO. Unknown expiry goes last.
     SUM(quantity) OVER (
       PARTITION BY facility_id, item_id
-      ORDER BY expiry_date, event_id
+      ORDER BY expiry_date NULLS LAST, event_id
       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
     ) AS cumulative_qty
   FROM {STOCK_EVENTS}
-  WHERE event_type = 'received' AND expiry_date IS NOT NULL
+  -- Undated receipts are included, not filtered. Excluding them would drop
+  -- every captured receipt from the batch view while still counting it in the
+  -- ledger balance, so the two could never reconcile.
+  WHERE event_type = 'received'
 )
 SELECT
   b.facility_id,
@@ -83,9 +116,13 @@ SELECT
     b.batch_qty,
     b.cumulative_qty - IFNULL(d.total_consumed, 0)
   )) AS INT64) AS remaining_qty,
-  DATE_DIFF(b.expiry_date, a.today, DAY) AS days_to_expiry,
-  b.expiry_date <= a.today               AS is_expired,
-  a.today                                AS as_of_date
+  -- NULL for an undated batch: unknown, not "expires today". A captured
+  -- receipt must never be treated as expired stock on the strength of a
+  -- missing field.
+  DATE_DIFF(b.expiry_date, a.today, DAY)      AS days_to_expiry,
+  IFNULL(b.expiry_date <= a.today, FALSE)     AS is_expired,
+  b.expiry_date IS NULL                       AS expiry_unknown,
+  a.today                                     AS as_of_date
 FROM batches b
 CROSS JOIN as_of a
 LEFT JOIN consumed d
@@ -136,7 +173,9 @@ LEFT JOIN batched b USING (facility_id, item_id)
 def run() -> None:
     client = bigquery.Client(project=PROJECT, location=LOCATION)
 
-    print("Building current_stock (FEFO batch attribution) ...")
+    print("Creating the current_stock VIEW (FEFO batch attribution) ...")
+    print("  Derived from the ledger at read time, so a capture moves "
+          "on-hand immediately rather than at the next rebuild.")
     client.query(BUILD).result()
 
     row = next(iter(client.query(VERIFY).result()))
@@ -159,7 +198,9 @@ def run() -> None:
             f"{check.mismatches} facility-item pairs where batch quantities do "
             "not sum to the ledger balance"
         )
-    print("\nOK — batch quantities reconcile with the ledger exactly.")
+    print("\nOK — batch quantities reconcile with the ledger exactly, and "
+          "will keep doing so as captures arrive, because the view is "
+          "computed from the ledger rather than copied from it.")
 
 
 if __name__ == "__main__":

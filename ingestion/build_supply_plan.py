@@ -118,8 +118,31 @@ REORDER_EXPR = (
     "* SQRT(f.lead_time_days)"
 )
 
-BUILD_REORDER = f"""
-CREATE OR REPLACE TABLE {REORDER_STATUS}
+# ---------------------------------------------------------------------------
+# Split: a slow-changing table, and a live view over it
+# ---------------------------------------------------------------------------
+# `reorder_status` used to be one table computed from the model and the stock
+# position together. That meant a capture could not move an alert: on-hand was
+# frozen at whatever it was when this last ran, so a health worker could report
+# receiving 200 paracetamol and the stock-out alert for that facility would sit
+# there unchanged.
+#
+# The two halves change at completely different rates:
+#
+# * **Demand and variability** come from ARIMA_PLUS and from a year of
+#   dispensing history. They move when the model retrains — daily at most.
+#   `ML.FORECAST` is also a table-valued function, which BigQuery will not
+#   allow inside a view. So this half is a TABLE, `demand_baseline`.
+# * **On-hand** moves the moment somebody speaks into the app. So the half that
+#   depends on it is a VIEW, recomputed per query from the live
+#   `current_stock` view.
+#
+# `reorder_status` keeps its name and every column it had, so nothing
+# downstream knows the difference — except that its numbers are now current.
+DEMAND_BASELINE = f"`{PROJECT}.{DATASET}.demand_baseline`"
+
+BUILD_DEMAND_BASELINE = f"""
+CREATE OR REPLACE TABLE {DEMAND_BASELINE}
 CLUSTER BY facility_id, item_id
 AS
 WITH forecast AS (
@@ -139,7 +162,30 @@ observed AS (
   FROM {STOCK_EVENTS}
   WHERE event_type = 'dispensed'
   GROUP BY facility_id, item_id
+)
+SELECT
+  d.facility_id,
+  d.item_id,
+  ROUND(d.avg_daily_demand, 2)          AS avg_daily_demand,
+  ROUND(IFNULL(o.demand_std_dev, 0), 2) AS demand_std_dev,
+  o.observed_days
+FROM forecast d
+LEFT JOIN observed o
+  ON o.facility_id = d.facility_id AND o.item_id = d.item_id
+"""
+
+BUILD_REORDER = f"""
+CREATE OR REPLACE VIEW {REORDER_STATUS}
+AS
+WITH d AS (
+  SELECT facility_id, item_id, avg_daily_demand, demand_std_dev, observed_days
+  FROM {DEMAND_BASELINE}
 ),
+observed AS (
+  SELECT facility_id, item_id, demand_std_dev, observed_days
+  FROM {DEMAND_BASELINE}
+),
+-- Read live. This is the whole point of the split.
 stock AS (
   SELECT
     facility_id,
@@ -188,7 +234,7 @@ SELECT
     ELSE 'ok'
   END AS status,
   o.observed_days
-FROM forecast d
+FROM d
 JOIN {FACILITIES} f ON f.facility_id = d.facility_id
 JOIN {ITEMS} i      ON i.item_id = d.item_id
 LEFT JOIN observed o ON o.facility_id = d.facility_id AND o.item_id = d.item_id
@@ -386,7 +432,13 @@ WHERE d.needs_reorder
 def run() -> None:
     client = bigquery.Client(project=PROJECT, location=LOCATION)
 
-    print(f"Building reorder_status (Z={SERVICE_LEVEL_Z}) ...")
+    print("Building demand_baseline (ARIMA_PLUS forecast + observed "
+          "variability) ...")
+    client.query(BUILD_DEMAND_BASELINE).result()
+
+    print(f"Creating the reorder_status VIEW (Z={SERVICE_LEVEL_Z}) ...")
+    print("  Demand comes from the table above; on-hand is read live from "
+          "current_stock, so a capture moves an alert immediately.")
     client.query(BUILD_REORDER).result()
     row = next(iter(client.query(f"""
         SELECT COUNT(*) AS rows_out,

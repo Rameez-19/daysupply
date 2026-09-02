@@ -232,7 +232,7 @@ def write_to_ledger(records: list[dict]) -> tuple[int, str | None]:
         return 0, None
     try:
         from google.cloud import bigquery
-        from app.bq import invalidate
+        from app.bq import invalidate_stock_reads
 
         project = os.getenv("GCP_PROJECT", "daysupply")
         dataset = os.getenv("BQ_DATASET", "daysupply")
@@ -245,10 +245,13 @@ def write_to_ledger(records: list[dict]) -> tuple[int, str | None]:
         if errors:
             return 0, f"BigQuery rejected {len(errors)} row(s): {errors[:2]}"
 
-        # The dashboard caches capture counts for 60 seconds. Without dropping
-        # that entry the counter would not move for up to a minute after a
-        # capture, which looks exactly like the bug this replaced.
-        invalidate("quality:captures")
+        # Every cached answer that depends on the stock position is now stale:
+        # the capture counter, alerts, recommendations, stock health, impact.
+        # Without this the view returns the new position while the API keeps
+        # serving the old one — observed for real, with `reorder_status`
+        # reporting on_hand 1000 and status ok while `/api/v1/alerts` still
+        # called the facility stocked out.
+        invalidate_stock_reads()
         return len(records), None
     except Exception as exc:
         log.warning("Could not write capture to the ledger: %s", exc)

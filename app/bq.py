@@ -117,6 +117,35 @@ def invalidate(*keys: str) -> None:
             _cache.pop(key, None)
 
 
+# Cache-key prefixes whose answers depend on the stock position. A capture
+# changes on-hand, so every one of these is stale the moment it lands.
+# Geography and the item catalogue are deliberately not here: they cost real
+# time to rebuild and a capture cannot change them.
+STOCK_DEPENDENT_PREFIXES = (
+    "alerts:", "recs:", "subs:", "health:", "shortages:",
+    "supply-sum:", "transfer-sum:", "impact", "quality:captures",
+)
+
+
+def invalidate_stock_reads() -> None:
+    """Drop every cached answer that a capture invalidates.
+
+    Called after a write to the ledger. Without it the view returns the new
+    position while the API keeps serving the old one from cache — which is
+    exactly the bug this was meant to fix, moved one layer up. Observed for
+    real: `reorder_status` said `status = ok, on_hand = 1000` while
+    `/api/v1/alerts` still reported the facility stocked out.
+
+    Prefix-scoped rather than a full `clear_cache()`, because the geography
+    pre-aggregate behind the dropdowns takes ~0.8s to rebuild and no capture
+    can possibly change it.
+    """
+    with _cache_lock:
+        for key in [k for k in _cache
+                    if k.startswith(STOCK_DEPENDENT_PREFIXES)]:
+            del _cache[key]
+
+
 def run_query(
     sql: str,
     params: Sequence[bigquery.ScalarQueryParameter] | None = None,
