@@ -195,3 +195,107 @@ class TestTheGate:
             "IN-155740", "chat")
         assert len(result["review_queue"]) == 1
         assert result["review_queue"][0]["item_id"] is None
+
+
+class _FakeDoc:
+    def __init__(self, data):
+        self._data = data
+        self.written = None
+        self.exists = data is not None
+
+    def to_dict(self):
+        return dict(self._data)
+
+    def get(self):
+        return self
+
+    def set(self, data):
+        self.written = data
+
+
+class _FakeFirestore:
+    def __init__(self, doc):
+        self.doc = doc
+
+    def collection(self, _name):
+        return self
+
+    def document(self, _id):
+        return self.doc
+
+
+class TestApprovalMustProduceAUsableRow:
+    """A stock event with no quantity records no stock movement.
+
+    Approving one inflates the capture count while telling the supply chain
+    nothing. An earlier version of `approve_review_item` did not check, and
+    wrote exactly such a row into `resource_events` during live testing.
+    """
+
+    def _approve(self, monkeypatch, record, quantity=None, writes=None):
+        doc = _FakeDoc(record)
+        fake_db = _FakeFirestore(doc)
+        monkeypatch.setattr(
+            "google.cloud.firestore.Client", lambda **kw: fake_db)
+        monkeypatch.setattr(
+            capture_pipeline, "write_to_ledger",
+            lambda records: (writes.append(records) or (len(records), None))
+            if writes is not None else (len(records), None))
+        return capture_pipeline.approve_review_item("e1", quantity), doc
+
+    def test_approval_without_a_quantity_is_refused(self, monkeypatch):
+        result, doc = self._approve(
+            monkeypatch,
+            {"event_id": "e1", "item_id": "ORAL-REHYDRATION-SALTS",
+             "quantity": None, "status": "pending"})
+        assert result["approved"] is False
+        assert result["needs_quantity"] is True
+        assert doc.written is None, "nothing may be marked approved"
+
+    def test_a_reviewer_supplied_quantity_is_what_gets_written(self,
+                                                              monkeypatch):
+        writes: list = []
+        result, doc = self._approve(
+            monkeypatch,
+            {"event_id": "e1", "item_id": "ORAL-REHYDRATION-SALTS",
+             "quantity": None, "status": "pending"},
+            quantity=12, writes=writes)
+        assert result["approved"] is True
+        assert result["quantity"] == 12
+        assert writes[0][0]["quantity"] == 12
+        assert doc.written["approved_quantity_source"] == "reviewer"
+
+    def test_an_extracted_quantity_is_kept_when_no_override_is_given(
+            self, monkeypatch):
+        result, doc = self._approve(
+            monkeypatch,
+            {"event_id": "e1", "item_id": "PARACETAMOL", "quantity": 200,
+             "status": "pending"})
+        assert result["approved"] is True and result["quantity"] == 200
+        assert doc.written["approved_quantity_source"] == "extraction"
+
+    def test_an_unmatched_item_is_refused(self, monkeypatch):
+        result, doc = self._approve(
+            monkeypatch,
+            {"event_id": "e1", "item_id": None, "quantity": 5,
+             "status": "pending"})
+        assert result["approved"] is False
+        assert "never matched" in result["reason"]
+        assert doc.written is None
+
+    def test_double_approval_is_refused(self, monkeypatch):
+        result, _ = self._approve(
+            monkeypatch,
+            {"event_id": "e1", "item_id": "PARACETAMOL", "quantity": 5,
+             "status": "approved"})
+        assert result["approved"] is False
+        assert result["reason"] == "already approved"
+
+    def test_a_negative_quantity_is_refused(self, monkeypatch):
+        result, _ = self._approve(
+            monkeypatch,
+            {"event_id": "e1", "item_id": "PARACETAMOL", "quantity": None,
+             "status": "pending"},
+            quantity=-4)
+        assert result["approved"] is False
+        assert "negative" in result["reason"]

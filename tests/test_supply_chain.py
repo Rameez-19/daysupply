@@ -163,8 +163,21 @@ class TestFefo:
         for rec in recommendations:
             assert 0 <= rec["waste_avoided_units"] <= rec["quantity"]
 
-    def test_current_stock_reconciles_with_the_ledger(self):
-        """Batch quantities must sum to received - dispensed - expired."""
+    def test_current_stock_reconciles_with_the_seeded_ledger(self):
+        """Batch quantities must sum to received - dispensed - expired.
+
+        **Scoped to `source = 'seed'` deliberately.** `current_stock` is
+        precomputed by `ingestion/build_current_stock.py`, while live captures
+        now write into `resource_events` synchronously. A capture therefore
+        moves the ledger immediately and does *not* move the batch table until
+        that module is re-run — see `test_captures_are_the_only_divergence`
+        below, and HANDOVER §9d.
+
+        Without this scope the test would fail every time anyone spoke into
+        the app, which would train people to ignore it. The invariant it exists
+        to protect — that FEFO batch arithmetic matches the ledger it was built
+        from — is unchanged.
+        """
         rows = run_query("""
             WITH ledger AS (
               SELECT facility_id, item_id,
@@ -172,6 +185,7 @@ class TestFefo:
                        - SUM(IF(event_type = 'dispensed', quantity, 0))
                        - SUM(IF(event_type = 'expired',   quantity, 0)) AS balance
               FROM `daysupply.daysupply.stock_events`
+              WHERE source = 'seed'
               GROUP BY facility_id, item_id
             ),
             batched AS (
@@ -183,6 +197,34 @@ class TestFefo:
             FROM ledger l LEFT JOIN batched b USING (facility_id, item_id)
         """)
         assert rows[0]["mismatches"] == 0
+
+    def test_captures_are_the_only_divergence_from_the_batch_table(self):
+        """Anything that does not reconcile must be explained by a capture.
+
+        This is the half of the old assertion that still has to hold globally.
+        If a facility-item diverges and has no capture events, something has
+        corrupted the ledger and the FEFO arithmetic is no longer trustworthy.
+        """
+        rows = run_query("""
+            WITH ledger AS (
+              SELECT facility_id, item_id,
+                     SUM(IF(event_type = 'received',  quantity, 0))
+                       - SUM(IF(event_type = 'dispensed', quantity, 0))
+                       - SUM(IF(event_type = 'expired',   quantity, 0)) AS balance,
+                     COUNTIF(source != 'seed') AS capture_events
+              FROM `daysupply.daysupply.stock_events`
+              GROUP BY facility_id, item_id
+            ),
+            batched AS (
+              SELECT facility_id, item_id, SUM(remaining_qty) AS batched
+              FROM `daysupply.daysupply.current_stock`
+              GROUP BY facility_id, item_id
+            )
+            SELECT COUNTIF(IFNULL(b.batched, 0) != l.balance
+                           AND l.capture_events = 0) AS unexplained
+            FROM ledger l LEFT JOIN batched b USING (facility_id, item_id)
+        """)
+        assert rows[0]["unexplained"] == 0
 
     def test_no_negative_stock(self):
         """A facility cannot have dispensed more than it ever received."""

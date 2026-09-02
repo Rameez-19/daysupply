@@ -482,6 +482,39 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
    review approval. Not built; it is a design decision about whether approval is
    synchronous or batched, and that is the owner's call.
 
+9d. **The capture loop is closed as far as the ledger, not as far as stock.**
+   Verified live 2026-09-02: a chat capture writes into `resource_events`
+   synchronously and `captures_today` moves from 0 to 2 within seconds. That is
+   the loop that was open and it is now closed.
+
+   **What a capture still does not move is the stock position.**
+   `current_stock` is a precomputed batch table built by
+   `ingestion/build_current_stock.py`, and `reorder_status`, alerts and
+   recommendations are built from it. A capture changes the ledger immediately
+   and none of those until the ingestion modules are re-run.
+
+   So today: speak, and the capture counter moves. Speak, and *on-hand does
+   not*. A judge who reports receiving 200 paracetamol and then checks the
+   alert for that facility will not see it clear.
+
+   `tests/test_supply_chain.py` documents this precisely rather than hiding it:
+   the FEFO reconciliation is scoped to `source = 'seed'`, and a second test
+   asserts that **any** facility-item diverging from the batch table without
+   capture events is unexplained and fails. The invariant still bites; it just
+   knows about captures now.
+
+   Closing this properly is an incremental-update path for `current_stock`, or
+   making it a view over the ledger. Both are real design work. **Do not fake
+   it** by rebuilding the whole batch table per capture.
+
+9e. **Streaming inserts cannot be DML-deleted for up to 90 minutes.** A row
+   written via `insert_rows_json` sits in the streaming buffer, queryable by
+   SELECT immediately but immune to `DELETE`/`UPDATE` until it flushes. A bad
+   row written during testing on 2026-09-02 survived a `DELETE` that reported
+   success. This matters for any correction workflow: **a mistaken capture
+   cannot be retracted promptly.** Nothing currently offers to, which is the
+   safe default, but do not build a delete button that appears to work.
+
 10. **Deck and video still to build**, and both must draw every figure from
     `docs/CLAIMS.md`. Any number not in that file does not go in front of a
     judge.

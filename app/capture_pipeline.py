@@ -300,13 +300,27 @@ def persist(result: dict) -> dict:
     return result
 
 
-def approve_review_item(event_id: str) -> dict:
+def approve_review_item(event_id: str, quantity: int | None = None) -> dict:
     """A human approved a low-confidence extraction: write it to the ledger.
 
-    This is the other half of the gate. Approval is what promotes a record the
-    model was unsure about into the same ledger a confident one goes to
-    directly — same table, same columns, same `source`, so nothing downstream
-    can tell them apart or needs to.
+    This is the other half of the gate. Approval promotes a record the model
+    was unsure about into the same ledger a confident one goes to directly —
+    same table, same columns, same `source`, so nothing downstream can tell
+    them apart or needs to.
+
+    **Approval must produce a usable row, and two things can stop it.**
+
+    *No matched item.* Nothing to write; the item has to be chosen first.
+
+    *No quantity.* The commonest reason a record lands here at all is that the
+    speaker never gave a usable number — "aadha dabba", "kuch strips". A stock
+    event with a NULL quantity records no stock movement, so it is worse than
+    useless: it inflates the capture count while telling the supply chain
+    nothing. Approving one is therefore refused unless the reviewer supplies
+    the number, which is precisely the fact a human is here to add.
+
+    An earlier version of this function did not check, and wrote exactly such
+    a row into `resource_events` during live testing.
     """
     from google.cloud import firestore
     db = firestore.Client(
@@ -328,15 +342,39 @@ def approve_review_item(event_id: str) -> dict:
                            "an item chosen first"),
                 "event_id": event_id}
 
+    resolved_quantity = quantity if quantity is not None \
+        else record.get("quantity")
+    if resolved_quantity is None:
+        return {"approved": False,
+                "reason": ("no quantity was captured, so approving this would "
+                           "write a row that records no stock movement. "
+                           "Supply a quantity with the approval."),
+                "event_id": event_id,
+                "needs_quantity": True,
+                "item_id": record.get("item_id"),
+                "raw_transcript": record.get("raw_transcript")}
+    try:
+        resolved_quantity = int(resolved_quantity)
+    except (TypeError, ValueError):
+        return {"approved": False,
+                "reason": f"quantity {resolved_quantity!r} is not a number",
+                "event_id": event_id}
+    if resolved_quantity < 0:
+        return {"approved": False,
+                "reason": "quantity cannot be negative", "event_id": event_id}
+
+    record = {**record, "quantity": resolved_quantity}
     written, error = write_to_ledger([record])
     if error:
         return {"approved": False, "reason": error, "event_id": event_id}
 
     doc_ref.set({**record, "status": "approved",
+                 "approved_quantity_source": (
+                     "reviewer" if quantity is not None else "extraction"),
                  "approved_at": datetime.now(timezone.utc).isoformat()})
     return {"approved": True, "event_id": event_id,
             "written_to_ledger": written, "item_id": record.get("item_id"),
-            "quantity": record.get("quantity")}
+            "quantity": resolved_quantity}
 
 
 def handle_barcode(code: str, facility_id: str, quantity: int | None = None,

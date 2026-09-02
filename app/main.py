@@ -323,17 +323,21 @@ async def get_review_queue(state: str = "Telangana", district: str = "",
 
 # ── Forecasting ──────────────────────────────────────────────────────
 @app.post("/api/v1/review-queue/{event_id}/approve")
-async def approve_review_item(event_id: str):
+async def approve_review_item(event_id: str, quantity: int | None = None):
     """Promote a reviewed extraction into the ledger.
 
     The other half of the confidence gate. A high-confidence extraction goes
     straight to `resource_events`; one the model was unsure about waits here
     until a human says yes, and then lands in the same table with the same
     columns, so nothing downstream can tell them apart or needs to.
+
+    `quantity` supplies the number the speaker never gave — "aadha dabba",
+    "kuch strips". Approval is refused without one, because a stock event with
+    no quantity records no stock movement while still counting as a capture.
     """
-    result = capture_pipeline.approve_review_item(event_id)
+    result = capture_pipeline.approve_review_item(event_id, quantity)
     if not result.get("approved"):
-        raise HTTPException(status_code=400, detail=result.get("reason"))
+        raise HTTPException(status_code=400, detail=result)
     return result
 
 
