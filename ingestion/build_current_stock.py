@@ -61,6 +61,19 @@ LOCATION = os.getenv("BQ_LOCATION", "asia-south1")
 STOCK_EVENTS = f"`{PROJECT}.{DATASET}.stock_events`"
 CURRENT_STOCK = f"`{PROJECT}.{DATASET}.current_stock`"
 
+# Everything that takes units off a shelf. Defined once here and reused in the
+# reconciliation below, so the batch arithmetic and the balance check can never
+# disagree about what counts as consumption.
+#
+# `dispatched` is stock that has left the donor on an approved transfer. It is
+# deliberately not `dispensed` — nobody handed it to a patient — and it must be
+# netted out or the donor would appear to still hold units that are physically
+# on a vehicle. Stock in transit belongs to neither facility until a receipt is
+# recorded at the other end.
+CONSUMING_EVENT_TYPES = ("dispensed", "expired", "dispatched")
+CONSUMING_EVENT_TYPES_SQL = (
+    "(" + ", ".join(f"'{e}'" for e in CONSUMING_EVENT_TYPES) + ")")
+
 BUILD = f"""
 CREATE OR REPLACE VIEW {CURRENT_STOCK}
 AS
@@ -73,11 +86,12 @@ consumed AS (
   SELECT
     facility_id,
     item_id,
-    SUM(IF(event_type = 'dispensed', quantity, 0)) AS total_dispensed,
-    SUM(IF(event_type = 'expired',   quantity, 0)) AS total_expired,
-    SUM(quantity)                                  AS total_consumed
+    SUM(IF(event_type = 'dispensed',  quantity, 0)) AS total_dispensed,
+    SUM(IF(event_type = 'expired',    quantity, 0)) AS total_expired,
+    SUM(IF(event_type = 'dispatched', quantity, 0)) AS total_dispatched,
+    SUM(quantity)                                   AS total_consumed
   FROM {STOCK_EVENTS}
-  WHERE event_type IN ('dispensed', 'expired')
+  WHERE event_type IN {CONSUMING_EVENT_TYPES_SQL}
   GROUP BY facility_id, item_id
 ),
 batches AS (
@@ -152,9 +166,9 @@ FROM {CURRENT_STOCK}
 RECONCILE = f"""
 WITH ledger AS (
   SELECT facility_id, item_id,
-         SUM(IF(event_type = 'received',  quantity, 0))
-           - SUM(IF(event_type = 'dispensed', quantity, 0))
-           - SUM(IF(event_type = 'expired',   quantity, 0)) AS balance
+         SUM(IF(event_type = 'received', quantity, 0))
+           - SUM(IF(event_type IN {CONSUMING_EVENT_TYPES_SQL}, quantity, 0))
+             AS balance
   FROM {STOCK_EVENTS}
   GROUP BY facility_id, item_id
 ),

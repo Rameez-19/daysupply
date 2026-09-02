@@ -365,9 +365,78 @@ async function loadReviewQueue() {
   }
 }
 
-function approveItem(id) { const el = document.getElementById('item-'+id); if(el) { el.style.opacity='0.3'; el.style.pointerEvents='none'; } }
-function rejectItem(id) { const el = document.getElementById('item-'+id); if(el) { el.style.opacity='0.3'; el.style.pointerEvents='none'; } }
-function approveTransfer(id) { const el = document.getElementById('rec-'+id); if(el) { el.style.opacity='0.3'; el.style.pointerEvents='none'; } }
+// ===== Acting on a recommendation =====
+// These used to fade the card and call nothing, which made the interface claim
+// an action the system never took. Every one of them now hits a real endpoint
+// and reports what actually happened, including when it fails.
+
+const NEXT_STEP = { approve: 'dispatch', dispatch: 'receive', receive: null };
+const STEP_LABEL = { approve: 'Approve transfer', dispatch: 'Mark dispatched',
+                     receive: 'Confirm received' };
+
+async function advanceTransfer(id, step) {
+  const box = document.getElementById('lc-' + id);
+  if (box) box.innerHTML = '<p class="lifecycle-note">Recording…</p>';
+  try {
+    const res = await fetch(`/api/v1/recommendations/${id}/${step}`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      if (box) box.innerHTML =
+        `<p class="lifecycle-error">${data.detail || 'Could not record this.'}</p>`;
+      return;
+    }
+    const next = NEXT_STEP[step];
+    const moved = data.stock_moved
+      ? `<span class="lifecycle-moved">${data.stock_moved.quantity} ${data.unit}
+         ${data.stock_moved.direction === 'out' ? 'left' : 'arrived at'}
+         ${data.stock_moved.facility}</span>`
+      : '';
+    if (box) box.innerHTML = `
+      <p class="lifecycle-state"><strong>${data.fulfilment_status}</strong> ${moved}</p>
+      <p class="lifecycle-note">${data.note}</p>
+      ${next ? `<button class="btn btn-primary btn-full"
+                  onclick="advanceTransfer('${id}','${next}')">${STEP_LABEL[next]}</button>`
+             : '<p class="lifecycle-note">Complete — stock is on the recipient's shelf.</p>'}`;
+    // On-hand has changed at one of the two facilities, so the numbers on the
+    // other screens are now stale.
+    refreshAll();
+  } catch (e) {
+    if (box) box.innerHTML = '<p class="lifecycle-error">Could not reach the server.</p>';
+  }
+}
+
+async function approveItem(id) {
+  const el = document.getElementById('item-' + id);
+  const qty = window.prompt(
+    'Quantity to record?
+
+This item is in review because the amount was '
+    + 'unclear. Approving needs the number.', '');
+  if (qty === null) return;
+  try {
+    const url = `/api/v1/review-queue/${id}/approve`
+      + (qty === '' ? '' : `?quantity=${encodeURIComponent(qty)}`);
+    const res = await fetch(url, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      const detail = data.detail || {};
+      alert(detail.reason || 'Could not approve this item.');
+      return;
+    }
+    if (el) { el.style.opacity = '0.35'; el.style.pointerEvents = 'none'; }
+    refreshAll();
+  } catch (e) {
+    alert('Could not reach the server.');
+  }
+}
+
+// Rejecting is a local dismissal only. There is deliberately no reject
+// endpoint: nothing was written to the ledger for a held item, so there is
+// nothing to undo. See HANDOVER §9e — no retraction, ever.
+function rejectItem(id) {
+  const el = document.getElementById('item-' + id);
+  if (el) { el.style.opacity = '0.35'; el.style.pointerEvents = 'none'; }
+}
 
 function timeAgo(iso) {
   const ms = Date.now() - new Date(iso).getTime();
@@ -469,7 +538,12 @@ async function loadTransfers() {
             ? ` · avoids ${rec.waste_avoided_units} ${rec.unit} of expiry waste`
             : ' · no expiry risk on this batch'}
         </div>
-        <button class="btn btn-primary btn-full" onclick="approveTransfer('${rec.recommendation_id}')">✓ Approve Transfer</button>
+        <div class="lifecycle" id="lc-${rec.recommendation_id}">
+          <button class="btn btn-primary btn-full"
+                  onclick="advanceTransfer('${rec.recommendation_id}','approve')">
+            Approve transfer
+          </button>
+        </div>
       </div>
     `).join('');
   } catch (e) {

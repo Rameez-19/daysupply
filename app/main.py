@@ -38,6 +38,7 @@ from app import items
 from app import quality
 from app import resources
 from app import surge
+from app import transfers
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
 from app.capture import handle_capture, handle_chat
@@ -619,8 +620,51 @@ async def fetch_lead_time_contrast(state: str = "", district: str = ""):
 
 @app.post("/api/v1/recommendations/{rec_id}/approve")
 async def approve_recommendation(rec_id: str):
-    """Approves a transfer and triggers stock updates."""
-    return {"status": "approved", "recommendation_id": rec_id}
+    """Approve a transfer. A decision, not yet a movement.
+
+    Until 2026-09-02 this returned `{"status": "approved"}` and wrote nothing,
+    while claiming to trigger stock updates. It now records a real approval and
+    the transfer becomes dispatchable.
+    """
+    try:
+        return transfers.advance(rec_id, "approved")
+    except transfers.TransferError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/recommendations/{rec_id}/dispatch")
+async def dispatch_recommendation(rec_id: str):
+    """Record that the stock left the donor.
+
+    Writes a `dispatched` ledger event, so the donor's on-hand falls
+    immediately. The units are now in transit and belong to neither facility.
+    """
+    try:
+        return transfers.advance(rec_id, "dispatched")
+    except transfers.TransferError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/recommendations/{rec_id}/receive")
+async def receive_recommendation(rec_id: str):
+    """Record arrival at the recipient.
+
+    Writes a `received` ledger event, which becomes a new FEFO batch and raises
+    the recipient's on-hand and days of cover.
+    """
+    try:
+        return transfers.advance(rec_id, "received")
+    except transfers.TransferError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/transfers/fulfilment")
+async def transfer_fulfilment(state: str = "", limit: int = 50):
+    """Transfers that have been acted on, and where each one has got to."""
+    return {
+        "lifecycle": list(transfers.LIFECYCLE),
+        "transfers": transfers.pending(state, limit),
+    }
 
 
 # ── Federated patterns ──────────────────────────────────────────────

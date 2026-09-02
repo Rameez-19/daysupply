@@ -36,6 +36,8 @@ Verified against the live BigQuery dataset on **2026-09-02**, after
 
 ## 1. Scale and coverage
 
+*Last verified against the live deployment: **2026-09-02**.*
+
 | Figure | Derived from | Status | Computed in |
 |---|---|---|---|
 | **200,438 facilities** | NHM/MoHFW health-centre directory, every row, nothing sampled | **REAL** | `ingestion/load_facilities.py` — asserts BigQuery count == source file count, *and* that an unscoped `COUNT(*)` equals it |
@@ -57,6 +59,8 @@ Verified against the live BigQuery dataset on **2026-09-02**, after
 ---
 
 ## 2. Population reach
+
+*Last verified against the live deployment: **2026-09-02**.*
 
 | Figure | Derived from | Status | Computed in |
 |---|---|---|---|
@@ -86,6 +90,8 @@ grounded in real government data. 4.8M is what runs today; 793.7M is
 
 ## 3. Item catalogue
 
+*Last verified against the live deployment: **2026-09-02**.*
+
 | Figure | Derived from | Status | Computed in |
 |---|---|---|---|
 | **385 NLEM 2022 medicines** | National List of Essential Medicines 2022, all 27 sections | **REAL** | `ingestion/parse_nlem.py` → `ingestion/build_items.py` |
@@ -100,6 +106,8 @@ grounded in real government data. 4.8M is what runs today; 793.7M is
 ---
 
 ## 4. Forecasting
+
+*Last verified against the live deployment: **2026-09-02**.*
 
 | Figure | Derived from | Status | Computed in |
 |---|---|---|---|
@@ -118,6 +126,8 @@ grounded in real government data. 4.8M is what runs today; 793.7M is
 ---
 
 ## 5. Pattern exchange — the four-arm hold-out
+
+*Last verified against the live deployment: **2026-09-02**.*
 
 | Arm | wMAPE | Status | Computed in |
 |---|---|---|---|
@@ -145,6 +155,8 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 
 ## 6. Driver corrections (Block D+)
 
+*Last verified against the live deployment: **2026-09-02**.*
+
 | Figure | Derived from | Status | Computed in |
 |---|---|---|---|
 | Malaria driver was **99.8% blood smears** — 14.5M tests vs 24,831 confirmed | HMIS item codes | **REAL** | `ingestion/hmis_drivers.py`; written up in `Data/README.md` §16 |
@@ -160,6 +172,8 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 ---
 
 ## 7. Supply chain
+
+*Last verified against the live deployment: **2026-09-02**.*
 
 | Figure | Derived from | Status | Computed in |
 |---|---|---|---|
@@ -191,6 +205,8 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 
 ## 8. Beds and personnel
 
+*Last verified against the live deployment: **2026-09-02**.*
+
 | Figure | Derived from | Status | Computed in |
 |---|---|---|---|
 | **178,398 beds** across 29,733 PHCs | IPHS 2022 Vol III pp. 46-47: 2 essential + 4 desirable | **REAL NORM, applied** | `ingestion/set_bed_capacity.py` |
@@ -216,6 +232,8 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 ---
 
 ## 9. Surge detection
+
+*Last verified against the live deployment: **2026-09-02**.*
 
 | Figure | Derived from | Status | Computed in |
 |---|---|---|---|
@@ -247,6 +265,8 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 
 ## 10. Data quality — the exclusions we disclose
 
+*Last verified against the live deployment: **2026-09-02**.*
+
 | Figure | Meaning | Status | Computed in |
 |---|---|---|---|
 | **633 facilities** excluded from distance maths | `has_valid_coords = FALSE` | **REAL** | `load_facilities.py`; served at `/api/v1/data-quality` |
@@ -267,6 +287,8 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 ---
 
 ## 11. UNTRACEABLE — do not use
+
+*Last verified against the live deployment: **2026-09-02**.*
 
 | Claim as stated | What was found | Verdict |
 |---|---|---|
@@ -290,13 +312,24 @@ zero, which is a stronger demo than the untraceable figure it replaces.
 
 ## 12. Figures that are still generated — say so every time
 
+*Last verified against the live deployment: **2026-09-02**.*
+
+> **Corrected 2026-09-02.** Two rows in this section were stale and described
+> the system as it was before the capture loop was closed: `captures_today` was
+> listed as "stuck at 0" when it reads 9, and the review queue as "3 worked
+> examples" when it holds 4 real items. Staff attendance was listed at 56% and
+> measures 53%. A judge checking our own honesty document against the live
+> system would have found the contradiction — which costs more than any figure
+> in it is worth. Every other section was re-verified at the same time; all 70
+> checkable figures matched.
+
 | Figure | Why it is generated |
 |---|---|
 | **1,157,367 daily stock events** | no per-facility daily stock data is published in India by anyone |
 | Bed **occupancy** (2,430 turned away) | derived from real HMIS admission volumes × assumed 1.8-day length of stay |
-| Staff **attendance** (56% of sanctioned) | product of real vacancy and a generated presence model |
-| `captures_today` | reads **0**, and the 0 is real arithmetic — but it is stuck there. Captures are extracted correctly and never persisted (no Firestore database; nothing writes `pending_events` into BigQuery). **Do not present this as "no captures yet"** — it is a broken loop, documented in HANDOVER §9c |
-| Review-queue items (3) | worked examples shown only when no real extraction is pending. The API returns `is_example_data: true` and the UI shows a banner saying so. **Never present these as captured.** |
+| Staff **attendance** (**53%** of sanctioned) | product of real vacancy and a generated presence model |
+| `captures_today` | **NOT generated — counted, and the loop is closed.** Reads **9** all-time (9 chat, 0 voice, 0 barcode), written straight into `resource_events` above the confidence gate. `is_generated: false`. It moves within seconds of a capture. |
+| Review-queue items | **Currently 4 REAL held extractions**, `is_example_data: false` — items the model was unsure about, awaiting a human. Three worked examples exist as a fallback *only* when nothing real is pending, and are then labelled `is_example_data: true` with a banner. **Check the flag before describing them.** |
 
 **The one sentence that must accompany any demo figure:**
 

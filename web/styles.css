@@ -396,3 +396,8 @@ button { font-family: inherit; cursor: pointer; }
 .scenario-method { font-size:0.72rem; color:var(--gray-400); margin-top:12px; font-style:italic; }
 .scenario-finding { margin:12px 0 0; padding:10px 14px; background:var(--gray-100); border-left:3px solid var(--gray-400); border-radius:6px; font-size:0.78rem; line-height:1.55; color:var(--gray-600); }
 .example-banner { padding:10px 14px; margin-bottom:12px; background:#fff7ed; border:1px solid #fed7aa; border-left:3px solid var(--warning); border-radius:6px; font-size:0.78rem; line-height:1.5; color:var(--gray-600); }
+.lifecycle { margin-top:10px; }
+.lifecycle-state { font-size:0.85rem; font-weight:700; color:var(--success); margin:0 0 4px; text-transform:capitalize; }
+.lifecycle-moved { font-weight:500; color:var(--gray-600); text-transform:none; }
+.lifecycle-note { font-size:0.76rem; color:var(--gray-500); line-height:1.5; margin:0 0 8px; }
+.lifecycle-error { font-size:0.78rem; color:var(--danger); margin:0; }
