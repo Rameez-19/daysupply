@@ -322,6 +322,21 @@ async def get_review_queue(state: str = "Telangana", district: str = "",
 
 
 # ── Forecasting ──────────────────────────────────────────────────────
+@app.post("/api/v1/review-queue/{event_id}/approve")
+async def approve_review_item(event_id: str):
+    """Promote a reviewed extraction into the ledger.
+
+    The other half of the confidence gate. A high-confidence extraction goes
+    straight to `resource_events`; one the model was unsure about waits here
+    until a human says yes, and then lands in the same table with the same
+    columns, so nothing downstream can tell them apart or needs to.
+    """
+    result = capture_pipeline.approve_review_item(event_id)
+    if not result.get("approved"):
+        raise HTTPException(status_code=400, detail=result.get("reason"))
+    return result
+
+
 @app.get("/api/v1/forecast/{facility_id}/{item_id}")
 async def get_forecast(facility_id: str, item_id: str):
     """Returns the forecasted daily demand for a facility and item."""

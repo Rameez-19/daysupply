@@ -103,6 +103,20 @@ def clear_cache() -> None:
         _cache.clear()
 
 
+def invalidate(*keys: str) -> None:
+    """Drop specific cache entries.
+
+    Used after a write, so a read that follows it sees the new row rather than
+    a stale cached count. Capture counts are cached for 60 seconds, which is
+    right for a dashboard poll and wrong immediately after someone has just
+    spoken into the app — without this the counter appears not to move, which
+    is precisely the failure the write-through exists to fix.
+    """
+    with _cache_lock:
+        for key in keys:
+            _cache.pop(key, None)
+
+
 def run_query(
     sql: str,
     params: Sequence[bigquery.ScalarQueryParameter] | None = None,

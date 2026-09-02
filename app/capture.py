@@ -26,24 +26,25 @@ the current model list before each submission or deployment, and update the
 date above when you do.
 """
 
+import logging
 import os
-import json
-import uuid
-from datetime import datetime, timezone
+import random
+import time
 
 from google import genai
 from google.genai import types
-from google.cloud import firestore
-from pydantic import ValidationError
 
 from app import capture_pipeline
 from app import items
 
+log = logging.getLogger(__name__)
+
 # See the module docstring for why this pin and not another.
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-# Documented, not wired in: switching is a one-line env change, and an
-# automatic silent fallback would hide a model outage rather than surface it.
-FALLBACK_MODEL = "gemini-2.5-flash"
+# Used automatically after repeated retryable failures on the pinned model,
+# and settable directly via GEMINI_MODEL. The switch is logged, so a silent
+# degradation is still a visible one.
+FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
 
 _client: genai.Client | None = None
 
@@ -100,31 +101,100 @@ CHAT_INSTRUCTION = (
 )
 
 
+# Flash models return 503 "this model is currently experiencing high demand"
+# under load. Observed on roughly half of a short burst of live requests on
+# 2026-09-01 — always transient, always fine on retry. Without a retry a health
+# worker loses the extraction and sees a raw API error, which is the worst of
+# both outcomes.
+RETRYABLE_STATUS = (429, 500, 502, 503, 504)
+MAX_ATTEMPTS = int(os.getenv("GEMINI_MAX_ATTEMPTS", "4"))
+BACKOFF_BASE_SECONDS = float(os.getenv("GEMINI_BACKOFF_BASE", "0.6"))
+BACKOFF_CAP_SECONDS = float(os.getenv("GEMINI_BACKOFF_CAP", "8.0"))
+# After this many consecutive retryable failures on the pinned model, switch to
+# the fallback for the remaining attempts. A congested model is better answered
+# by a different model than by waiting longer for the same one.
+FALLBACK_AFTER_ATTEMPTS = int(os.getenv("GEMINI_FALLBACK_AFTER", "2"))
+
+USER_FACING_FAILURE = (
+    "The extraction service is busy right now. Your recording has not been "
+    "lost — please try again in a moment."
+)
+
+
+class ModelUnavailable(RuntimeError):
+    """Every attempt failed on a retryable error.
+
+    Carries a message meant for a health worker, not an API status line.
+    """
+
+    def __init__(self, attempts: int, last_error: str):
+        super().__init__(USER_FACING_FAILURE)
+        self.attempts = attempts
+        self.last_error = last_error
+
+
+def _is_retryable(exc: Exception) -> bool:
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if code in RETRYABLE_STATUS:
+        return True
+    text = str(exc)
+    return any(str(s) in text for s in RETRYABLE_STATUS) and (
+        "UNAVAILABLE" in text or "RESOURCE_EXHAUSTED" in text
+        or "high demand" in text or "INTERNAL" in text)
+
+
+def _generate(contents) -> str:
+    """One extraction call, retried on transient failure, then degraded.
+
+    Exponential backoff with jitter. After `FALLBACK_AFTER_ATTEMPTS` the model
+    is swapped for `FALLBACK_MODEL` — a congested model is better answered by a
+    different one than by waiting longer for the same one. If every attempt
+    fails, `ModelUnavailable` carries a message written for the person holding
+    the phone; the raw status never reaches them.
+    """
+    client = _get_client()
+    last_error = ""
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        model = MODEL if attempt <= FALLBACK_AFTER_ATTEMPTS else FALLBACK_MODEL
+        try:
+            response = client.models.generate_content(
+                model=model, contents=contents)
+            if attempt > 1:
+                log.info("Extraction succeeded on attempt %d using %s",
+                         attempt, model)
+            return (response.text or "").strip()
+        except Exception as exc:
+            last_error = str(exc)
+            if not _is_retryable(exc) or attempt == MAX_ATTEMPTS:
+                if _is_retryable(exc):
+                    break
+                raise
+            delay = min(BACKOFF_BASE_SECONDS * 2 ** (attempt - 1),
+                        BACKOFF_CAP_SECONDS)
+            delay += random.uniform(0, delay * 0.25)   # jitter
+            log.warning("Gemini %s attempt %d/%d failed (%s); retrying in "
+                        "%.1fs", model, attempt, MAX_ATTEMPTS,
+                        last_error[:120], delay)
+            time.sleep(delay)
+    raise ModelUnavailable(MAX_ATTEMPTS, last_error)
+
+
 def process_audio(audio_bytes: bytes, mime_type: str = "audio/mp3") -> str:
     """Send audio to Gemini and return its raw reply.
 
     The prompt is passed inline rather than as a `system_instruction`, which
-    the new SDK also supports. That is deliberate: this change is an SDK
-    migration, and moving the prompt at the same time would confound a
-    behaviour change with a library change. Worth revisiting separately.
+    the new SDK also supports. That is deliberate: the SDK migration and a
+    prompt change should not be confounded. Worth revisiting separately.
     """
-    response = _get_client().models.generate_content(
-        model=MODEL,
-        contents=[
-            SYSTEM_PROMPT,
-            types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
-        ],
-    )
-    return (response.text or "").strip()
+    return _generate([
+        SYSTEM_PROMPT,
+        types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+    ])
 
 
 def process_text(message: str) -> str:
     """Send a typed message through the same extraction prompt."""
-    response = _get_client().models.generate_content(
-        model=MODEL,
-        contents=SYSTEM_PROMPT + CHAT_INSTRUCTION + message,
-    )
-    return (response.text or "").strip()
+    return _generate(SYSTEM_PROMPT + CHAT_INSTRUCTION + message)
 
 
 def handle_capture(audio_bytes: bytes, facility_id: str,
@@ -132,9 +202,16 @@ def handle_capture(audio_bytes: bytes, facility_id: str,
     """Voice capture. Audio in, structured records out, via the shared path."""
     try:
         raw = process_audio(audio_bytes, mime_type)
+    except ModelUnavailable as exc:
+        # Every retry failed on a transient error. The health worker gets a
+        # sentence they can act on; the API status stays in the logs and in a
+        # separate field for us.
+        return {"error": str(exc), "retryable": True,
+                "attempts": exc.attempts, "technical_detail": exc.last_error,
+                "events": [], "review_queue": [], "source": "voice"}
     except Exception as exc:
-        return {"error": str(exc), "events": [], "review_queue": [],
-                "source": "voice"}
+        return {"error": str(exc), "retryable": False,
+                "events": [], "review_queue": [], "source": "voice"}
     return _extract_and_route(raw, facility_id, "voice")
 
 
@@ -145,9 +222,14 @@ def handle_chat(message: str, facility_id: str) -> dict:
                 "source": "chat"}
     try:
         raw = process_text(message)
+    except ModelUnavailable as exc:
+        return {"error": str(exc), "retryable": True,
+                "attempts": exc.attempts, "technical_detail": exc.last_error,
+                "events": [], "review_queue": [], "source": "chat",
+                "raw_transcript": message}
     except Exception as exc:
-        return {"error": str(exc), "events": [], "review_queue": [],
-                "source": "chat"}
+        return {"error": str(exc), "retryable": False,
+                "events": [], "review_queue": [], "source": "chat"}
     return _extract_and_route(raw, facility_id, "chat",
                               raw_transcript=message)
 

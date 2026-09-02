@@ -201,21 +201,95 @@ def route(extractions: list[dict], facility_id: str, source: str,
     return result
 
 
-def persist(result: dict) -> dict:
-    """Write events and review items to Firestore.
+# Columns of `resource_events`. Records carry more than this — `local_name`,
+# `unit`, `review_reason` — which are useful for review and meaningless to the
+# ledger, so the row is projected rather than dumped.
+LEDGER_COLUMNS = (
+    "event_id", "resource_type", "facility_id", "item_id", "event_type",
+    "quantity", "event_ts", "source", "confidence", "raw_transcript",
+    "expiry_date", "resource_subtype", "capacity",
+)
 
-    Firestore being unavailable must not lose the extraction, so the result is
-    returned either way with a flag saying whether it was stored.
+
+def _ledger_row(record: dict) -> dict:
+    """Project a capture record onto the ledger schema."""
+    return {c: record.get(c) for c in LEDGER_COLUMNS}
+
+
+def write_to_ledger(records: list[dict]) -> tuple[int, str | None]:
+    """Insert capture records straight into `resource_events`.
+
+    Returns (rows_written, error). Streaming inserts are used rather than a
+    load job because the point of this path is immediacy: a health worker who
+    has just spoken into the app must see the counter move, and a load job
+    takes too long to be believable in a demo, let alone in a clinic.
+
+    Rows land in the streaming buffer and are queryable by standard SQL within
+    seconds. They are *not* immediately visible to some DML, which does not
+    matter here — nothing updates these rows in place.
     """
+    if not records:
+        return 0, None
+    try:
+        from google.cloud import bigquery
+        from app.bq import invalidate
+
+        project = os.getenv("GCP_PROJECT", "daysupply")
+        dataset = os.getenv("BQ_DATASET", "daysupply")
+        client = bigquery.Client(project=project,
+                                 location=os.getenv("BQ_LOCATION",
+                                                    "asia-south1"))
+        table = f"{project}.{dataset}.resource_events"
+        errors = client.insert_rows_json(
+            table, [_ledger_row(r) for r in records])
+        if errors:
+            return 0, f"BigQuery rejected {len(errors)} row(s): {errors[:2]}"
+
+        # The dashboard caches capture counts for 60 seconds. Without dropping
+        # that entry the counter would not move for up to a minute after a
+        # capture, which looks exactly like the bug this replaced.
+        invalidate("quality:captures")
+        return len(records), None
+    except Exception as exc:
+        log.warning("Could not write capture to the ledger: %s", exc)
+        return 0, str(exc)
+
+
+def persist(result: dict) -> dict:
+    """Store a capture, synchronously, above the confidence gate.
+
+    **Nothing above the gate waits.** A high-confidence extraction is written
+    straight into `resource_events`, so it counts towards `captures_today` and
+    reaches the supply chain immediately. That is the whole product thesis —
+    capture flowing upward — and until this existed the loop was open: an
+    extraction could be perfectly correct and the dashboard would never move.
+
+    Below the gate the record goes to the Firestore review queue and reaches
+    the ledger only when a human approves it, via `approve_review_item()`.
+    A machine that is unsure does not get to write to the ledger unreviewed.
+
+    Firestore is also written for high-confidence events, as an audit trail of
+    what was captured and what the model said. Neither store failing may lose
+    the extraction, so the result comes back either way with flags saying what
+    was stored where.
+    """
+    events = result.get("events", [])
+    reviews = result.get("review_queue", [])
+
+    written, ledger_error = write_to_ledger(events)
+    result["written_to_ledger"] = written
+    if ledger_error:
+        result["ledger_error"] = ledger_error
+
     try:
         from google.cloud import firestore
         db = firestore.Client(
             project=os.getenv("GCP_PROJECT",
                               os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply")))
-        for event in result["events"]:
+        for event in events:
             db.collection("pending_events").document(
-                event["event_id"]).set(event)
-        for review in result["review_queue"]:
+                event["event_id"]).set({**event, "status": "in_ledger"})
+        for review in reviews:
             db.collection("review_queue").document(
                 review["event_id"]).set({**review, "status": "pending"})
         result["persisted"] = True
@@ -224,6 +298,45 @@ def persist(result: dict) -> dict:
         result["persisted"] = False
         result["persist_error"] = str(exc)
     return result
+
+
+def approve_review_item(event_id: str) -> dict:
+    """A human approved a low-confidence extraction: write it to the ledger.
+
+    This is the other half of the gate. Approval is what promotes a record the
+    model was unsure about into the same ledger a confident one goes to
+    directly — same table, same columns, same `source`, so nothing downstream
+    can tell them apart or needs to.
+    """
+    from google.cloud import firestore
+    db = firestore.Client(
+        project=os.getenv("GCP_PROJECT",
+                          os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply")))
+    doc_ref = db.collection("review_queue").document(event_id)
+    snapshot = doc_ref.get()
+    if not snapshot.exists:
+        return {"approved": False, "reason": f"no review item {event_id}"}
+
+    record = snapshot.to_dict()
+    if record.get("status") == "approved":
+        return {"approved": False, "reason": "already approved",
+                "event_id": event_id}
+    if not record.get("item_id"):
+        return {"approved": False,
+                "reason": ("this item was never matched to the catalogue, so "
+                           "there is nothing to write to the ledger; it needs "
+                           "an item chosen first"),
+                "event_id": event_id}
+
+    written, error = write_to_ledger([record])
+    if error:
+        return {"approved": False, "reason": error, "event_id": event_id}
+
+    doc_ref.set({**record, "status": "approved",
+                 "approved_at": datetime.now(timezone.utc).isoformat()})
+    return {"approved": True, "event_id": event_id,
+            "written_to_ledger": written, "item_id": record.get("item_id"),
+            "quantity": record.get("quantity")}
 
 
 def handle_barcode(code: str, facility_id: str, quantity: int | None = None,
