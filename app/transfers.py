@@ -35,7 +35,6 @@ the record. Nothing here offers to undo anything.
 from __future__ import annotations
 
 import os
-import uuid
 from datetime import datetime, timezone
 
 from google.cloud import bigquery
@@ -103,10 +102,44 @@ def _write_events(client: bigquery.Client, rows: list[dict]) -> str | None:
     return f"BigQuery rejected the movement: {errors[:2]}" if errors else None
 
 
-def _ledger_event(facility_id: str, item_id: str, event_type: str,
-                  quantity: int, note: str) -> dict:
+def movement_event_id(recommendation_id: str, step: str) -> str:
+    """A deterministic id for the one movement a step is allowed to write.
+
+    **This is what makes retrying safe.** With a random UUID, a step that wrote
+    its ledger event and then failed before recording state left an orphan
+    movement that nothing could see — and the retry wrote another. It happened:
+    one 9-unit transfer produced three `dispatched` events and took 27 units
+    off the donor, because two earlier attempts crashed in `_save_state` after
+    the stock had already moved.
+
+    Deriving the id from the transfer and the step means a retry produces the
+    *same* id, so `_already_moved()` can find the orphan and skip the write
+    instead of repeating it. The operation becomes idempotent and self-healing:
+    the retry adopts the movement that already happened.
+    """
+    return f"{recommendation_id}:{step}"
+
+
+def _already_moved(event_id: str) -> bool:
+    """Has this exact movement already been written to the ledger?
+
+    Checked before every write. There is no cross-table transaction available
+    here — the ledger and the fulfilment table are separate — so instead of
+    pretending the two writes are atomic, the movement is made *repeatable
+    without duplication*, which is the property that actually matters.
+    """
+    rows = run_query(f"""
+        SELECT COUNT(*) AS n
+        FROM `{PROJECT}.{DATASET}.resource_events`
+        WHERE event_id = @eid
+    """, [bigquery.ScalarQueryParameter("eid", "STRING", event_id)])
+    return bool(rows and rows[0]["n"])
+
+
+def _ledger_event(event_id: str, facility_id: str, item_id: str,
+                  event_type: str, quantity: int, note: str) -> dict:
     return {
-        "event_id": str(uuid.uuid4()),
+        "event_id": event_id,
         "resource_type": "medicine",
         "facility_id": facility_id,
         "item_id": item_id,
@@ -197,30 +230,34 @@ def advance(recommendation_id: str, to_status: str) -> dict:
         state["approved_at"] = _now()
 
     elif to_status == "dispatched":
-        event = _ledger_event(
-            rec["from_facility_id"], rec["supplied_item_id"], "dispatched",
-            quantity,
-            f"transfer {recommendation_id[:8]} dispatched to "
-            f"{rec['to_facility_name']}")
-        error = _write_events(client, [event])
-        if error:
-            raise TransferError(error)
+        event_id = movement_event_id(recommendation_id, "dispatched")
+        # Idempotent. If an earlier attempt wrote this movement and then failed
+        # before recording state, adopt it rather than moving the stock twice.
+        if not _already_moved(event_id):
+            error = _write_events(client, [_ledger_event(
+                event_id, rec["from_facility_id"], rec["supplied_item_id"],
+                "dispatched", quantity,
+                f"transfer {recommendation_id[:8]} dispatched to "
+                f"{rec['to_facility_name']}")])
+            if error:
+                raise TransferError(error)
         state["dispatched_at"] = _now()
-        state["dispatch_event_id"] = event["event_id"]
+        state["dispatch_event_id"] = event_id
         movement = {"facility": rec["from_facility_name"],
                     "direction": "out", "quantity": quantity}
 
     elif to_status == "received":
-        event = _ledger_event(
-            rec["to_facility_id"], rec["supplied_item_id"], "received",
-            quantity,
-            f"transfer {recommendation_id[:8]} received from "
-            f"{rec['from_facility_name']}")
-        error = _write_events(client, [event])
-        if error:
-            raise TransferError(error)
+        event_id = movement_event_id(recommendation_id, "received")
+        if not _already_moved(event_id):
+            error = _write_events(client, [_ledger_event(
+                event_id, rec["to_facility_id"], rec["supplied_item_id"],
+                "received", quantity,
+                f"transfer {recommendation_id[:8]} received from "
+                f"{rec['from_facility_name']}")])
+            if error:
+                raise TransferError(error)
         state["received_at"] = _now()
-        state["receipt_event_id"] = event["event_id"]
+        state["receipt_event_id"] = event_id
         movement = {"facility": rec["to_facility_name"],
                     "direction": "in", "quantity": quantity}
 

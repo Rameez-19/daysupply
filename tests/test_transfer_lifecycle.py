@@ -59,7 +59,7 @@ class TestLifecycleOrder:
 class TestLedgerEventsAreReal:
     def test_a_dispatch_event_is_shaped_for_the_ledger(self):
         event = transfers._ledger_event(
-            "IN-1", "PARACETAMOL", "dispatched", 100, "note")
+            "evt-1", "IN-1", "PARACETAMOL", "dispatched", 100, "note")
         for field in ("event_id", "resource_type", "facility_id", "item_id",
                       "event_type", "quantity", "event_ts", "source"):
             assert field in event
@@ -71,7 +71,7 @@ class TestLedgerEventsAreReal:
         """Nobody handed it to a patient. Conflating the two would overstate
         consumption and hide the transfer entirely."""
         event = transfers._ledger_event(
-            "IN-1", "PARACETAMOL", "dispatched", 100, "note")
+            "evt-1", "IN-1", "PARACETAMOL", "dispatched", 100, "note")
         assert event["event_type"] == "dispatched"
         assert event["event_type"] != "dispensed"
 
@@ -106,6 +106,84 @@ class TestTimestampsSurviveTheRoundTrip:
         assert schema_fields == set(transfers.TIMESTAMP_FIELDS), (
             f"timestamp columns {schema_fields} do not match the normalised "
             f"set {set(transfers.TIMESTAMP_FIELDS)}")
+
+
+class TestAMovementHappensAtMostOnce:
+    """Found live, and it cost 18 units of real stock.
+
+    A 9-unit transfer produced **three** `dispatched` events and took 27 units
+    off the donor. Two earlier attempts wrote the ledger event and then crashed
+    in `_save_state`, leaving orphan movements that nothing could see, because
+    the event id was a random UUID and the retry generated a different one.
+
+    There is no cross-table transaction between the ledger and the fulfilment
+    table. Rather than pretend the two writes are atomic, the movement is made
+    repeatable without duplication — which is the property that actually
+    protects the stock position.
+    """
+
+    def test_the_movement_id_is_derived_not_random(self):
+        a = transfers.movement_event_id("rec-1", "dispatched")
+        b = transfers.movement_event_id("rec-1", "dispatched")
+        assert a == b, "a retry must produce the same id, or it duplicates"
+
+    def test_each_step_has_its_own_id(self):
+        assert transfers.movement_event_id("rec-1", "dispatched") != \
+            transfers.movement_event_id("rec-1", "received")
+
+    def test_each_transfer_has_its_own_id(self):
+        assert transfers.movement_event_id("rec-1", "dispatched") != \
+            transfers.movement_event_id("rec-2", "dispatched")
+
+    def test_no_transfer_has_duplicate_movements_in_the_ledger(self):
+        """The invariant the bug violated. One movement per transfer per step."""
+        rows = run_query("""
+            SELECT COUNT(*) AS duplicated FROM (
+              SELECT event_id, COUNT(*) AS n
+              FROM `daysupply.daysupply.resource_events`
+              WHERE source = 'transfer'
+              GROUP BY event_id HAVING n > 1
+            )
+        """)
+        assert rows[0]["duplicated"] == 0
+
+    def test_transfer_movements_match_recorded_fulfilment(self):
+        """Every transfer movement must be one a fulfilment row accounts for.
+
+        An orphan — a movement in the ledger that no fulfilment row references
+        — means stock moved and nothing recorded why.
+
+        A movement may also be **reversed by a compensating correction**, which
+        is how the two orphans this bug created were dealt with: they were in
+        the streaming buffer and so immune to DELETE, and per HANDOVER §9e we
+        do not pretend rows can vanish. A `correction`-sourced receipt of the
+        same quantity nets each one out, and the audit trail keeps both.
+        """
+        rows = run_query("""
+            SELECT COUNTIF(f.recommendation_id IS NULL AND c.event_id IS NULL)
+                     AS unexplained
+            FROM (
+              SELECT event_id FROM `daysupply.daysupply.resource_events`
+              WHERE source = 'transfer'
+            ) e
+            LEFT JOIN (
+              SELECT dispatch_event_id AS event_id, recommendation_id
+              FROM `daysupply.daysupply.transfer_fulfilment`
+              WHERE dispatch_event_id IS NOT NULL
+              UNION ALL
+              SELECT receipt_event_id, recommendation_id
+              FROM `daysupply.daysupply.transfer_fulfilment`
+              WHERE receipt_event_id IS NOT NULL
+            ) f USING (event_id)
+            LEFT JOIN (
+              SELECT REPLACE(event_id, 'correction:', '') AS event_id
+              FROM `daysupply.daysupply.resource_events`
+              WHERE source = 'correction'
+            ) c USING (event_id)
+        """)
+        assert rows[0]["unexplained"] == 0, (
+            "a transfer movement exists that no fulfilment row explains and no "
+            "correction reverses")
 
 
 class TestStockLeavesTheDonor:

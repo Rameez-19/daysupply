@@ -176,12 +176,18 @@ class TestFefo:
         batch quantities do not sum to the ledger balance, on-hand, days of
         cover, reorder points, alerts and transfers are all wrong together.
         """
-        rows = run_query("""
+        # The consuming set is imported rather than restated. This test used to
+        # spell out `dispensed` and `expired` inline, and silently went stale
+        # the moment `dispatched` was added for transfers — it failed against
+        # correct data, which is the worst failure mode a test has.
+        from ingestion.build_current_stock import CONSUMING_EVENT_TYPES
+        consuming = ", ".join(f"'{e}'" for e in CONSUMING_EVENT_TYPES)
+        rows = run_query(f"""
             WITH ledger AS (
               SELECT facility_id, item_id,
-                     SUM(IF(event_type = 'received',  quantity, 0))
-                       - SUM(IF(event_type = 'dispensed', quantity, 0))
-                       - SUM(IF(event_type = 'expired',   quantity, 0)) AS balance
+                     SUM(IF(event_type = 'received', quantity, 0))
+                       - SUM(IF(event_type IN ({consuming}), quantity, 0))
+                         AS balance
               FROM `daysupply.daysupply.stock_events`
               GROUP BY facility_id, item_id
             ),
