@@ -122,8 +122,27 @@ def _ledger_event(facility_id: str, item_id: str, event_type: str,
     }
 
 
+def _iso(value) -> str | None:
+    """Normalise a timestamp for `insert_rows_json`.
+
+    BigQuery hands timestamps back as `datetime` objects, and the streaming
+    insert API serialises with plain `json.dumps`, which cannot encode one.
+    Carrying an earlier step's `approved_at` forward into the next write
+    therefore failed with `TypeError: Object of type datetime is not JSON
+    serializable` — and only on the *second* step, because the first has no
+    prior state to read back. Approve looked fine and dispatch 500'd.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    return value.isoformat()
+
+
+TIMESTAMP_FIELDS = ("approved_at", "dispatched_at", "received_at", "updated_at")
+
+
 def _save_state(client: bigquery.Client, state: dict) -> str | None:
-    errors = client.insert_rows_json(FULFILMENT_ID, [state])
+    row = {**state, **{f: _iso(state.get(f)) for f in TIMESTAMP_FIELDS}}
+    errors = client.insert_rows_json(FULFILMENT_ID, [row])
     return f"could not record fulfilment state: {errors[:2]}" if errors else None
 
 

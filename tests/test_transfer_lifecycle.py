@@ -76,6 +76,38 @@ class TestLedgerEventsAreReal:
         assert event["event_type"] != "dispensed"
 
 
+class TestTimestampsSurviveTheRoundTrip:
+    """Found live: approve succeeded and dispatch 500'd.
+
+    BigQuery returns timestamps as `datetime`; `insert_rows_json` serialises
+    with plain `json.dumps`, which cannot encode one. The first step has no
+    prior state to read back, so it never hit the problem — only carrying an
+    earlier `approved_at` into the next write did. A whole-lifecycle test is
+    the only kind that catches this.
+    """
+
+    def test_a_datetime_is_normalised_to_a_string(self):
+        from datetime import datetime, timezone
+        value = datetime(2026, 9, 2, 12, 0, tzinfo=timezone.utc)
+        assert isinstance(transfers._iso(value), str)
+
+    def test_a_string_passes_through_unchanged(self):
+        assert transfers._iso("2026-09-02T12:00:00+00:00") == \
+            "2026-09-02T12:00:00+00:00"
+
+    def test_none_stays_none(self):
+        assert transfers._iso(None) is None
+
+    def test_every_timestamp_column_is_normalised(self):
+        """If a column is added and left off this list, it breaks on step two."""
+        schema_fields = {f.name for f in __import__(
+            "ingestion.build_transfer_fulfilment", fromlist=["SCHEMA"]).SCHEMA
+            if f.field_type == "TIMESTAMP"}
+        assert schema_fields == set(transfers.TIMESTAMP_FIELDS), (
+            f"timestamp columns {schema_fields} do not match the normalised "
+            f"set {set(transfers.TIMESTAMP_FIELDS)}")
+
+
 class TestStockLeavesTheDonor:
     def test_dispatched_is_netted_out_of_on_hand(self):
         """Otherwise a donor appears to hold units that are on a vehicle."""
