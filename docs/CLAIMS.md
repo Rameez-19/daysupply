@@ -7,8 +7,21 @@ Every row gives the figure, what it is derived from, whether the inputs are
 **real** or **generated**, and where in the code it is computed. Anything that
 cannot be traced to code is marked **UNTRACEABLE** and must not be used.
 
-Verified against the live BigQuery dataset on **2026-09-01**. Regenerate by
-running the module named in the "Computed in" column.
+Verified against the live BigQuery dataset on **2026-09-02**, after
+`current_stock` and `reorder_status` became views.
+
+> ### Some figures are now LIVE and will move
+>
+> `current_stock` and `reorder_status` are views derived from the ledger at
+> read time, so **every capture changes the stock position**. Alert counts,
+> recommendation counts, units to move and total on-hand are *current values,
+> not constants* — quoting them means quoting them as of a moment.
+>
+> Rows below marked **LIVE** move when anyone speaks into the app. Everything
+> else is stable between ingestion runs. Re-run
+> `scratchpad/verify_claims.py`-style checks before the deck is finalised, and
+> **do not hardcode a LIVE figure into a test** — one test did, and it broke
+> the first time a real capture landed.
 
 **Status vocabulary:**
 
@@ -152,11 +165,12 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 |---|---|---|---|
 | **1,157,367 stock events**, 200 facilities × 39 items × 365 days | generated ledger, 2025-08-30 → 2026-08-29 | **GENERATED**, HMIS-anchored | `ingestion/generate_usage.py` |
 | **Lead times 7–19 days** | real road distance to district HQ; days-per-km is a **documented proxy** | **REAL DISTANCE, ASSUMED CONVERSION** | `ingestion/set_lead_times.py` |
-| **2,794 reorder rows**, **599 alerts** | `μ×L + 1.65σ√L`, per facility | **MEASURED** | `ingestion/build_supply_plan.py` |
-| **525 transfer recommendations**, **64,211 units** | FEFO batch selection, donor protection, 150 km radius | **MEASURED** | same |
+| **2,794 reorder rows** | one per forecast facility-item; stable | **MEASURED** | `ingestion/build_supply_plan.py` (view) |
+| **597 open alerts** | `on_hand <= μ×L + 1.65σ√L` | **MEASURED — LIVE** | same; was 599 before two test captures cleared two |
+| **527 transfer recommendations**, **64,218 units** | FEFO batch selection, donor protection, 150 km radius | **MEASURED — LIVE** | same; was 525 / 64,211 before captures added stock |
 | **26,612 units of waste avoided (44.7%)** | FEFO 32,893 expired vs FIFO 59,505 counterfactual, ledger replayed both ways | **MEASURED** | `generate_usage.py` → `impact_metrics`; served at `/api/v1/impact` |
 | Per-transfer `waste_avoided_units` = **0** | FEFO at the facility already consumed short-dated stock | **MEASURED, and honest** | `build_supply_plan.py` |
-| **1 substitution** across 525 transfers | ATC **level 4** matching | **MEASURED** | same |
+| **1 substitution** across 527 transfers | ATC **level 4** matching | **MEASURED — LIVE** | same |
 | The `substitutes` table is **empty (0 rows)** | only **1 of 30** ATC classes in the forecast set contains two forecast items | **MEASURED — a real limit, not a failure** | `app/supply.py`, `substitution_constraint()`; `/api/v1/substitutes` returns the reason with the empty list |
 
 > ⚠️ **26,612 supersedes 94,542, and 44.7% supersedes 57%.** The old figures were
