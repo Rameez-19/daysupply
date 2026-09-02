@@ -22,7 +22,8 @@ difference will overclaim in the submission.
 
 | Component | Status | Notes |
 |---|---|---|
-| Gemini voice extraction | **REAL, BLOCKED IN PROD** | Code and tests are real; the production call returns 403. Cause not yet settled — leading hypothesis is the SDK (`google-generativeai` vs the current `google-genai`), not the key. See §9.9 |
+| Gemini extraction (voice + chat) | **REAL, WORKING IN PROD** | Fixed 2026-09-01 by migrating to `google-genai` and pinning `gemini-3.6-flash`. Verified live: clean Hindi-English extracted correctly at 0.95 confidence. Intermittent 503s under load — see §9b |
+| **Capture persistence** | **BROKEN** | Extraction works; storage does not. The Firestore database does not exist, and nothing reads `pending_events` into BigQuery even if it did. `captures_today` therefore stays 0. See §9c |
 | Offline queue + sync | **REAL** | Service Worker + IndexedDB, genuinely works offline |
 | PWA / dashboard UI | **REAL** | Vanilla JS, Chart.js, deployed and functional |
 | Barcode scanning | **REAL** | `html5-qrcode` |
@@ -41,7 +42,7 @@ difference will overclaim in the submission.
 | **Lead times** | **REAL DISTANCE, ASSUMED CONVERSION** | Distance to district HQ is real; days-per-km is a documented proxy |
 | **VEN classification** | **DERIVED** | Ours, not MoHFW's — NLEM does not publish VEN |
 | **Daily stock events** | **GENERATED** | Anchored to real HMIS demand; see `Data/README.md` §9 |
-| **`captures_today`** | **REAL** | Counted from capture-sourced ledger events. Currently **0**, and legitimately so |
+| **`captures_today`** | **REAL BUT STUCK AT 0** | Counted from capture-sourced ledger events, which is correct. It reads 0 not because nothing has been captured but because captures never reach the ledger — see §9c |
 
 ### What was actually wrong with the previous version
 
@@ -388,97 +389,98 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
    required foreign rows in a production table.
 
 
-9. **⚠️ BLOCKING FOR THE DEMO — voice and chat return 403 in production.**
-   Verified on the live service, 2026-09-01. `GEMINI_API_KEY` **is** set on
-   Cloud Run, so the previously logged "key not set" issue is closed.
+9. ~~**BLOCKING FOR THE DEMO — voice and chat return 403 in production.**~~
+   **Resolved 2026-09-01.**
 
-   Symptom: `403 … API_KEY_SERVICE_BLOCKED` from `/api/v1/voice-note` and
-   `/api/v1/chat-note`. Everything else in the capture pipeline is fine —
-   barcode works end to end and correctly routes an unrecognised code to the
-   review queue with a reason.
+   There were **two independent failures**, and neither was visible from the
+   other:
 
-   **The full diagnosis, including a correction to an earlier wrong reading of
-   the key format, is in §9.9 below.** Short version: `AQ.` is the *current* AI
-   Studio key format, not a GCP-console marker, and the leading hypothesis is
-   the SDK (`google-generativeai` vs `google-genai`) rather than the key.
+   1. **The SDK.** `app/capture.py` used `google-generativeai`, the older
+      library. Current AI Studio keys begin with `AQ.` — the Auth key format
+      Google migrated to in June 2026 — and they fail against that library.
+      Migrated to `google-genai`.
+   2. **The model was shut down.** The pin was `gemini-1.5-pro`, which Google
+      has since retired; every request returned 404 whatever the key did. Even
+      a perfect key against the right SDK would still have failed. Repinned to
+      `gemini-3.6-flash`.
 
-   Two fixes, either sufficient — full commands in `README.md` under
-   *Environment*:
-   - **A (simplest):** issue a key at `aistudio.google.com/apikey` and set it.
-   - **B (stay in this project):**
-     `gcloud services enable generativelanguage.googleapis.com --project daysupply`,
-     then add that service to the key's API restrictions.
+   **A wrong turn worth recording.** An earlier diagnosis here read the `AQ.`
+   prefix as evidence the key was a GCP-console key rather than an AI Studio
+   one, and concluded the fix was to enable `generativelanguage.googleapis.com`
+   and widen the key's API restrictions. That was wrong in two ways: `AQ.` is
+   the *current* AI Studio format, and the reasoning had also matched a key
+   listed by `gcloud services api-keys list` against the deployed key without
+   checking they were the same key. Neither project setting needed changing.
 
-   **Until this is fixed the demo video cannot show a live voice capture.** The
-   three capture modes degrade as designed — barcode still works — but voice is
-   the headline of the product and it must be working before recording.
+   Verified live after the fix — see §9a for the pin and its verification date.
 
-10. **Deck and video are still outside the repo and must be rebuilt against
-    `docs/CLAIMS.md`.** Several figures in any existing draft are now wrong:
-    FEFO waste is 26,612 (44.7%) not 94,542 (57%); wMAPE is 19.4/71.2/16.4/14.4
-    not 25.8/45.1/32.5/23.2; malaria amplitude is 4.52x not 3.9x; Albendazole is
-    22.64x with a 5.66x August spike, not 22.3x and 6.24x; the district count is
-    701, not 668. `docs/CLAIMS.md` is the single source of truth — anything not
-    in it does not go in front of a judge.
+9a. **Model pin — record the date, because pins go stale.**
 
-9. **Voice and chat capture return 403 in production — diagnosis open.**
-   `GEMINI_API_KEY` **is** set on the Cloud Run service, so the older "not set"
-   note is out of date. `/api/v1/voice-note` and `/api/v1/chat-note` return
-   `403 API_KEY_SERVICE_BLOCKED` from `generativelanguage.googleapis.com`.
-
-   **Key format — a correction.** Current Google AI Studio keys begin with
-   **`AQ.`**, the Auth key format Google migrated to in June 2026; the older
-   `AIza` Standard keys are being rejected outright from September 2026. An
-   earlier version of this section read the `AQ.` prefix as evidence that the
-   key came from the GCP console rather than AI Studio. **That was wrong** —
-   AI Studio issues only `AQ.` keys now, so the prefix says the key is current.
-   The reasoning was also unsound independently of the format question: it read
-   one key out of `gcloud services api-keys list` and assumed it was the one
-   deployed, without matching them.
-
-   **Leading hypothesis: the SDK, not the key or the API.** `app/capture.py`
-   uses `google-generativeai`, the older library, and `AQ.` keys are widely
-   reported to fail against it. The current library is **`google-genai`**.
-
-   **Test that separates the two cases**, run before changing anything:
-   ```
-   curl.exe -H "x-goog-api-key: AQ.KEY" "https://generativelanguage.googleapis.com/v1beta/models"
-   ```
-
-   | Result | Meaning | Fix |
-   |---|---|---|
-   | Model list | Key and API are fine; the SDK is the problem | Migrate `app/capture.py` to `google-genai` |
-   | 403 | The API is genuinely blocked for this key | Enable `generativelanguage.googleapis.com` and/or widen the key's API restrictions |
-
-   **No SDK change has been made** — it waits on that result.
-
-   **If the migration is the fix, the surface is small.** The entire Gemini
-   dependency is five lines in `app/capture.py`:
-
-   | Line | Now |
+   | | |
    |---|---|
-   | `capture.py:5` | `import google.generativeai as genai` |
-   | `capture.py:13` | `genai.configure(api_key=...)` |
-   | `capture.py:15` | `genai.GenerativeModel('gemini-1.5-pro')` |
-   | `capture.py:57` | `model.generate_content([...])` — audio |
-   | `capture.py:71` | `model.generate_content(...)` — text |
+   | **Pinned model** | `gemini-3.6-flash` |
+   | **Verified working** | **2026-09-01**, against the live Cloud Run service |
+   | **Fallback** | `gemini-2.5-flash` if Hindi audio accuracy disappoints |
+   | **Override** | `GEMINI_MODEL` env var — no code change needed |
+   | **SDK** | `google-genai` (the older `google-generativeai` is gone) |
 
-   plus `google-generativeai` in `requirements.txt:6`. Nothing else imports the
-   SDK. `app/capture_pipeline.py` holds the matching, confidence gate and
-   routing — all model-independent, all covered by tests that never call
-   Gemini, so a migration cannot silently damage the extraction logic.
+   Why this one: GA rather than preview, and Flash-class is the right weight
+   for short multilingual audio into a small JSON payload. Not `gemini-3.7-flash`,
+   which is newer but tuned for coding and agentic work. Not the Gemini 3 Pro
+   line, still in preview.
 
-   **Review the pinned model at the same time.** `gemini-1.5-pro` is several
-   generations old; if `app/capture.py` is being opened anyway, that is the
-   moment to move to a current model rather than porting the old pin forward.
+   **This pin already went stale once and it cost a working feature.** The
+   previous pin was `gemini-1.5-pro`, which Google shut down; every request
+   returned 404 regardless of the API key. That was a *second* failure sitting
+   underneath the 403, and neither was visible from the other. **Re-verify the
+   pin against the current model list before each deployment and before the
+   submission, and update the date in this table when you do.** The same note
+   is in the `app/capture.py` docstring.
 
-   **Barcode is unaffected** and verified working in production — an
-   unrecognised code correctly routes to the review queue with a reason. The
-   extraction pipeline, matcher and confidence gate are exercised by 186
-   passing tests; only the production model call fails.
+   Dedicated speech models now exist (`gemini-3.5-transcribe`, 85+ languages,
+   utterance-level language detection). Deliberately not used: we need
+   structured extraction in one hop, not transcription followed by a second
+   parse. Revisit only if Hindi accuracy proves poor.
 
-   **This must be fixed before the demo video is recorded.** Voice is the
-   product's opening claim.
+9b. **⚠️ `gemini-3.6-flash` returned intermittent 503s during live testing.**
+   `503 UNAVAILABLE — "This model is currently experiencing high demand"`, on
+   roughly half the requests in a short burst on 2026-09-01. Verified transient:
+   the same request succeeded on retry. **There is no retry in the code.** A
+   capture that hits a 503 currently surfaces the raw error to the health
+   worker and the extraction is lost.
+
+   Two things follow, neither done:
+   - **Add a bounded retry with backoff** around `process_audio` and
+     `process_text`. This is the single highest-value robustness fix left.
+   - **Do not record the demo video in one take against the live model.** A 503
+     mid-demo is a coin flip. Either pre-record the capture segment, or have
+     `GEMINI_MODEL=gemini-2.5-flash` ready as a fallback if 3.6 is congested.
+
+9c. **⚠️ The capture loop is not closed — nothing a health worker captures ever
+   reaches the ledger.** Two separate gaps, found while testing the migration:
+
+   1. **The Firestore database does not exist.** Every capture returns
+      `"persisted": false` with
+      `404 The database (default) does not exist for project daysupply`.
+      Extraction, matching, the confidence gate and routing all work — the
+      result is simply never stored. Fix:
+      `gcloud firestore databases create --location=asia-south1 --project daysupply`.
+
+   2. **Even with Firestore created, there is no path from it to BigQuery.**
+      `capture_pipeline.persist()` writes to the Firestore collections
+      `pending_events` and `review_queue`. `pending_events` is **read by
+      nothing** — `grep` finds exactly one reference, the write itself. Meanwhile
+      `quality.captures_today()` counts from BigQuery `resource_events`.
+
+   So `captures_today` reads **0** and would keep reading 0 even after Firestore
+   exists. In a demo you can speak into the app, watch the extraction come back
+   correctly, and the dashboard number never moves. **This is the most likely
+   thing a judge notices**, because it is the one place the product's own story —
+   capture flows upward into the supply chain — is not actually wired.
+
+   Closing it needs a writer from `pending_events` into `resource_events` after
+   review approval. Not built; it is a design decision about whether approval is
+   synchronous or batched, and that is the owner's call.
 
 10. **Deck and video still to build**, and both must draw every figure from
     `docs/CLAIMS.md`. Any number not in that file does not go in front of a

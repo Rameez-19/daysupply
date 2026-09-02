@@ -281,7 +281,7 @@ zero, which is a stronger demo than the untraceable figure it replaces.
 | **1,157,367 daily stock events** | no per-facility daily stock data is published in India by anyone |
 | Bed **occupancy** (2,430 turned away) | derived from real HMIS admission volumes × assumed 1.8-day length of stay |
 | Staff **attendance** (56% of sanctioned) | product of real vacancy and a generated presence model |
-| `captures_today` | currently **0** and real; it counts actual capture events |
+| `captures_today` | reads **0**, and the 0 is real arithmetic — but it is stuck there. Captures are extracted correctly and never persisted (no Firestore database; nothing writes `pending_events` into BigQuery). **Do not present this as "no captures yet"** — it is a broken loop, documented in HANDOVER §9c |
 | Review-queue items (3) | worked examples shown only when no real extraction is pending. The API returns `is_example_data: true` and the UI shows a banner saying so. **Never present these as captured.** |
 
 **The one sentence that must accompany any demo figure:**
