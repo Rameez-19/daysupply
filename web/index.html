@@ -84,15 +84,10 @@
         </div>
 
         <!-- ── Cascading Filter Bar ── -->
+        <!-- Geography only. The resource selector that used to sit here drove
+             a panel that now lives on Network, so changing it on this view
+             appeared to do nothing. Resource is a Network concern. -->
         <div class="filter-bar">
-          <div class="filter-group">
-            <label class="filter-label">Resource</label>
-            <select id="resource-filter" onchange="onResourceChange()">
-              <option value="medicine">💊 Medicines</option>
-              <option value="bed">🛏️ Beds</option>
-              <option value="personnel">👥 Personnel</option>
-            </select>
-          </div>
           <div class="filter-group">
             <label class="filter-label">State</label>
             <select id="state-filter" onchange="onStateChange()">

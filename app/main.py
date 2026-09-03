@@ -48,6 +48,11 @@ from app.demo_data import get_demo_review_queue
 
 log = logging.getLogger(__name__)
 
+# The state the dashboard opens on. Defined once here so the startup warm and
+# the /stats default cannot drift apart — warming one scope and serving another
+# would be worse than not warming at all.
+DEFAULT_STATE = os.getenv("DEFAULT_STATE", "Telangana")
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -64,6 +69,27 @@ async def lifespan(_app: FastAPI):
             log.info("Geography cache warmed: %d rows", count)
         except Exception:
             log.exception("Geography prewarm failed; will load on first request")
+
+        # Today's panels are the first thing a reader sees, and they read
+        # through `reorder_status`, which is a view over `current_stock` — a
+        # 150 MB scan per query. Cold, the stat row took ~7s and alerts ~3.4s.
+        # Warming the default scope here means the first visitor gets a cached
+        # answer instead of paying for the scan while watching a spinner.
+        #
+        # Deliberately only the default scope. Warming all 37 states would be
+        # 37x the cost for a reader who will look at one.
+        for label, fn in (
+            ("stats", lambda: supply.get_summary(DEFAULT_STATE, "", "")),
+            ("alerts", lambda: supply.get_alerts(DEFAULT_STATE, "", "", 50)),
+            ("transfers",
+             lambda: supply.get_recommendations(DEFAULT_STATE, "", "", 50)),
+        ):
+            try:
+                await asyncio.to_thread(fn)
+                log.info("Warmed %s for %s", label, DEFAULT_STATE)
+            except Exception:
+                log.exception("Could not warm %s; it will load on demand",
+                              label)
 
     task = asyncio.create_task(warm())
     yield
@@ -152,7 +178,7 @@ async def fetch_coverage():
 
 # ── Dashboard stats ──────────────────────────────────────────────────
 @app.get("/api/v1/stats")
-async def get_stats(state: str = "Telangana", district: str = "",
+async def get_stats(state: str = DEFAULT_STATE, district: str = "",
                     phc: str = ""):
     """Dashboard summary.
 
@@ -286,7 +312,7 @@ async def capture_modes():
 
 # ── Review queue ─────────────────────────────────────────────────────
 @app.get("/api/v1/review-queue")
-async def get_review_queue(state: str = "Telangana", district: str = "",
+async def get_review_queue(state: str = DEFAULT_STATE, district: str = "",
                            phc: str = ""):
     """Low-confidence extractions awaiting a human decision.
 

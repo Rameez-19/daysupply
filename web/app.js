@@ -205,12 +205,42 @@ function getFilterParams() {
   return params;
 }
 
+// Which view the reader is actually looking at. Everything else is hidden, and
+// refreshing it costs a BigQuery round trip the reader will never see.
+function activeViewId() {
+  const el = document.querySelector('.view.active-view');
+  return el ? el.id : 'today-view';
+}
+
+// Refresh only what is on screen.
+//
+// This used to fire all five loaders on every filter change, regardless of
+// which view was visible — so changing the state dropdown on Today also
+// rebuilt the forecast chart, the network charts, the resource panel and the
+// lead-time contrast, none of which were on screen. Four wasted round trips,
+// and the slowest of them set how long the dropdown appeared to hang.
+//
+// Each view reloads when switched to, so nothing goes stale; it just no longer
+// loads four views early.
 function refreshAll() {
-  loadDashboard();
-  loadChart(currentChartDays);
-  loadLeadTimeContrast();
-  loadReporting();
-  loadResourcePanel();
+  const view = activeViewId();
+  if (view === 'today-view') {
+    loadDashboard();          // the stat row
+    loadAlerts();
+    loadTransfers();
+    if (typeof loadSurgeBanner === 'function') loadSurgeBanner();
+  } else if (view === 'network-view') {
+    loadResourcePanel();
+    loadChart(currentChartDays);   // also draws the two network charts
+  } else if (view === 'plan-view') {
+    loadChart(currentChartDays);
+    if (typeof loadSurge === 'function') loadSurge();
+  } else if (view === 'evidence-view') {
+    loadLeadTimeContrast();
+    if (typeof loadEvidence === 'function') loadEvidence();
+  } else if (view === 'capture-view' || view === 'review-view') {
+    loadReviewQueue();
+  }
 }
 
 // Make filter functions global
@@ -865,18 +895,19 @@ async function loadReporting() {
 // The resource selector is a segmented control on Network now, not a filter
 // dropdown on the dashboard. Three resources, one model, visibly.
 function onResourceSegment(resource) {
+  if (resource === currentResource) return;
   currentResource = resource;
   document.querySelectorAll('#resource-segmented .segment').forEach(b =>
     b.classList.toggle('active', b.dataset.resource === resource));
   loadResourcePanel();
 }
 
-async function onResourceChange() {
-  currentResource = document.getElementById('resource-filter').value;
-  await loadResourcePanel();
-  refreshAll();
-}
-window.onResourceChange = onResourceChange;
+// The resource dropdown that used to live in the Today filter bar is gone.
+// It set `currentResource`, which drives the resource panel — and that panel
+// moved to Network in the restructure. So changing it on Today updated a panel
+// on a hidden view and appeared to do nothing at all. Resource is a Network
+// concern, and the segmented control there is the only control for it.
+window.onResourceSegment = onResourceSegment;
 
 function pct(v) { return v === null || v === undefined ? '—' : `${Math.round(v)}%`; }
 
