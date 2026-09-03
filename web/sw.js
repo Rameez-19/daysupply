@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stockpulse-v12';
+const CACHE_NAME = 'stockpulse-v13';
 const ASSETS = [
   '/',
   '/index.html',

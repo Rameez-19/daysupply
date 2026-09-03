@@ -273,6 +273,16 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 | — of which **80** | latitude/longitude blank or non-numeric | **REAL** | same |
 | — of which **553** | value present but outside plausible bounds for India | **REAL** | same |
 
+> ⚠️ **The duplicated write-off id changes no published figure.** Both rows are
+> genuine write-offs of different quantities from different batches. The balance
+> sums quantities rather than ids, so ledger-to-batch reconciliation drift is
+> **0 across all 7,728 facility-item pairs**;
+> `impact_metrics.units_expired_fefo` (**32,893**) matches the ledger sum of
+> expired quantities exactly; and FEFO batch keys come from `received` events,
+> of which all **70,048 are unique**. The only fix is regenerating 1.16M rows to
+> change no number, which was judged a bad trade before submission. Three tests
+> pin the collision count at exactly 1 so it cannot grow unnoticed.
+
 > ⚠️ **The categories at `/api/v1/data-quality` do not add up to 633, and that
 > is correct.** They overlap: 80 missing + 224 latitude beyond ±90 + 248
 > longitude beyond ±180 = 552, but **206 rows fail on both** latitude and
@@ -282,6 +292,7 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 | Coordinates are **never corrected** | inferring a swapped Mizoram lat/long is a guess | **policy** | same |
 | `Ahmadnagar` (HMIS) vs `Ahmednagar` (facility master) | both spellings kept; reconciled via `district_key`; UI displays one | **REAL** | `parse_hmis.py`, `app/facilities.py` |
 | 2019-20 HMIS = **April 2019 – March 2020** | Feb and Mar 2020 are COVID-affected | **REAL caveat** | `Data/README.md` §4 |
+| **1 duplicated write-off id** in 770 expiry events | `generate_usage.py` builds write-off ids as `seed-x-{facility}-{item}-{date}` with no batch discriminator, so two batches of one item expiring at one facility on one day collide | **REAL, known, deliberately unfixed** | `ingestion/generate_usage.py:461`; pinned by `tests/test_supply_chain.py::TestKnownSeedDefects` |
 | Rural Health Statistics vintage = **2017** | superseded by *Health Dynamics of India* | **REAL caveat** | `load_staffing.py`, `source_year` on every row |
 
 ---

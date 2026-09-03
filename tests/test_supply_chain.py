@@ -340,3 +340,65 @@ class TestReportingConsistency:
             FROM `daysupply.daysupply.facility_reporting`
         """)
         assert rows[0]["imperfect"] > 0
+
+
+class TestKnownSeedDefects:
+    """Defects we have measured, decided not to fix, and pinned so they
+    cannot grow silently."""
+
+    def test_expiry_write_off_ids_collide_exactly_once(self):
+        """`generate_usage.py` builds write-off ids as
+        `seed-x-{facility}-{item}-{date}` with no batch discriminator, so two
+        batches of the same item expiring at the same facility on the same day
+        share an id. It happens once in 770 write-offs.
+
+        **Deliberately not fixed.** Both rows are genuine write-offs of
+        different quantities from different batches; the balance sums
+        quantities rather than ids, so reconciliation drift is zero;
+        `impact_metrics.units_expired_fefo` matches the ledger sum exactly; and
+        FEFO batch keys come from `received` events, which are all unique. The
+        only fix is regenerating 1.16M rows to change no published number.
+
+        This test exists so the collision count cannot grow unnoticed. If it
+        rises, the id scheme has started colliding in a new way and the trade
+        needs revisiting.
+        """
+        rows = run_query("""
+            SELECT COUNT(*) AS colliding_groups,
+                   IFNULL(SUM(n - 1), 0) AS extra_rows
+            FROM (
+              SELECT facility_id, item_id, DATE(event_ts) AS d, COUNT(*) AS n
+              FROM `daysupply.daysupply.resource_events`
+              WHERE event_type = 'expired'
+              GROUP BY 1, 2, 3 HAVING n > 1
+            )
+        """)
+        assert rows[0]["colliding_groups"] == 1
+        assert rows[0]["extra_rows"] == 1
+
+    def test_the_collision_is_confined_to_write_offs(self):
+        """Receipts key the FEFO batches. If those ever collide, batch
+        attribution is corrupt and every stock figure with it."""
+        rows = run_query("""
+            SELECT event_type,
+                   COUNT(*) - COUNT(DISTINCT event_id) AS duplicated
+            FROM `daysupply.daysupply.resource_events`
+            WHERE resource_type = 'medicine'
+            GROUP BY event_type
+        """)
+        by_type = {r["event_type"]: r["duplicated"] for r in rows}
+        assert by_type.get("received", 0) == 0, "FEFO batch keys must be unique"
+        assert by_type.get("dispensed", 0) == 0
+        assert by_type.get("dispatched", 0) == 0
+        assert by_type.get("expired", 0) == 1, (
+            "the one known collision; anything else is new")
+
+    def test_it_does_not_touch_the_published_waste_figure(self):
+        rows = run_query("""
+            SELECT (SELECT units_expired_fefo
+                    FROM `daysupply.daysupply.impact_metrics`) AS published,
+                   SUM(quantity) AS ledger_sum
+            FROM `daysupply.daysupply.resource_events`
+            WHERE event_type = 'expired'
+        """)
+        assert rows[0]["published"] == rows[0]["ledger_sum"]

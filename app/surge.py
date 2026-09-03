@@ -37,6 +37,7 @@ NETWORK_ABSORPTION = f"`{PROJECT}.{DATASET}.network_absorption`"
 REORDER_STATUS = f"`{PROJECT}.{DATASET}.reorder_status`"
 FACILITIES = f"`{PROJECT}.{DATASET}.facilities`"
 POPULATION_REACH = f"`{PROJECT}.{DATASET}.population_reach`"
+SIGNAL_LABELS = f"`{PROJECT}.{DATASET}.signal_labels`"
 
 SERVICE_LEVEL_Z = float(os.getenv("SERVICE_LEVEL_Z", "1.65"))
 SURGE_SIGMA_EXPONENT = float(os.getenv("SURGE_SIGMA_EXPONENT", "1.0"))
@@ -59,29 +60,44 @@ def get_surge_signals(state: str = "", district: str = "",
     Every threshold that the row was tested against is returned alongside it,
     so the UI can show why a near miss did not fire.
     """
-    where = ["is_surge"]
+    # Qualified with the alias as they are built. An earlier version assembled
+    # unqualified predicates and then string-replaced the column names once the
+    # join was added, which worked and would have broken the moment a column
+    # name appeared as a substring of another.
+    where = ["s.is_surge"]
     params: list[bigquery.ScalarQueryParameter] = []
     for column, value, name in (("state", state, "state"),
                                 ("atc_class", atc_class, "atc_class"),
                                 ("month", month, "month")):
         if value:
-            where.append(f"{column} = @{name}")
+            where.append(f"s.{column} = @{name}")
             params.append(bigquery.ScalarQueryParameter(name, "STRING", value))
     if district:
-        where.append("district_key = UPPER(@district)")
+        where.append("s.district_key = UPPER(@district)")
         params.append(
             bigquery.ScalarQueryParameter("district", "STRING", district))
     params.append(bigquery.ScalarQueryParameter("limit", "INT64", limit))
 
+    # Joined to the label so a signal can name itself. "P02CA is 6.31x
+    # expected" is not actionable; "Childhood diarrhoea is 6.31x expected in
+    # this district in March" is. The signal_class says whether it is an early
+    # warning, a coincident fact, or a planned campaign — three different
+    # things a district officer must not confuse.
     return run_query(f"""
-        SELECT state, district_key, atc_class, month,
-               observed, expected, baseline, pooled_multiplier,
-               surge_multiplier, z_modified, z_classical, mad,
-               threshold_z, threshold_ratio, threshold_absolute,
-               passes_statistic, passes_ratio, passes_magnitude
-        FROM {SURGE_SIGNALS}
+        SELECT s.state, s.district_key, s.atc_class, s.month,
+               s.observed, s.expected, s.baseline, s.pooled_multiplier,
+               s.surge_multiplier, s.z_modified, s.z_classical, s.mad,
+               s.threshold_z, s.threshold_ratio, s.threshold_absolute,
+               s.passes_statistic, s.passes_ratio, s.passes_magnitude,
+               l.demand_driver AS signal_indicator,
+               l.signal_class,
+               l.means AS signal_means,
+               l.why AS signal_why,
+               l.example_items
+        FROM {SURGE_SIGNALS} s
+        LEFT JOIN {SIGNAL_LABELS} l ON l.atc_class = s.atc_class
         WHERE {' AND '.join(where)}
-        ORDER BY surge_multiplier DESC, z_modified DESC
+        ORDER BY s.surge_multiplier DESC, s.z_modified DESC
         LIMIT @limit
     """, params)
 

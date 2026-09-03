@@ -401,3 +401,9 @@ button { font-family: inherit; cursor: pointer; }
 .lifecycle-moved { font-weight:500; color:var(--gray-600); text-transform:none; }
 .lifecycle-note { font-size:0.76rem; color:var(--gray-500); line-height:1.5; margin:0 0 8px; }
 .lifecycle-error { font-size:0.78rem; color:var(--danger); margin:0; }
+.signal-badge { display:inline-block; font-size:0.62rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; padding:2px 7px; border-radius:10px; margin-right:6px; vertical-align:middle; }
+.signal-badge.leading { background:#fef2f2; color:var(--danger); border:1px solid #fecaca; }
+.signal-badge.coincident { background:#fff7ed; color:var(--warning); border:1px solid #fed7aa; }
+.signal-badge.programme { background:var(--gray-100); color:var(--gray-500); border:1px solid var(--border); }
+.signal-line { margin-bottom:4px; }
+.signal-why { display:block; color:var(--gray-500); font-size:0.74rem; margin-top:3px; }

@@ -17,6 +17,24 @@ async function loadSurge() {
   loadScenarioOptions();
 }
 
+// Three signal classes, three different things a district officer must not
+// confuse. LEADING is a clinical warning that precedes the demand it drives;
+// COINCIDENT means the presentation and the dispensing move together, so it is
+// information rather than warning; PROGRAMME means a planned campaign, not an
+// outbreak — a 22.64x Albendazole swing is National Deworming Day.
+function signalBadge(cls) {
+  if (cls === 'leading') {
+    return '<span class="signal-badge leading" title="A clinical signal that '
+      + 'rises before the medicine demand it drives">Early warning</span>';
+  }
+  if (cls === 'programme') {
+    return '<span class="signal-badge programme" title="A planned campaign, '
+      + 'not an outbreak">Planned campaign</span>';
+  }
+  return '<span class="signal-badge coincident" title="The presentation and '
+    + 'the dispensing happen together">Happening now</span>';
+}
+
 // Where reordering physically cannot work, say so in those words. Showing an
 // order quantity here would imply the problem is handled when it is not.
 function surgeActionBadge(action) {
@@ -51,7 +69,13 @@ async function loadSurgeSignals() {
       <div class="alert-card severity-warning">
         <div class="alert-icon warning">&#128200;</div>
         <div class="alert-body">
-          <div class="alert-title">${s.district_key} &middot; ${s.atc_class} &middot; ${s.month}</div>
+          <div class="alert-title">${signalBadge(s.signal_class)} ${s.signal_indicator || s.atc_class}</div>
+          <div class="alert-meta">${s.district_key} &middot; ${s.month} &middot; ${s.atc_class}${s.example_items ? ' (' + s.example_items + ')' : ''}</div>
+          <div class="alert-detail signal-line">
+            <strong>${s.signal_means || s.atc_class} is ${s.surge_multiplier}&times; expected</strong>
+            for this district in ${s.month}.
+            ${s.signal_why ? `<span class="signal-why">${s.signal_why}</span>` : ''}
+          </div>
           <div class="alert-detail">
             ${Math.round(s.observed).toLocaleString()} clinical events against
             ${Math.round(s.expected).toLocaleString()} expected &mdash; the district's own
