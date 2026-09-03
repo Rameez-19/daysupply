@@ -407,3 +407,18 @@ button { font-family: inherit; cursor: pointer; }
 .signal-badge.programme { background:var(--gray-100); color:var(--gray-500); border:1px solid var(--border); }
 .signal-line { margin-bottom:4px; }
 .signal-why { display:block; color:var(--gray-500); font-size:0.74rem; margin-top:3px; }
+
+/* ===== Restructured IA ===== */
+.nav-group-label { font-size:0.6rem; font-weight:800; text-transform:uppercase; letter-spacing:0.09em; color:var(--gray-400); padding:14px 20px 5px; }
+.segmented { display:inline-flex; background:var(--gray-100); border:1px solid var(--border); border-radius:10px; padding:3px; margin-bottom:16px; }
+.segment { border:none; background:transparent; padding:7px 18px; border-radius:8px; font-size:0.85rem; font-weight:600; color:var(--gray-500); cursor:pointer; }
+.segment.active { background:var(--surface); color:var(--brand-500); box-shadow:var(--shadow-sm); }
+
+/* Surge on Today. Coloured by signal class, because an early warning and a
+   planned deworming campaign must not look like the same event. */
+.surge-banner { padding:16px 20px; border-radius:var(--radius); border:1px solid var(--border); border-left-width:4px; background:var(--surface); margin-bottom:18px; box-shadow:var(--shadow-sm); }
+.surge-banner.leading { border-left-color:var(--danger); background:#fffbfb; }
+.surge-banner.coincident { border-left-color:var(--warning); }
+.surge-banner.programme { border-left-color:var(--gray-400); }
+.surge-banner-head { font-size:0.95rem; line-height:1.5; margin-bottom:6px; }
+.surge-banner-body { font-size:0.8rem; color:var(--gray-600); line-height:1.55; margin:0 0 12px; }

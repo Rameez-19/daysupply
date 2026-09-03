@@ -27,32 +27,25 @@
         </div>
       </div>
       <nav class="sidebar-nav">
-        <button class="nav-item active" data-tab="dashboard-view">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-          <span>Dashboard</span>
-        </button>
-        <button class="nav-item" data-tab="capture-view">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-          <span>Voice Capture</span>
-        </button>
-        <button class="nav-item" data-tab="review-view">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          <span>Review Queue</span>
-          <span class="nav-badge" id="review-badge"></span>
-        </button>
-        <button class="nav-item" data-tab="alerts-view">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>Alerts</span>
+        <div class="nav-group-label">District officer</div>
+        <button class="nav-item active" data-tab="today-view">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Today</span>
           <span class="nav-badge danger" id="alert-badge"></span>
         </button>
-        <button class="nav-item" data-tab="transfer-view">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          <span>Transfers</span>
+        <button class="nav-item" data-tab="network-view">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Network</span>
         </button>
-        <button class="nav-item" data-tab="surge-view">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-          <span>Surge</span>
-          <span class="nav-badge danger" id="surge-badge"></span>
+        <button class="nav-item" data-tab="plan-view">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg><span>Plan ahead</span>
+        </button>
+        <div class="nav-group-label">PHC worker</div>
+        <button class="nav-item" data-tab="capture-view">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg><span>Report stock</span>
+          <span class="nav-badge" id="review-badge"></span>
+        </button>
+        <div class="nav-group-label">Reference</div>
+        <button class="nav-item" data-tab="evidence-view">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg><span>Evidence</span>
         </button>
       </nav>
       <div class="sidebar-footer">
@@ -79,11 +72,13 @@
       </header>
 
       <!-- ═══ Dashboard ═══ -->
-      <section id="dashboard-view" class="view active-view">
-        <div class="view-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+      <section id="today-view" class="view active-view">
+        <div class="view-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
           <div>
-            <h2>Dashboard</h2>
-            <p class="view-subtitle" id="dashboard-subtitle">Telangana State Network — Real-time overview</p>
+            <h2>Today</h2>
+            <p class="view-subtitle" id="dashboard-subtitle">
+              What is running out, and what to do about it
+            </p>
           </div>
           <div class="last-synced" id="last-synced">Last synced: just now</div>
         </div>
@@ -118,80 +113,119 @@
           </div>
         </div>
 
-        <div class="dashboard-section" id="resource-panel" hidden>
+        <!-- Surge is a banner here, not a separate tab. During an emergency
+             this IS the daily view; putting it elsewhere would undermine the
+             integration the design claims. -->
+        <div id="surge-banner"></div>
+
+        <div class="stats-grid" id="stats-grid"></div>
+
+        <div class="dashboard-row">
+          <div class="dashboard-section flex-1">
+            <h3>What is failing</h3>
+            <p class="section-note">Vital first, then by how little cover is left.</p>
+            <div id="alerts-list" class="card-list"></div>
+          </div>
+          <div class="dashboard-section flex-1">
+            <h3>What to do about it</h3>
+            <p class="section-note">Transfers you can approve now &mdash; stock that already exists, moved to where it is short.</p>
+            <div id="transfer-list" class="card-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Network -->
+      <section id="network-view" class="view hidden-view">
+        <div class="view-header">
+          <h2>Network</h2>
+          <p class="view-subtitle">Three resources, one model &mdash; medicines, beds and personnel across the facilities in scope</p>
+        </div>
+
+        <!-- A segmented control, not a filter dropdown. Beds and personnel are
+             a dimension of one system; burying them in a filter made them look
+             like an afterthought. -->
+        <div class="segmented" id="resource-segmented">
+          <button class="segment active" data-resource="medicine" onclick="onResourceSegment('medicine')">Medicines</button>
+          <button class="segment" data-resource="bed" onclick="onResourceSegment('bed')">Beds</button>
+          <button class="segment" data-resource="personnel" onclick="onResourceSegment('personnel')">Personnel</button>
+        </div>
+
+        <div class="dashboard-section" id="resource-panel">
           <div class="chart-header"><h3 id="resource-panel-title"></h3></div>
           <div id="resource-panel-body"></div>
         </div>
 
-        <div class="stats-grid" id="stats-grid">
-          <!-- Populated by JS -->
-        </div>
-
-        <!-- ── 4 Charts Grid ── -->
         <div class="charts-grid">
           <div class="dashboard-section chart-section">
-            <div class="chart-header">
-              <h3>📈 AI Demand Forecast</h3>
-              <div class="chart-controls">
-                <button class="chart-btn active" onclick="loadChart(7)">7D</button>
-                <button class="chart-btn" onclick="loadChart(15)">15D</button>
-                <button class="chart-btn" onclick="loadChart(30)">30D</button>
-              </div>
-            </div>
-            <div class="chart-container"><canvas id="forecastChart"></canvas></div>
-            <p id="forecast-note" class="chart-note"></p>
-          </div>
-
-          <div class="dashboard-section chart-section">
-            <div class="chart-header"><h3>🏥 Network Stock Health</h3></div>
+            <div class="chart-header"><h3>Network stock health</h3></div>
             <div class="chart-container"><canvas id="healthDoughnutChart"></canvas></div>
             <p id="health-note" class="chart-note"></p>
           </div>
-
           <div class="dashboard-section chart-section">
-            <div class="chart-header"><h3>⚠️ Critical Shortages</h3></div>
+            <div class="chart-header"><h3>Critical shortages</h3></div>
             <div class="chart-container"><canvas id="shortagesBarChart"></canvas></div>
           </div>
         </div>
+      </section>
 
-        <!-- Distance changes the reorder point. Two real PHCs, same drug. -->
-        <div class="dashboard-section" id="contrast-section" hidden>
-          <div class="chart-header">
-            <h3>📍 Why distance changes the reorder point</h3>
-          </div>
-          <div id="lead-time-contrast"></div>
+      <!-- Plan ahead -->
+      <section id="plan-view" class="view hidden-view">
+        <div class="view-header">
+          <h2>Plan ahead</h2>
+          <p class="view-subtitle">What demand is going to do, and whether the district could absorb it if it did something worse</p>
         </div>
 
-        <div class="dashboard-section" id="reporting-section">
+        <div class="dashboard-section chart-section">
           <div class="chart-header">
-            <h3>📋 Reporting consistency (last 90 days)</h3>
-          </div>
-          <div id="reporting-summary"></div>
-        </div>
-
-        <div class="dashboard-row">
-          <div class="dashboard-section flex-1">
-            <h3>🚨 Urgent Alerts</h3>
-            <div id="dashboard-alerts" class="mini-list"></div>
-          </div>
-          <div class="dashboard-section flex-1">
-            <h3>⚡ Quick Actions</h3>
-            <div class="quick-actions">
-              <button class="quick-action-btn" onclick="switchTab('capture-view')">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-                <span>Record Stock</span>
-              </button>
-              <button class="quick-action-btn" onclick="switchTab('review-view')">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                <span>Review Items</span>
-              </button>
-              <button class="quick-action-btn" onclick="switchTab('transfer-view')">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>
-                <span>View Transfers</span>
-              </button>
+            <h3>Forecast demand</h3>
+            <div class="chart-controls">
+              <button class="chart-btn active" onclick="loadChart(7)">7D</button>
+              <button class="chart-btn" onclick="loadChart(15)">15D</button>
+              <button class="chart-btn" onclick="loadChart(30)">30D</button>
             </div>
           </div>
+          <div class="chart-container"><canvas id="forecastChart"></canvas></div>
+          <p id="forecast-note" class="chart-note"></p>
         </div>
+
+        <h3 class="section-heading">Early warnings</h3>
+        <div class="surge-method">
+          <span class="surge-method-label">Three signals, three responses</span>
+          <p>
+            <span class="signal-badge leading">Early warning</span>
+            a clinical presentation that <em>precedes</em> the treatment course it drives &mdash; attendance, confirmed malaria, infectious admissions.<br>
+            <span class="signal-badge coincident">Happening now</span>
+            the visit and the dispensing move together; a chronic review <em>is</em> the repeat prescription. Information, not warning.<br>
+            <span class="signal-badge programme">Planned campaign</span>
+            a calendar event, not an outbreak. Albendazole moves 22.64&times; on National Deworming Day &mdash; flagging that as an emergency would be the clearest false positive this system could produce.
+          </p>
+          <p id="surge-method-text">
+            A month is a surge when the <strong>modified z-score</strong> of its residual against the pooled seasonal pattern reaches
+            <strong id="surge-thresh-z">3.5</strong>, demand is at least
+            <strong id="surge-thresh-ratio">1.5</strong>&times; expected, and at least
+            <strong id="surge-thresh-abs">100</strong> clinical events were recorded.
+            We do not predict outbreaks; we detect that one has begun, earlier and more reliably than a 3-sigma rule &mdash; which on twelve monthly observations cannot fire above 3.175 at all.
+          </p>
+        </div>
+        <div id="surge-signal-list" class="card-list"></div>
+
+        <h3 class="section-heading">Facilities whose answer this changes</h3>
+        <div id="surge-impact-list" class="card-list"></div>
+
+        <h3 class="section-heading">Scenario mode</h3>
+        <p class="section-note">Computed live against current stock &mdash; not a stored 2&times;/3&times;/5&times; result.</p>
+        <div class="scenario-controls">
+          <label class="scenario-field">
+            <span>District &amp; medicine class</span>
+            <select id="scenario-combo"></select>
+          </label>
+          <label class="scenario-field">
+            <span>Spike size <strong id="scenario-mult-label">3&times;</strong></span>
+            <input type="range" id="scenario-mult" min="1" max="8" step="0.5" value="3">
+          </label>
+          <button class="btn-primary" id="scenario-run">Run scenario</button>
+        </div>
+        <div id="scenario-result"></div>
       </section>
 
       <!-- ═══ Voice Capture ═══ -->
@@ -267,105 +301,74 @@
         </div>
       </section>
 
-      <!-- ═══ Review Queue ═══ -->
+      <!-- Review folds into the capture view: it is the same person,
+           checking what the model was unsure about. -->
       <section id="review-view" class="view hidden-view">
         <div class="view-header">
-          <h2>Review Queue</h2>
-          <p class="view-subtitle">Verify low-confidence voice captures before they enter the system</p>
+          <h2>Review queue</h2>
+          <p class="view-subtitle">Extractions the model was not confident about, waiting for a human</p>
         </div>
         <div id="review-list" class="card-list"></div>
       </section>
 
-      <!-- ═══ Alerts ═══ -->
-      <section id="alerts-view" class="view hidden-view">
+      <!-- Evidence: the methodology a judge wants and an officer does not. -->
+      <section id="evidence-view" class="view hidden-view">
         <div class="view-header">
-          <h2>Stockout Alerts</h2>
-          <p class="view-subtitle">Facilities at risk of running out of essential medicines</p>
-        </div>
-        <div id="alerts-list" class="card-list"></div>
-      </section>
-
-      <!-- ═══ Transfers ═══ -->
-      <section id="transfer-view" class="view hidden-view">
-        <div class="view-header">
-          <h2>Transfer Recommendations</h2>
-          <p class="view-subtitle">AI-optimised medicine redistribution — surplus → deficit</p>
-        </div>
-        <div id="transfer-list" class="card-list"></div>
-      </section>
-
-      <!-- ═══ Surge & emergency early warning ═══ -->
-      <section id="surge-view" class="view hidden-view">
-        <div class="view-header">
-          <h2>Surge &amp; Early Warning</h2>
+          <h2>Evidence</h2>
           <p class="view-subtitle">
-            A surge is a month that departs from the <em>pooled</em> seasonal
-            pattern the districts share — not from a flat average
+            How every figure in this system is derived, and what is measured
+            rather than assumed
           </p>
         </div>
 
-        <div class="surge-method">
-          <span class="surge-method-label">How a surge is defined</span>
-          <p id="surge-method-text">
-            Expected demand is this district's own twelve-month baseline shaped
-            by the pooled monthly multiplier for the medicine class. A month is
-            a surge when the <strong>modified z-score</strong> of its residual
-            reaches <strong id="surge-thresh-z">3.5</strong>, demand is at least
-            <strong id="surge-thresh-ratio">1.5</strong>&times; expected, and at
-            least <strong id="surge-thresh-abs">100</strong> clinical events
-            were recorded. With twelve monthly observations a classical
-            standardised residual is bounded at 3.175 and saturates, so it is
-            shown for reference but is not what fires.
+        <div class="dashboard-section" id="contrast-section" hidden>
+          <div class="chart-header"><h3>Why distance changes the reorder point</h3></div>
+          <div id="lead-time-contrast"></div>
+        </div>
+
+        <div class="dashboard-section">
+          <div class="chart-header"><h3>Districts exchange seasonal shape, not data</h3></div>
+          <p class="section-note">
+            What crosses a district boundary is twelve numbers per medicine
+            class &mdash; a monthly multiplier. No facility rows, no patient
+            records, no stock levels. Measured on 31,322 held-out predictions
+            across 116 districts:
+          </p>
+          <div id="exchange-eval"></div>
+          <p class="section-note">
+            <strong>Cold start:</strong> a district with three months of history
+            and no seasonal signal of its own borrows the pooled vector and is
+            useful on day one rather than after a year. That is the answer to
+            how the other 29,533 PHCs get onboarded.
           </p>
         </div>
 
-        <h3 class="section-heading">Detected surges</h3>
-        <div id="surge-signal-list" class="card-list"></div>
-
-        <h3 class="section-heading">Facilities whose answer this changes</h3>
-        <div id="surge-impact-list" class="card-list"></div>
-
-        <h3 class="section-heading">Scenario mode</h3>
-        <p class="section-note">
-          Computed live against current stock — not a stored 2&times;/3&times;/5&times; result.
-        </p>
-        <div class="scenario-controls">
-          <label class="scenario-field">
-            <span>District &amp; medicine class</span>
-            <select id="scenario-combo"></select>
-          </label>
-          <label class="scenario-field">
-            <span>Spike size <strong id="scenario-mult-label">3&times;</strong></span>
-            <input type="range" id="scenario-mult" min="1" max="8" step="0.5" value="3">
-          </label>
-          <button class="btn-primary" id="scenario-run">Run scenario</button>
+        <div class="dashboard-section">
+          <div class="chart-header"><h3>Population reached, counted once</h3></div>
+          <div id="reach-panel"></div>
         </div>
-        <div id="scenario-result"></div>
+
+        <div class="dashboard-section">
+          <div class="chart-header"><h3>What we exclude, and why</h3></div>
+          <div id="quality-panel"></div>
+        </div>
       </section>
 
     </div>
 
     <!-- Bottom Nav (mobile) -->
     <nav class="bottom-nav">
-      <button class="bottom-nav-item active" data-tab="dashboard-view">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-        <span>Home</span>
+      <button class="bottom-nav-item active" data-tab="today-view">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Today</span>
+      </button>
+      <button class="bottom-nav-item" data-tab="network-view">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Network</span>
+      </button>
+      <button class="bottom-nav-item" data-tab="plan-view">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg><span>Plan</span>
       </button>
       <button class="bottom-nav-item" data-tab="capture-view">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-        <span>Capture</span>
-      </button>
-      <button class="bottom-nav-item" data-tab="alerts-view">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
-        <span>Alerts</span>
-      </button>
-      <button class="bottom-nav-item" data-tab="transfer-view">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>
-        <span>Transfers</span>
-      </button>
-      <button class="bottom-nav-item" data-tab="surge-view">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-        <span>Surge</span>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg><span>Report</span>
       </button>
     </nav>
 

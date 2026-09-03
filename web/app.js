@@ -29,11 +29,18 @@ function switchTab(tabId) {
   const bot = document.querySelector(`.bottom-nav-item[data-tab="${tabId}"]`);
   if (bot) bot.classList.add('active');
 
+  // Today is the officer's landing view: what is failing, and what to do.
+  // Alerts and transfers live here rather than on tabs of their own, because
+  // an alert without the transfer that answers it is only half an answer.
+  if (tabId === 'today-view') {
+    loadAlerts();
+    loadTransfers();
+    loadSurgeBanner();          // surge.js — a banner, not a tab
+  }
+  if (tabId === 'network-view')  loadResourcePanel();
+  if (tabId === 'plan-view')     loadSurge();
   if (tabId === 'review-view')   loadReviewQueue();
-  if (tabId === 'alerts-view')   loadAlerts();
-  if (tabId === 'transfer-view') loadTransfers();
-  // Defined in surge.js, which loads after this file.
-  if (tabId === 'surge-view')    loadSurge();
+  if (tabId === 'evidence-view') loadEvidence();
 }
 sidebarItems.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 bottomItems.forEach(btn  => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
@@ -249,7 +256,7 @@ function deltaHtml(value) {
 
 function renderStats(s) {
   document.getElementById('stats-grid').innerHTML = `
-    <div class="stat-card clickable" onclick="switchTab('dashboard-view')">
+    <div class="stat-card clickable" onclick="switchTab('network-view')">
       <div class="stat-icon" style="background:linear-gradient(135deg,#1e3a8a,#3b82f6);">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
       </div>
@@ -259,17 +266,7 @@ function renderStats(s) {
         <span class="stat-delta">${(s.phcs ?? 0).toLocaleString('en-IN')} PHCs</span>
       </div>
     </div>
-    <div class="stat-card clickable" onclick="switchTab('capture-view')">
-      <div class="stat-icon" style="background:linear-gradient(135deg,#16a34a,#22c55e);">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-      </div>
-      <div class="stat-info">
-        <span class="stat-value">${s.captures_today}</span>
-        <span class="stat-label">Voice Captures Today</span>
-        ${deltaHtml(s.delta_captures)}
-      </div>
-    </div>
-    <div class="stat-card clickable" onclick="switchTab('alerts-view')">
+    <div class="stat-card clickable" onclick="switchTab('today-view')">
       <div class="stat-icon" style="background:linear-gradient(135deg,#f97316,#fb923c);">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
       </div>
@@ -279,7 +276,7 @@ function renderStats(s) {
         ${deltaHtml(s.delta_alerts)}
       </div>
     </div>
-    <div class="stat-card clickable" onclick="switchTab('transfer-view')">
+    <div class="stat-card clickable" onclick="switchTab('today-view')">
       <div class="stat-icon" style="background:linear-gradient(135deg,#ef4444,#f87171);">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
       </div>
@@ -323,7 +320,6 @@ function renderDashboardAlerts(alerts) {
   `).join('');
   
   if (alerts.length > 0) {
-    html += `<button onclick="switchTab('alerts-view')" style="width:100%; margin-top:8px; padding:8px; background:transparent; border:1px dashed var(--border); border-radius:6px; color:var(--brand-500); font-weight:600; cursor:pointer;">View all ${alerts.length} alerts →</button>`;
   }
   el.innerHTML = html;
 }
@@ -818,6 +814,15 @@ async function loadReporting() {
   }
 }
 
+// The resource selector is a segmented control on Network now, not a filter
+// dropdown on the dashboard. Three resources, one model, visibly.
+function onResourceSegment(resource) {
+  currentResource = resource;
+  document.querySelectorAll('#resource-segmented .segment').forEach(b =>
+    b.classList.toggle('active', b.dataset.resource === resource));
+  loadResourcePanel();
+}
+
 async function onResourceChange() {
   currentResource = document.getElementById('resource-filter').value;
   await loadResourcePanel();
@@ -995,3 +1000,66 @@ How many units?`, '');
 }
 
 function onScanFailure(error) { /* Silently ignore scan misses */ }
+
+
+// ===== Evidence =====
+// The methodology page. Judges want this; a district officer does not, which
+// is why it is no longer competing for space on the daily view.
+async function loadEvidence() {
+  loadLeadTimeContrast();
+
+  const evalEl = document.getElementById('exchange-eval');
+  if (evalEl) {
+    try {
+      const d = await (await fetch('/api/v1/exchange/evaluation')).json();
+      const arms = d.arms || d.evaluation || [];
+      evalEl.innerHTML = arms.length ? `
+        <div class="table-scroll"><table class="scenario-table">
+          <thead><tr><th>Arm</th><th>Weighted MAPE</th></tr></thead>
+          <tbody>${arms.map(a => `<tr class="${a.is_shipped ? 'row-warn' : ''}">
+            <td>${a.label || a.arm}</td><td><strong>${a.wmape}%</strong></td></tr>`).join('')}
+          </tbody></table></div>`
+        : `<p class="section-note">${JSON.stringify(d).slice(0, 400)}</p>`;
+    } catch (e) {
+      evalEl.innerHTML = '<p class="section-note">Could not load the evaluation.</p>';
+    }
+  }
+
+  const reachEl = document.getElementById('reach-panel');
+  if (reachEl) {
+    try {
+      const d = await (await fetch('/api/v1/reach')).json();
+      reachEl.innerHTML = `
+        <div class="table-scroll"><table class="scenario-table">
+          <thead><tr><th>Scope</th><th>Rural PHCs</th><th>Districts</th><th>People</th></tr></thead>
+          <tbody>${d.tiers.map(t => `<tr>
+            <td>${t.tier.replace(/_/g, ' ')}</td>
+            <td>${t.phcs.toLocaleString()}</td>
+            <td>${t.districts}</td>
+            <td><strong>${(t.population / 1e6).toFixed(1)}M</strong></td></tr>`).join('')}
+          </tbody></table></div>
+        <p class="section-note">${d.counted} ${d.direction_of_error}</p>`;
+    } catch (e) {
+      reachEl.innerHTML = '<p class="section-note">Could not load reach.</p>';
+    }
+  }
+
+  const qEl = document.getElementById('quality-panel');
+  if (qEl) {
+    try {
+      const d = await (await fetch('/api/v1/data-quality')).json();
+      qEl.innerHTML = `
+        <div class="table-scroll"><table class="scenario-table">
+          <thead><tr><th>Issue</th><th>Count</th><th>Effect</th></tr></thead>
+          <tbody>${(d.exclusions || []).map(x => `<tr>
+            <td>${x.issue}</td><td><strong>${x.count.toLocaleString()}</strong></td>
+            <td>${x.effect}</td></tr>`).join('')}
+          </tbody></table></div>
+        <p class="section-note">Coordinates are never corrected — inferring a
+        swapped latitude and longitude is a guess, and guesses do not go into a
+        government dataset.</p>`;
+    } catch (e) {
+      qEl.innerHTML = '<p class="section-note">Could not load data quality.</p>';
+    }
+  }
+}

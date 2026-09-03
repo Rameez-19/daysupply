@@ -1,0 +1,10 @@
+{
+ "events": 1157382,
+ "batches": 7487,
+ "on_hand": 1303903,
+ "reorder_rows": 2794,
+ "alerts": 597,
+ "recs": 527,
+ "series": 2794,
+ "surges": 1295
+}

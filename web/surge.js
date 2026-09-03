@@ -239,3 +239,51 @@ if (scenarioSlider) {
 }
 const scenarioBtn = document.getElementById('scenario-run');
 if (scenarioBtn) scenarioBtn.addEventListener('click', runScenario);
+
+
+// ===== Surge banner on Today =====
+// Surge is not a separate mode. During an emergency this IS the daily view, so
+// when a surge is active for the officer's scope Today says so at the top and
+// links to the detail — rather than sitting on a tab they might not open.
+//
+// The signal class is carried into the banner deliberately. "Confirmed malaria
+// is 14.11x expected" (early warning) and "Albendazole is 22.64x expected"
+// (National Deworming Day) demand completely different responses, and a banner
+// that showed only a multiplier would flatten that distinction.
+async function loadSurgeBanner() {
+  const el = document.getElementById('surge-banner');
+  if (!el) return;
+  try {
+    const res = await fetch(`/api/v1/surge/signals?limit=5&${getFilterParams()}`);
+    const signals = (await res.json()).signals || [];
+    const badge = document.getElementById('surge-badge');
+    if (badge) badge.textContent = signals.length ? String(signals.length) : '';
+    if (!signals.length) { el.innerHTML = ''; return; }
+
+    // Lead with a genuine early warning if there is one; a planned campaign
+    // must never be the headline.
+    const ranked = ['leading', 'coincident', 'programme'];
+    signals.sort((a, b) => ranked.indexOf(a.signal_class) - ranked.indexOf(b.signal_class));
+    const s = signals[0];
+    const others = signals.length - 1;
+
+    el.innerHTML = `
+      <div class="surge-banner ${s.signal_class}">
+        <div class="surge-banner-head">
+          ${signalBadge(s.signal_class)}
+          <strong>${s.signal_means || s.atc_class} is ${s.surge_multiplier}&times; expected</strong>
+          in ${s.district_key}, ${s.month}
+        </div>
+        <p class="surge-banner-body">
+          ${s.signal_why || ''}
+          ${s.example_items ? `Affects <strong>${s.example_items}</strong>.` : ''}
+          ${others > 0 ? `${others} other signal${others > 1 ? 's' : ''} in this scope.` : ''}
+        </p>
+        <button class="btn-primary" onclick="switchTab('plan-view')">
+          See what it changes
+        </button>
+      </div>`;
+  } catch (e) {
+    el.innerHTML = '';
+  }
+}
