@@ -39,6 +39,7 @@ from app import quality
 from app import resources
 from app import surge
 from app import transfers
+from app import executive
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
 from app.capture import handle_capture, handle_chat
@@ -79,6 +80,9 @@ async def lifespan(_app: FastAPI):
         # Deliberately only the default scope. Warming all 37 states would be
         # 37x the cost for a reader who will look at one.
         for label, fn in (
+            # The landing view. Warmed first because it is what a first
+            # visitor waits on.
+            ("executive (All India)", lambda: executive.national_picture("")),
             ("stats", lambda: supply.get_summary(DEFAULT_STATE, "", "")),
             ("alerts", lambda: supply.get_alerts(DEFAULT_STATE, "", "", 50)),
             ("transfers",
@@ -174,6 +178,19 @@ async def fetch_facility(facility_id: str):
 async def fetch_coverage():
     """National coverage headline — how much of India is loaded."""
     return _facility_query(facility_repo.national_summary)
+
+
+@app.get("/api/v1/executive")
+async def executive_summary(state: str = ""):
+    """The national picture, in one round trip.
+
+    Nine separate panel fetches would stack nine ~1.3s BigQuery job floors and
+    take fifteen seconds to say anything. This is one query with each panel as
+    a subquery, so it costs about what the slowest panel would have cost alone.
+
+    Defaults to All India, because the question this answers is national.
+    """
+    return _facility_query(executive.national_picture, state)
 
 
 # ── Dashboard stats ──────────────────────────────────────────────────

@@ -431,3 +431,25 @@ button { font-family: inherit; cursor: pointer; }
 .panel-error p { margin:0 0 6px; }
 .panel-error-detail { font-size:0.76rem; color:var(--gray-500); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; margin-bottom:12px !important; }
 .last-synced.sync-failed { color:var(--danger); border-color:#fecaca; background:#fffbfb; }
+
+/* ===== The national picture ===== */
+/* Three resources side by side, because the brief names three and a landing
+   page showing one under-serves it. Tone comes from the numbers. */
+.posture-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin-bottom:22px; }
+.posture-card { background:var(--surface); border:1px solid var(--border); border-left-width:4px; border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow-sm); }
+.posture-card.ok   { border-left-color:var(--success); }
+.posture-card.warn { border-left-color:var(--warning); }
+.posture-card.bad  { border-left-color:var(--danger); }
+.posture-title { font-size:0.68rem; font-weight:800; text-transform:uppercase; letter-spacing:0.09em; color:var(--gray-500); margin-bottom:8px; }
+.posture-headline { font-size:0.9rem; line-height:1.55; color:var(--text); margin:0 0 12px; }
+.posture-figures { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:0.75rem; color:var(--gray-500); }
+.posture-figures strong { color:var(--text); font-size:0.95rem; }
+
+.absorb-row { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+.absorb-label { font-size:0.8rem; font-weight:600; min-width:86px; }
+.absorb-bar { flex:1; height:10px; background:var(--gray-100); border-radius:5px; overflow:hidden; }
+.absorb-fill { height:100%; border-radius:5px; }
+.absorb-fill.ok { background:var(--success); }
+.absorb-fill.warn { background:var(--warning); }
+.absorb-fill.bad { background:var(--danger); }
+.absorb-pct { font-size:0.8rem; font-weight:700; min-width:70px; text-align:right; }

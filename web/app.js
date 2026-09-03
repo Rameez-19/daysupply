@@ -225,7 +225,7 @@ function activeViewId() {
 function refreshAll() {
   const view = activeViewId();
   if (view === 'today-view') {
-    loadDashboard();          // the stat row
+    loadExecutive();
     loadAlerts();
     loadTransfers();
     if (typeof loadSurgeBanner === 'function') loadSurgeBanner();
@@ -1142,3 +1142,111 @@ async function loadEvidence() {
     }
   }
 }
+
+
+// ===== The national picture =====
+// Written for someone who has to decide something, not someone reading a
+// dashboard. Every panel answers a question in the order it gets asked: is it
+// holding, where is it not, what is coming, could we absorb a shock.
+//
+// One fetch. Nine panels fetched separately would stack nine ~1.3s BigQuery
+// job floors, and the page would take fifteen seconds to say anything.
+
+function postureCard(title, headline, figures, tone) {
+  return `
+    <div class="posture-card ${tone || ''}">
+      <div class="posture-title">${title}</div>
+      <p class="posture-headline">${headline}</p>
+      <div class="posture-figures">
+        ${figures.map(f => `<span><strong>${f[1]}</strong> ${f[0]}</span>`).join('')}
+      </div>
+    </div>`;
+}
+
+async function loadExecutive() {
+  const grid = document.getElementById('posture-grid');
+  const worst = document.getElementById('worst-districts');
+  const absorb = document.getElementById('absorption-panel');
+  const warn = document.getElementById('early-warnings');
+  if (grid) grid.innerHTML = panelLoading('Reading the national position…');
+
+  try {
+    const scope = currentState ? `?state=${encodeURIComponent(currentState)}` : '';
+    const res = await fetch(`/api/v1/executive${scope}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    const h = d.headline || {};
+    const m = d.medicines || {}, b = d.beds || {}, s = d.personnel || {};
+
+    // Tone is driven by the numbers, not chosen: a fifth of stock lines short
+    // is not a green state and must not be coloured like one.
+    const medTone = (m.vital_short > 0) ? 'bad' : (m.below_reorder > 0 ? 'warn' : 'ok');
+
+    grid.innerHTML =
+      postureCard('Medicines', h.medicines, [
+        ['tracked', (m.tracked || 0).toLocaleString()],
+        ['below reorder', (m.below_reorder || 0).toLocaleString()],
+        ['stocked out', (m.stocked_out || 0).toLocaleString()],
+        ['Vital short', (m.vital_short || 0).toLocaleString()],
+      ], medTone)
+      + postureCard('Beds', h.beds, [
+        ['facilities', (b.facilities || 0).toLocaleString()],
+        ['capacity', (b.capacity || 0).toLocaleString()],
+        ['turned away', (b.turned_away || 0).toLocaleString()],
+      ], b.turned_away > 0 ? 'warn' : 'ok')
+      + postureCard('Personnel', h.personnel, [
+        ['facilities', (s.facilities || 0).toLocaleString()],
+        ['mean vacancy', `${Math.round(100 * (s.mean_vacancy || 0))}%`],
+        ['cadre gaps', (s.cadres_with_a_gap || 0).toLocaleString()],
+      ], (s.mean_vacancy || 0) > 0.15 ? 'bad' : 'warn');
+
+    if (worst) {
+      const rows = d.worst_districts || [];
+      worst.innerHTML = rows.length ? `<div class="table-scroll">
+        <table class="scenario-table">
+          <thead><tr><th>District</th><th>State</th><th>Vital short</th><th>Stocked out</th><th>Total short</th></tr></thead>
+          <tbody>${rows.map(r => `<tr class="${r.vital_short > 0 ? 'row-critical' : ''}">
+            <td><strong>${r.district}</strong></td><td>${r.state}</td>
+            <td>${r.vital_short}</td><td>${r.stocked_out}</td><td>${r.short}</td></tr>`).join('')}
+          </tbody></table></div>`
+        : panelEmpty('No district in scope has stock below its reorder point.');
+    }
+
+    if (absorb) {
+      const rows = d.absorption || [];
+      absorb.innerHTML = rows.length ? `
+        ${rows.map(a => `
+          <div class="absorb-row">
+            <span class="absorb-label">${a.multiplier}&times; demand</span>
+            <div class="absorb-bar"><div class="absorb-fill ${a.pct < 35 ? 'bad' : a.pct < 70 ? 'warn' : 'ok'}" style="width:${a.pct}%"></div></div>
+            <span class="absorb-pct">${a.pct}% hold</span>
+          </div>`).join('')}
+        <p class="section-note">${h.transfer_only || ''}</p>`
+        : panelEmpty('Absorption not computed for this scope.');
+    }
+
+    if (warn) {
+      const rows = d.early_warnings || [];
+      warn.innerHTML = rows.length ? rows.map(w => `
+        <div class="alert-card severity-${w.signal_class === 'leading' ? 'critical' : 'warning'}">
+          <div class="alert-body">
+            <div class="alert-title">${signalBadge(w.signal_class)} ${w.signal_indicator || w.atc_class}</div>
+            <div class="alert-detail">
+              <strong>${w.signal_means || w.atc_class} is ${w.surge_multiplier}&times; expected</strong>
+              in ${w.district_key}, ${w.month}.
+            </div>
+          </div>
+          <div class="alert-days ${w.signal_class === 'leading' ? 'critical' : 'warning'}">
+            ${w.surge_multiplier}&times;<span class="alert-days-label">vs expected</span>
+          </div>
+        </div>`).join('')
+        : panelEmpty('No signal in this scope departs from the pooled seasonal pattern.');
+    }
+
+    setSyncState(true);
+  } catch (e) {
+    if (grid) grid.innerHTML = panelError(e.message, 'loadExecutive');
+    setSyncState(false, e.message);
+  }
+}
+window.loadExecutive = () => loadExecutive();

@@ -75,18 +75,15 @@
       <section id="today-view" class="view active-view">
         <div class="view-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
           <div>
-            <h2>Today</h2>
+            <h2>National picture</h2>
             <p class="view-subtitle" id="dashboard-subtitle">
-              What is running out, and what to do about it
+              Medicines, beds and personnel across India&rsquo;s primary health
+              network &mdash; what is holding, what is not, and what is coming
             </p>
           </div>
           <div class="last-synced" id="last-synced">Loading…</div>
         </div>
 
-        <!-- ── Cascading Filter Bar ── -->
-        <!-- Geography only. The resource selector that used to sit here drove
-             a panel that now lives on Network, so changing it on this view
-             appeared to do nothing. Resource is a Network concern. -->
         <div class="filter-bar">
           <div class="filter-group">
             <label class="filter-label">State</label>
@@ -108,13 +105,40 @@
           </div>
         </div>
 
-        <!-- Surge is a banner here, not a separate tab. During an emergency
-             this IS the daily view; putting it elsewhere would undermine the
-             integration the design claims. -->
+        <!-- Surge leads, when there is one. During an emergency this IS the
+             national picture. -->
         <div id="surge-banner"></div>
 
-        <div class="stats-grid" id="stats-grid"></div>
+        <!-- 1. Is the network holding? All three resources, because the brief
+             names all three and showing only medicines under-serves it. -->
+        <h3 class="section-heading">Is the network holding?</h3>
+        <div id="posture-grid" class="posture-grid"></div>
 
+        <div class="dashboard-row">
+          <!-- 2. Where is the risk? A national number is useless without it. -->
+          <div class="dashboard-section flex-1">
+            <h3>Where the risk sits</h3>
+            <p class="section-note">Districts ranked by Vital medicines below their reorder point.</p>
+            <div id="worst-districts"></div>
+          </div>
+          <!-- 4. Could we absorb a shock? The one-step-ahead question. -->
+          <div class="dashboard-section flex-1">
+            <h3>Could we absorb a shock?</h3>
+            <p class="section-note">Share of district&ndash;medicine positions that could meet a demand spike from stock already inside the district, before outside resupply could land.</p>
+            <div id="absorption-panel"></div>
+          </div>
+        </div>
+
+        <!-- 3. What is coming? -->
+        <h3 class="section-heading">What is coming</h3>
+        <p class="section-note">
+          Labelled, because an early warning and a planned campaign need
+          different responses. We do not predict outbreaks &mdash; we detect one
+          has begun, earlier than a 3-sigma rule can.
+        </p>
+        <div id="early-warnings" class="card-list"></div>
+
+        <!-- 5. What is queued? -->
         <div class="dashboard-row">
           <div class="dashboard-section flex-1">
             <h3>What is failing</h3>
