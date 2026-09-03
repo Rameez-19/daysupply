@@ -78,7 +78,9 @@ item mentioned:
 
 [{
   "local_name": "<drug name exactly as spoken>",
-  "event_type": "dispensed" | "received" | "count",
+  "event_type": "dispensed" | "received" | "count" | "lost",
+  "loss_reason": "<only when event_type is lost; the speaker's own word:
+                  damaged | broken | expired | spilled | stolen | unknown>",
   "quantity": <integer or null>,
   "unit": "tablet" | "strip" | "vial" | "bottle" | "unknown",
   "confidence": <0.0-1.0>
@@ -90,6 +92,21 @@ Rules:
 - If quantity is unclear, return the item with quantity null
 - Never invent items that were not mentioned
 - Transcribe the drug name as spoken; do not translate or correct it
+
+LOSSES. Stock leaves a shelf in ways that are neither dispensing nor
+transfer, and a supply chain that cannot see them cannot explain its own
+shortfalls. Use event_type "lost" when the speaker describes stock that
+was there and no longer is:
+- "toot gaye" / "broken" / "tut gaya"        -> loss_reason "broken"
+- "kharab ho gaya" / "damaged" / "spoiled"   -> loss_reason "damaged"
+- "gir gaya" / "spilled" / "leak ho gaya"    -> loss_reason "spilled"
+- "chori" / "stolen" / "gayab"               -> loss_reason "stolen"
+- "expire ho gaya" / "expired"               -> loss_reason "expired"
+Do NOT force a reason the speaker did not give. If they say only that
+stock is missing, use loss_reason "unknown" - an honest unknown is worth
+more than a guessed category.
+"lost" means gone from the shelf. It is not "dispensed", which means given
+to a patient, and the difference is the whole point of recording it.
 
 VAGUE QUANTITIES. A range or an approximation is not a number. If the
 speaker gives one, set confidence <= 0.5 so a human confirms it. This

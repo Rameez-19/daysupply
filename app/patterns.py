@@ -125,7 +125,7 @@ def ingest_peer_pattern(pattern: PatternNode):
         )
     try:
         db = firestore.Client(project=PROJECT)
-        doc = db.collection("federated_patterns").document(
+        doc = db.collection("pattern_vectors").document(
             f"{pattern.country_code}_{pattern.atc_code}")
         doc.set({
             "country_code": pattern.country_code,

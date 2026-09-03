@@ -70,7 +70,13 @@ CURRENT_STOCK = f"`{PROJECT}.{DATASET}.current_stock`"
 # netted out or the donor would appear to still hold units that are physically
 # on a vehicle. Stock in transit belongs to neither facility until a receipt is
 # recorded at the other end.
-CONSUMING_EVENT_TYPES = ("dispensed", "expired", "dispatched")
+#
+# `lost` is breakage, spoilage, spillage and theft — one of the three core LMIS
+# data items and the one most systems cannot see. It has to net out for the same
+# reason: a broken vial is off the shelf whether or not anyone recorded why. The
+# reason itself rides in `resource_subtype`, so losses can be counted by cause
+# without a separate table.
+CONSUMING_EVENT_TYPES = ("dispensed", "expired", "dispatched", "lost")
 CONSUMING_EVENT_TYPES_SQL = (
     "(" + ", ".join(f"'{e}'" for e in CONSUMING_EVENT_TYPES) + ")")
 

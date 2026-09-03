@@ -324,3 +324,86 @@ class TestApprovalMustProduceAUsableRow:
             quantity=-4)
         assert result["approved"] is False
         assert "negative" in result["reason"]
+
+
+class TestLossesAndAdjustments:
+    """One of the three core LMIS data items, and it was missing.
+
+    Stock on hand and consumption were both recorded; losses were not. A supply
+    chain that cannot see breakage, spoilage and theft cannot explain its own
+    shortfalls — it shows stock that should be there and is not, with no reason
+    attached.
+    """
+
+    def test_lost_is_an_accepted_event_type(self):
+        assert "lost" in capture_pipeline.EVENT_TYPES
+
+    def test_a_loss_routes_like_any_other_capture(self):
+        result = capture_pipeline.route(
+            [{"local_name": "paracetamol", "confidence": 0.95, "quantity": 10,
+              "event_type": "lost", "loss_reason": "broken"}],
+            "IN-155740", "voice")
+        assert len(result["events"]) == 1
+        event = result["events"][0]
+        assert event["event_type"] == "lost"
+        assert event["resource_subtype"] == "broken"
+        assert event["item_id"] == "PARACETAMOL"
+
+    def test_a_loss_below_the_gate_still_waits_for_a_human(self):
+        result = capture_pipeline.route(
+            [{"local_name": "paracetamol", "confidence": 0.3, "quantity": 10,
+              "event_type": "lost", "loss_reason": "stolen"}],
+            "IN-155740", "voice")
+        assert not result["events"]
+        assert len(result["review_queue"]) == 1
+
+    def test_an_unstated_reason_becomes_unknown_not_a_guess(self):
+        """"It's gone and I don't know why" is a real and common answer."""
+        assert capture_pipeline.normalise_loss_reason("lost", None) == "unknown"
+        assert capture_pipeline.normalise_loss_reason("lost", "") == "unknown"
+
+    def test_an_unfamiliar_reason_is_kept_verbatim(self):
+        """The categories are a starting point, not a closed vocabulary.
+
+        Discarding a word we do not recognise would destroy the evidence for
+        widening them.
+        """
+        assert capture_pipeline.normalise_loss_reason(
+            "lost", "Rats") == "rats"
+
+    def test_a_reason_on_a_receipt_is_dropped(self):
+        assert capture_pipeline.normalise_loss_reason("received", "broken") is None
+
+    def test_losses_are_netted_out_of_on_hand(self):
+        """A broken vial is off the shelf whether or not anyone said why."""
+        from ingestion import build_current_stock
+        assert "lost" in build_current_stock.CONSUMING_EVENT_TYPES
+
+
+class TestEventTypeIsValidated:
+    """The event type used to pass through unchecked, model to ledger.
+
+    A single hallucinated word — "issued", "consumed" — would write an event
+    type the balance arithmetic nets neither in nor out. Stock would quietly
+    stop adding up and nothing would say why. That is the most dangerous kind
+    of failure this system can have, because every downstream figure stays
+    plausible.
+    """
+
+    def test_an_unknown_event_type_goes_to_review_not_the_ledger(self):
+        result = capture_pipeline.route(
+            [{"local_name": "paracetamol", "confidence": 0.99, "quantity": 10,
+              "event_type": "issued"}],
+            "IN-155740", "voice")
+        assert not result["events"]
+        assert len(result["review_queue"]) == 1
+        assert "issued" in result["review_queue"][0]["review_reason"]
+
+    def test_every_accepted_type_is_netted_or_added(self):
+        """No accepted type may be invisible to the balance arithmetic."""
+        from ingestion import build_current_stock
+        consuming = set(build_current_stock.CONSUMING_EVENT_TYPES)
+        adding = {"received"}
+        # `count` is a stocktake, deliberately neither — see HANDOVER §9f.
+        neutral = {"count"}
+        assert capture_pipeline.EVENT_TYPES == consuming | adding | neutral

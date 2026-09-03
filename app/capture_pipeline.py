@@ -43,6 +43,41 @@ log = logging.getLogger(__name__)
 # Below this, an extraction is reviewed rather than trusted.
 CONFIDENCE_THRESHOLD = 0.6
 
+# Every stock movement this system will record. Anything else goes to review
+# rather than to the ledger — see the check in `route()` for why an unvalidated
+# event type is a silent way to lose stock.
+#
+# `lost` is one of the three core LMIS data items (stock on hand, consumption,
+# **losses and adjustments**) and was absent until now. A supply chain that
+# cannot see breakage, spoilage and theft cannot explain its own shortfalls —
+# it just shows stock that should be there and is not.
+EVENT_TYPES = frozenset({
+    "received", "dispensed", "count", "lost", "dispatched", "expired",
+})
+
+# Reasons a health worker actually gives. `unknown` is deliberately a first-
+# class member: "it's gone and I don't know why" is a real and common answer,
+# and forcing it into a category the speaker never gave would be inventing
+# data. Anything unrecognised is kept verbatim rather than discarded, so the
+# taxonomy can be widened later from what people really said.
+LOSS_REASONS = frozenset({
+    "damaged", "broken", "expired", "spilled", "stolen", "unknown",
+})
+
+
+def normalise_loss_reason(event_type: str, reason) -> str | None:
+    """Keep a loss reason only where it means something.
+
+    A reason on a receipt is noise, so it is dropped. A reason we do not
+    recognise is kept as the speaker gave it, lowercased — the categories here
+    are a starting point, not a closed vocabulary, and throwing away an
+    unfamiliar word would destroy the evidence for widening them.
+    """
+    if event_type != "lost":
+        return None
+    text = str(reason or "").strip().lower()
+    return text or "unknown"
+
 # A scanned barcode identifies the product outright.
 BARCODE_CONFIDENCE = 1.0
 
@@ -155,6 +190,7 @@ def route(extractions: list[dict], facility_id: str, source: str,
             quantity = raw.get("quantity")
             event_type = str(raw.get("event_type") or "count")
             unit = str(raw.get("unit") or "unknown")
+            loss_reason = raw.get("loss_reason")
         except (TypeError, ValueError) as exc:
             result["errors"].append({"data": raw, "error": str(exc)})
             continue
@@ -176,7 +212,23 @@ def route(extractions: list[dict], facility_id: str, source: str,
             "source": source,
             "event_ts": now,
             "raw_transcript": raw_transcript,
+            # A loss reason rides in `resource_subtype` rather than a new
+            # column: it is exactly what that field is for, and the schema
+            # already carries it through to the ledger.
+            "resource_subtype": normalise_loss_reason(event_type, loss_reason),
         }
+
+        # The event type was previously passed through unchecked, straight from
+        # the model into the ledger. A single hallucinated word — "issued",
+        # "consumed" — would have written an event type that the balance
+        # arithmetic nets neither in nor out, so the stock would quietly stop
+        # adding up and nothing would say why.
+        if event_type not in EVENT_TYPES:
+            record["review_reason"] = (
+                f"'{event_type}' is not a stock movement this system records "
+                f"({', '.join(sorted(EVENT_TYPES))})")
+            result["review_queue"].append(record)
+            continue
 
         if item_id is None:
             what = {

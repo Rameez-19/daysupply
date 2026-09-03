@@ -321,6 +321,34 @@ zero, which is a stronger demo than the untraceable figure it replaces.
 
 ---
 
+## 11a. Language — wording that must not drift
+
+*Last verified against the live deployment: **2026-09-03**.*
+
+These are not style preferences. Each one is a claim we cannot support, paired
+with the one we can.
+
+| Never say | Say instead | Why |
+|---|---|---|
+| "federated learning" | **"Districts exchange seasonal shape, not data"** — and pair it with the measured result: pooling cuts forecast error from **19.4% to 14.4% wMAPE** | There are no gradients, no secure aggregation and no client-side training. What crosses a boundary is twelve numbers per medicine class, from aggregate HMIS that is already public. The honest claim is stronger *and* measured |
+| "predicts outbreaks" | **"We detect that one has begun, earlier and more reliably than a 3-sigma rule"** — which on twelve monthly observations cannot fire above **3.175** at all | We have no forward-looking outbreak model. What we have is a better detector, and the bounded-z finding is the evidence |
+| "368 HMIS indicators available" | **"21 HMIS drivers loaded, 20 used by forecast items"** | 368 is the count of data items in the source file. It is not in this document, so it is not evidence. Stating it as capability implies we use them |
+| cold chain, GS1 / GTIN serialisation | *nothing* — leave them off any roadmap surface | **eVIN** already does cold chain for vaccines and **DVDMS** already does barcode; listing them reads as not having checked what exists |
+
+**Verified by grep across `.py`, `.md`, `.js` and `.html` on 2026-09-03:**
+
+* "federated" survives in exactly three places, all correct: a comment in
+  `app/main.py` explaining why the phrase is *not* used, the original
+  `MASTER_PROMPT.md` instruction not to attempt it, and dated log entries in
+  `PROGRESS.md`. The Firestore collection `federated_patterns` was renamed to
+  `pattern_vectors` — it held no documents.
+* "predicts outbreaks" appears twice, both times as the negation.
+* "368" appears only as context about the source file, never as a capability
+  claim.
+* Cold chain and GS1 appear only in the original spec's out-of-scope list.
+
+---
+
 ## 12. Figures that are still generated — say so every time
 
 *Last verified against the live deployment: **2026-09-02**.*
