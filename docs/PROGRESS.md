@@ -1,4 +1,22 @@
-# DaySupply — Progress Log
+# StockPulse — Progress Log
+
+> **A dated log. NOT AUTHORITATIVE.**
+> Each row records what was true on that date and is deliberately left
+> as written when a figure is later superseded — rewriting history
+> would destroy the record of what changed and when.
+>
+> **For any current figure, use `docs/CLAIMS.md`.** Several numbers
+> below have since been restated; the footnote at the end names them.
+>
+> **Document hierarchy — four files, four jobs:**
+>
+> | File | Authority |
+> |---|---|
+> | **`docs/MASTER_PROMPT.md`** | **Governing spec.** What we are building, and the constraints it must respect |
+> | **`docs/CLAIMS.md`** | **Source of truth for every figure.** If a number is not in there, it is not evidence and does not go in front of a judge |
+> | **`docs/HANDOVER.md`** | **Current state.** What is real, what is generated, what is broken, and every open decision |
+> | **`docs/PROGRESS.md`** | **A dated log. Not authoritative.** It records what was true on a date; superseded figures are left as written |
+
 
 | Date | Block | What's done | What's next |
 |------|-------|------------|-------------|

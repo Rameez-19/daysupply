@@ -1,5 +1,20 @@
 # CLAIMS — the single source of truth for every number
 
+> **This file is the source of truth for every figure.**
+> The governing spec is `docs/MASTER_PROMPT.md`; current state is
+> `docs/HANDOVER.md`; `docs/PROGRESS.md` is a dated log and is not
+> authoritative for any number.
+>
+> **Document hierarchy — four files, four jobs:**
+>
+> | File | Authority |
+> |---|---|
+> | **`docs/MASTER_PROMPT.md`** | **Governing spec.** What we are building, and the constraints it must respect |
+> | **`docs/CLAIMS.md`** | **Source of truth for every figure.** If a number is not in there, it is not evidence and does not go in front of a judge |
+> | **`docs/HANDOVER.md`** | **Current state.** What is real, what is generated, what is broken, and every open decision |
+> | **`docs/PROGRESS.md`** | **A dated log. Not authoritative.** It records what was true on a date; superseded figures are left as written |
+
+
 **Rule: if a figure is not in this file, it does not go in front of a judge.**
 Not in the deck, not in the video, not in the README, not spoken aloud.
 

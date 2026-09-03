@@ -1,8 +1,17 @@
 # StockPulse — Project Handover
 
-> Supersedes the agent-written handover. Now at `docs/HANDOVER.md`.
-> Read alongside `docs/MASTER_PROMPT.md` (governing spec) and
-> `BUILD_PROMPT_BLOCKS_A-E.md` (the work queue).
+> **This file is current state** — what is real, what is generated, what is
+> broken, and every open decision. It is not the spec and not the figure
+> source: **no number here overrides `docs/CLAIMS.md`.**
+>
+> **Document hierarchy — four files, four jobs:**
+>
+> | File | Authority |
+> |---|---|
+> | **`docs/MASTER_PROMPT.md`** | **Governing spec.** What we are building, and the constraints it must respect |
+> | **`docs/CLAIMS.md`** | **Source of truth for every figure.** If a number is not in there, it is not evidence and does not go in front of a judge |
+> | **`docs/HANDOVER.md`** | **Current state.** What is real, what is generated, what is broken, and every open decision |
+> | **`docs/PROGRESS.md`** | **A dated log. Not authoritative.** It records what was true on a date; superseded figures are left as written |
 >
 > **Naming:** the project was renamed mid-build. **StockPulse** is current.
 > "DaySupply" survives in the repo name and the Cloud Run URL. See §9.

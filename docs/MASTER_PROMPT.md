@@ -1,10 +1,24 @@
-# DaySupply — Master Build Prompt (v2)
+# StockPulse — Master Build Prompt
 
-> Replaces v1. Deadline extended to **30 September 2026**.
-> Keep at `/docs/MASTER_PROMPT.md`. Attach as standing context every session.
-> **Personal target: 20 September.** The final ten days are buffer, not build time.
-
----
+> **This is the governing spec.** Where it and any other document disagree,
+> this one wins on *what to build and under what constraints*.
+>
+> **Document hierarchy — four files, four jobs:**
+>
+> | File | Authority |
+> |---|---|
+> | **`docs/MASTER_PROMPT.md`** (this file) | **Governing spec.** What we are building, and the constraints it must respect |
+> | **`docs/CLAIMS.md`** | **Source of truth for every figure.** If a number is not in there, it is not evidence and does not go in front of a judge |
+> | **`docs/HANDOVER.md`** | **Current state.** What is real, what is generated, what is broken, and every open decision |
+> | **`docs/PROGRESS.md`** | **A dated log. Not authoritative.** It records what was true on a date; superseded figures are left as written |
+>
+> Consolidated 2026-09-03 from `MASTER_PROMPT.md` and `MASTER_PROMPT_v2.md`.
+> Superseded content — the Brazil configuration, the BRICS cross-border framing
+> and the five-weekend plan — was **removed rather than marked obsolete**: a
+> governing spec with dead clauses invites the wrong clause being followed.
+>
+> **Naming:** the project is **StockPulse**. "DaySupply" survives in the repo
+> name, the GCP project and the Cloud Run URL.
 
 ## 0. Working agreement
 
@@ -16,7 +30,7 @@ Rules:
 
 1. **The deployed URL stays live at all times.** It is already deployed. Never
    leave it broken between sessions.
-2. **One block per instruction.** Do not scaffold ahead. Blocks are defined in §16.
+8. **One block per instruction.** Do not scaffold ahead. Blocks are defined in §16.
 3. **Commit after every working slice**, push to GitHub every session.
 4. **Refactors are allowed now** — but only at the start of a session, never
    mid-feature, and never across more than two files at once.
@@ -60,7 +74,7 @@ This starts at the person holding the register and works upward.
 
 Everything must serve this sequence:
 
-1. A health worker records a voice note in Hindi (or Portuguese) describing what
+1. A health worker records a voice note in Hindi, English or a mix, describing what
    was dispensed or what is left
 2. Captured offline, queued locally, syncs when connectivity returns
 3. Gemini converts the audio to a structured stock record
@@ -71,7 +85,7 @@ Everything must serve this sequence:
 8. Output: transfer N units from B to A, with distance and post-transfer cover
    for both
 9. District officer sees it on a map with an approve action
-10. Switching country config runs the same flow in Portuguese with Brazilian
+10. The `config/` layer keeps country a configuration concern rather than a
     administrative structure
 
 **Out of scope, permanently:** patient records, procurement workflows, cold
@@ -83,7 +97,8 @@ routing, production authentication.
 ## 3. Hackathon requirements
 
 Submission to **Build with AI: Code for Communities, 2nd Edition**, track
-*Smart Health & Supply Chain Resilience* (BRICS theme: Resilience).
+*Smart Health & Supply Chain Resilience*. Theme: Resilience. **India-only** —
+the BRICS/cross-border framing was withdrawn by the organisers mid-build.
 **Submission closes 30 September 2026.**
 
 **Mandatory build criteria:**
@@ -93,14 +108,14 @@ Submission to **Build with AI: Code for Communities, 2nd Edition**, track
 | Functioning end-to-end flow | The golden path in §2, demoable in one unbroken take |
 | Google AI integration | Gemini for audio→structured extraction **and** BigQuery ML ARIMA_PLUS for forecasting |
 | Real or realistic data | Real facility, population and demand data from both countries; simulated usage history, disclosed |
-| Cross-border applicability | Country is a config file, not a fork. India + Brazil on one codebase |
-| Multilingual / voice | Hindi and Portuguese voice capture |
+| Depth & reach across India | Every facility in the national directory loaded; operations provable at district level |
+| Multilingual / voice | Hindi and English voice capture, mixed freely |
 
 **Judging weights:**
 
 - AI/Technical Execution 25%
 - Deployability & Scalability 20%
-- Cross-Border Applicability 20%
+- Depth & Reach Across India ~20%
 - Problem–Solution Fit 20%
 - Impact 10%
 - Presentation 5%
@@ -161,34 +176,21 @@ seasonality signal for the whole system.**
 ⚠️ 2019-20 = April 2019 to March 2020. Feb–Mar 2020 is COVID-affected. Use
 April–December, or smooth those months explicitly.
 
-### Brazil — `Data/Brazil/`
-
-| File | Contents | Notes |
-|---|---|---|
-| `cnes_estabelecimentos.csv` | 632,726 establishments, 36 cols | **Primary facility master.** Semicolon-delimited, `latin-1`. Filter `TP_UNIDADE in ('1','2')` and `CO_MOTIVO_DESAB` null → 50,697 primary-care facilities |
-| `cnes_coord.csv` | 574,172 rows, comma-delimited UTF-8 | Supplies `municipio` **names** (5,297) and `uf`, which the main file lacks. Also full addresses |
-| `brazil_municipalities_population.csv` | 5,570 municipalities, 1970–2022 | Filter `year == 2022` before joining or rows multiply 26× |
-| `RENAME-2022.pdf` | National essential medicines list | Brazilian drug names |
-
 ### Join gotchas — these fail silently if ignored
 
-1. **CNES codes:** `cnes_coord.co_cnes` unpadded; `cnes_estabelecimentos.CO_CNES`
-   has leading zeros. Strip on both sides.
-2. **IBGE codes:** population file uses 7 digits (`3118304`); CNES `CO_IBGE` uses
-   6 (`311830`). The 7th is a check digit — truncate it.
-3. **Brazilian decimals:** some exports use comma as decimal separator. Check
-   before casting lat/long.
-4. **Encoding:** CNES files and HMIS `.xls` are `latin-1`. UTF-8 corrupts accents.
-5. **Write a row-count assertion after every join.** A join that silently drops
+1. **Encoding:** the HMIS `.xls` files are `latin-1`. Reading them as UTF-8
+   corrupts names.
+2. **Join HMIS on `admin_l1` AND district, never district alone.** 33 district
+   names recur across states; a district-only join silently mixes them.
+3. **Write a row-count assertion after every join.** A join that silently drops
    to zero rows is the most likely bug in this codebase.
 
 ### Verified demo geography
 
-- **India:** Mahbubnagar and Ranga Reddy districts, Telangana — 120 km apart.
-  Alternative: two adjacent Maharashtra districts, which aligns facility data
-  with the richest HMIS file.
-- **Brazil:** Conselheiro Lafaiete (IBGE 3118304, pop 131,621) and Pará de Minas
-  (IBGE 3147105, pop 97,139), Minas Gerais — 121 km apart.
+- **Built:** 200 forecast PHCs spanning 116 districts across five states —
+  Maharashtra, Rajasthan, Telangana, Assam and Delhi. Those are the five whose
+  HMIS files are parsed, so they are the only districts with a real demand
+  signal to join to.
 
 Both pairs sit inside their config's `transfer_max_km`.
 
@@ -198,19 +200,22 @@ Both pairs sit inside their config's `transfer_max_km`.
 
 Credits are ample but not infinite. Non-negotiable:
 
-1. **Load all real reference data** — facilities, population, items. A few GB,
-   inside free-tier storage.
-2. **Generated usage: 200 demo facilities.** 200 × 15 items × 365 days ≈ 1.1M
-   rows. Do NOT generate for all 200,438 facilities — that is 1.1 billion rows
-   and 3 million ARIMA series.
-3. **Never `SELECT *`** on facility tables. Project and filter.
-4. **Partition `stock_events` by `DATE(event_ts)`, cluster by `facility_id`.**
-5. **Train ARIMA_PLUS on demo facilities only** (`is_demo_facility = TRUE`).
-6. **Cloud Run min-instances 0.**
-7. **Cache Gemini responses during development** so re-runs don't re-bill.
+1. **Set a BigQuery budget alert before the first query.**
+2. **Load all real reference data** — facilities, population, items. A few GB,
+   inside free-tier storage. **Do not sample the facility, population or
+   medicines tables.**
+3. **Generated usage: 200 demo facilities.** Do NOT generate for all 200,438 —
+   that is roughly 1.1 billion rows and millions of ARIMA series.
+4. **Never `SELECT *`** on facility tables. Project and filter.
+5. **Partition `stock_events` by `DATE(event_ts)`, cluster by `facility_id`.**
+6. **Train ARIMA_PLUS on the forecast facilities only.** The series ceiling is
+   **5,000**; flag before breaching it rather than silently exceeding it.
+7. **Cloud Run min-instances 0.**
+8. **Cache Gemini responses during development** so re-runs don't re-bill.
+9. **Flag any query scanning more than 10 GB** before running it.
 
-**The honest framing:** every facility in both countries is loaded and
-searchable; usage history exists for the demo districts. State exactly this.
+**The honest framing:** every facility in India is loaded and searchable;
+usage history exists for the demo districts. State exactly this.
 
 ---
 
@@ -218,7 +223,7 @@ searchable; usage history exists for the demo districts. State exactly this.
 
 ```sql
 -- facilities: all real, both countries, fully loaded
-facility_id       STRING    -- 'IN-<n>' | 'BR-<cnes>'
+facility_id       STRING    -- 'IN-<n>'
 country_code      STRING
 name              STRING
 admin_l1          STRING    -- state / UF
@@ -230,12 +235,12 @@ longitude         FLOAT64
 population_served INT64
 is_demo_facility  BOOL
 
--- items: 15 drugs, the cross-border join key
+-- items: the full NLEM 2022 catalogue (385 medicines)
 item_id           STRING
 atc_code          STRING    -- WHO ATC
 display_name      STRING
 local_name_in     STRING    -- NLEM
-local_name_br     STRING    -- RENAME
+
 spoken_variants   ARRAY<STRING>
 unit              STRING
 demand_driver     STRING    -- which HMIS indicator drives this item
@@ -282,15 +287,9 @@ stockout_threshold_days: 14
 transfer_max_km: 150
 demo_admin_l2: ["Mahbubnagar", "Ranga Reddy"]
 
-# config/br.yaml
-country_code: BR
-languages: [pt]
-admin_labels: {l1: UF, l2: Município}
-facility_label: "Unidade Básica de Saúde"
-data_sources: ["CNES", "IBGE 2022", "RENAME 2022"]
-stockout_threshold_days: 21
-transfer_max_km: 300
-demo_admin_l2: ["Conselheiro Lafaiete", "Pará de Minas"]
+# (br.yaml removed: India-only. The config layer stays, which is what makes
+#  another country a configuration change rather than a rewrite. No second
+#  country config is built: the event is India-only.)
 ```
 
 ---
@@ -302,7 +301,7 @@ System prompt — do not rewrite without asking:
 ```
 You extract pharmacy stock updates from voice notes recorded by health
 workers at primary health centres. The speaker may use Hindi, English,
-Portuguese, or a mix, with local drug names and informal quantities.
+or a mix, with local drug names and informal quantities.
 
 Return ONLY a JSON array, no prose, no markdown fences. One object per
 item mentioned:
@@ -410,7 +409,7 @@ Never propose a transfer that pushes the donor into deficit.
 
 ---
 
-## 13. Federated pattern exchange
+## 13. Cross-district pattern exchange
 
 Now a real implementation, not a stub.
 
@@ -419,12 +418,13 @@ Each country node computes aggregate seasonal coefficients per `atc_code` — a
 publishes only that vector. The peer node ingests it as a prior for series with
 thin history.
 
-**No patient data, no facility-level data, no raw records cross the border.**
+**No patient data, no facility-level data, no raw records cross a district
+boundary.** What moves is twelve numbers per ATC class.
 
-Demonstrate: Brazil has sparse history for an antimalarial; it ingests India's
+Demonstrate: a district with three months of history ingests the pooled
 seasonal vector for the matching ATC code and produces a materially better
 forecast. Show both curves side by side. That single screen is the strongest
-cross-border evidence in the submission.
+evidence for cross-district pattern exchange in the submission.
 
 ---
 
@@ -461,11 +461,10 @@ daysupply/
 │   ├── patterns.py        §13
 │   ├── config.py          YAML loader
 │   └── models.py          Pydantic schemas
-├── config/                in.yaml, br.yaml
+├── config/                in.yaml
 ├── web/                   index.html, app.js, sw.js, styles.css
 ├── ingestion/
 │   ├── load_india.py
-│   ├── load_brazil.py
 │   ├── parse_hmis.py      the HTML-disguised .xls parser
 │   ├── build_items.py     15-drug crosswalk
 │   └── generate_usage.py  §11
@@ -482,37 +481,14 @@ daysupply/
 
 ---
 
-## 16. Build plan — five weekends
-
-**Personal deadline 20 September.** MBA assignment window 11–15 September is a
-protected no-build zone.
-
-| Block | Weekend | Deliverable | Gate |
-|---|---|---|---|
-| **1** ✅ | 22 Aug | Repo, Dockerfile, FastAPI skeleton, Cloud Run deployed | Public URL live |
-| **2** | 23–24 Aug | Ingest facilities + population, both countries, to BigQuery. Row-count assertions | `SELECT COUNT(*)` returns 200,438 / 50,697 |
-| **3** | 30–31 Aug | 15-item master with ATC crosswalk. HMIS parser → `demand_reference` | Items joinable across both countries |
-| **4** | 30–31 Aug | Gemini capture: audio → JSON → item match → write. Review queue | Speak Hindi, see a correct record |
-| **5** | 6–7 Sep | Usage generator, 200 facilities. ARIMA_PLUS trained. Days-of-cover | Real forecast numbers on demo facilities |
-| **6** | 6–7 Sep | Redistribution engine + approve flow | A specific, sensible transfer recommendation |
-| **7** | 13–14 Sep* | PWA: record button, offline queue, alerts, map with transfer arrows | Golden path runs in a browser |
-| **8** | 19–20 Sep | Brazil config end-to-end. Federated exchange. Register-photo capture | Both countries live on one codebase |
-| **9** | 19–20 Sep | Video, deck, README, `Data/README.md`, submit | Submitted |
-
-\* Block 7 collides with the MBA assignment window. If assignments dominate, push
-Block 7 into 19–20 Sep and drop register-photo capture from Block 8.
-
----
-
 ## 17. Cut ladder
 
 If 20 September arrives and you're behind, drop in this order:
 
 1. Register-photo capture
-2. Federated exchange → static architecture slide
+2. Cross-district pattern exchange → static architecture slide
 3. Map animation → static arrow
 4. ARIMA_PLUS → moving average fallback
-5. Brazil → config file + one screenshot rather than a live demo
 
 **Never cut:** deployed URL, voice capture, a specific transfer recommendation,
 the review queue. Those four are the submission.
@@ -534,10 +510,6 @@ With time available, these are now expected rather than optional:
 
 ## 19. Deck evidence (not product data)
 
-- **BNAFAR submission tracker** — thousands of Brazilian municipalities transmit
-  partially or not at all despite daily submission being mandatory since the
-  December 2024 ordinance. *Verify the denominator: the displayed figures exceed
-  Brazil's 5,570 municipalities, so they likely count month-submissions.*
 - **India pharmacist vacancy data** — the person expected to keep stock records
   frequently isn't there
 - **South Africa's Stock Visibility System** — real and deployed; its evaluations
