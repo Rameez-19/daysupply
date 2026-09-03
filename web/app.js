@@ -45,6 +45,9 @@ function switchTab(tabId) {
 sidebarItems.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 bottomItems.forEach(btn  => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 window.switchTab = switchTab;
+// Reachable from the inline onclick in panelError().
+window.loadAlerts = () => loadAlerts();
+window.loadTransfers = () => loadTransfers();
 
 // ===== Online / Offline =====
 function updateSyncUI(online) {
@@ -120,6 +123,10 @@ async function loadStates() {
   } catch (e) {
     console.error('Failed to load states', e);
     setDropdownError(sel, 'States unavailable');
+    // Geography failing means nothing below it can be scoped, so the header
+    // must not go on claiming a successful sync.
+    setSyncState(false, 'geography unavailable');
+    throw e;
   }
 }
 
@@ -211,16 +218,51 @@ window.onStateChange = onStateChange;
 window.onDistrictChange = onDistrictChange;
 window.onPHCChange = onPHCChange;
 
+// ===== Honest panel states =====
+// A blank card is the worst outcome: the reader cannot tell whether there is
+// nothing to show, something is still loading, or the request failed. Every
+// panel on Today uses these three, and the failure state offers a retry rather
+// than leaving a dead end.
+
+function panelLoading(message) {
+  return `<div class="empty-state"><p class="panel-loading">${message}</p></div>`;
+}
+
+function panelEmpty(message) {
+  return `<div class="empty-state"><p>${message}</p></div>`;
+}
+
+function panelError(message, retryFn) {
+  return `<div class="empty-state panel-error">
+    <p><strong>Could not load this.</strong></p>
+    <p class="panel-error-detail">${message}</p>
+    <button class="btn-primary" onclick="${retryFn}()">Try again</button>
+  </div>`;
+}
+
+// One place that knows whether the last load worked, so the header cannot
+// claim success while the panels are empty.
+function setSyncState(ok, detail) {
+  const el = document.getElementById('last-synced');
+  if (!el) return;
+  el.className = ok ? 'last-synced' : 'last-synced sync-failed';
+  el.textContent = ok
+    ? `Last synced: ${new Date().toLocaleTimeString()}`
+    : `Not synced — ${detail || 'could not reach the server'}`;
+}
+
 // ===== Dashboard =====
 async function loadDashboard() {
   try {
     const res = await fetch(`/api/v1/stats?${getFilterParams()}`);
+    // A 500 with a JSON body would otherwise render as a dashboard full of
+    // undefined, which reads as data rather than as a failure.
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const stats = await res.json();
     renderStats(stats);
-    // Update last synced
-    const syncEl = document.getElementById('last-synced');
-    if (syncEl) syncEl.textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
+    setSyncState(true);
   } catch (e) {
+    setSyncState(false, e.message);
     // Facility counts come from BigQuery. If that fails we say so rather than
     // showing a number that is not real.
     console.error('Failed to load stats', e);
@@ -392,7 +434,7 @@ async function advanceTransfer(id, step) {
       <p class="lifecycle-note">${data.note}</p>
       ${next ? `<button class="btn btn-primary btn-full"
                   onclick="advanceTransfer('${id}','${next}')">${STEP_LABEL[next]}</button>`
-             : '<p class="lifecycle-note">Complete — stock is on the recipient's shelf.</p>'}`;
+             : "<p class=\"lifecycle-note\">Complete — the stock is on the receiving facility's shelf.</p>"}`;
     // On-hand has changed at one of the two facilities, so the numbers on the
     // other screens are now stale.
     refreshAll();
@@ -404,10 +446,8 @@ async function advanceTransfer(id, step) {
 async function approveItem(id) {
   const el = document.getElementById('item-' + id);
   const qty = window.prompt(
-    'Quantity to record?
-
-This item is in review because the amount was '
-    + 'unclear. Approving needs the number.', '');
+    "Quantity to record?\n\nThis item is in review because the amount was "
+    + "unclear. Approving needs the number.", "");
   if (qty === null) return;
   try {
     const url = `/api/v1/review-queue/${id}/approve`
@@ -443,12 +483,16 @@ function timeAgo(iso) {
 
 // ===== Alerts =====
 async function loadAlerts() {
-  alertsList.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
+  if (!alertsList) return;
+  alertsList.innerHTML = panelLoading('Checking what is running out…');
   try {
     const res = await fetch(`/api/v1/alerts?${getFilterParams()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data.alerts || !data.alerts.length) {
-      alertsList.innerHTML = '<div class="empty-state"><p>No active stockout alerts.</p></div>';
+      alertsList.innerHTML = panelEmpty(
+        'Nothing is below its reorder point in this scope. That is a real '
+        + 'result, not a missing one.');
       return;
     }
     alertsList.innerHTML = data.alerts.map(a => {
@@ -479,18 +523,22 @@ async function loadAlerts() {
       </div>`;
     }).join('');
   } catch (e) {
-    alertsList.innerHTML = '<div class="empty-state"><p>Could not load alerts.</p></div>';
+    alertsList.innerHTML = panelError(e.message, 'loadAlerts');
   }
 }
 
 // ===== Transfers =====
 async function loadTransfers() {
-  transferList.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
+  if (!transferList) return;
+  transferList.innerHTML = panelLoading('Working out what can be moved…');
   try {
     const res = await fetch(`/api/v1/recommendations?${getFilterParams()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data.recommendations || !data.recommendations.length) {
-      transferList.innerHTML = '<div class="empty-state"><p>Network is balanced — no transfers needed.</p></div>';
+      transferList.innerHTML = panelEmpty(
+        'No transfer would help in this scope — either nothing is short, or '
+        + 'no facility within reach has stock to spare.');
       return;
     }
     transferList.innerHTML = data.recommendations.map(rec => `
@@ -543,7 +591,7 @@ async function loadTransfers() {
       </div>
     `).join('');
   } catch (e) {
-    transferList.innerHTML = '<div class="empty-state"><p>Could not load transfer recommendations.</p></div>';
+    transferList.innerHTML = panelError(e.message, 'loadTransfers');
   }
 }
 

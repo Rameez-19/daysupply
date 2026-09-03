@@ -422,3 +422,12 @@ button { font-family: inherit; cursor: pointer; }
 .surge-banner.programme { border-left-color:var(--gray-400); }
 .surge-banner-head { font-size:0.95rem; line-height:1.5; margin-bottom:6px; }
 .surge-banner-body { font-size:0.8rem; color:var(--gray-600); line-height:1.55; margin:0 0 12px; }
+
+/* ===== Honest panel states ===== */
+/* A blank card cannot be told apart from a broken one. These three make the
+   difference visible, and the failure state offers a way forward. */
+.panel-loading { color:var(--gray-400); font-style:italic; }
+.panel-error { border:1px dashed #fecaca; background:#fffbfb; border-radius:var(--radius); padding:18px; }
+.panel-error p { margin:0 0 6px; }
+.panel-error-detail { font-size:0.76rem; color:var(--gray-500); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; margin-bottom:12px !important; }
+.last-synced.sync-failed { color:var(--danger); border-color:#fecaca; background:#fffbfb; }
