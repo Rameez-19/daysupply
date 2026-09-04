@@ -453,3 +453,20 @@ button { font-family: inherit; cursor: pointer; }
 .absorb-fill.warn { background:var(--warning); }
 .absorb-fill.bad { background:var(--danger); }
 .absorb-pct { font-size:0.8rem; font-weight:700; min-width:70px; text-align:right; }
+
+/* ===== Verdict: the answer, before the evidence ===== */
+.verdict { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; padding:18px 22px; margin-bottom:22px; border-radius:var(--radius); border:1px solid var(--border); border-left-width:5px; background:var(--surface); box-shadow:var(--shadow-sm); }
+.verdict.ok   { border-left-color:var(--success); }
+.verdict.warn { border-left-color:var(--warning); background:#fffdf8; }
+.verdict.bad  { border-left-color:var(--danger);  background:#fffbfb; }
+.verdict-main { flex:2 1 340px; }
+.verdict-label { display:inline-block; font-size:0.66rem; font-weight:800; text-transform:uppercase; letter-spacing:0.1em; padding:3px 10px; border-radius:11px; margin-bottom:8px; }
+.verdict.ok .verdict-label   { background:#f0fdf4; color:var(--success); border:1px solid #bbf7d0; }
+.verdict.warn .verdict-label { background:#fff7ed; color:var(--warning); border:1px solid #fed7aa; }
+.verdict.bad .verdict-label  { background:#fef2f2; color:var(--danger);  border:1px solid #fecaca; }
+.verdict-line { font-size:1rem; line-height:1.6; color:var(--text); margin:0; }
+.verdict-line strong { font-weight:800; }
+.verdict-aside { flex:1 1 200px; border-left:1px solid var(--border); padding-left:20px; }
+.verdict-figure { display:block; font-size:2rem; font-weight:800; line-height:1; color:var(--danger); }
+.verdict-caption { display:block; font-size:0.74rem; color:var(--gray-500); line-height:1.5; margin-top:6px; }
+.posture-provenance { font-size:0.68rem; color:var(--gray-400); line-height:1.45; margin:10px 0 0; padding-top:8px; border-top:1px solid var(--border); }
