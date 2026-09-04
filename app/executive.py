@@ -51,16 +51,25 @@ D = f"{PROJECT}.{DATASET}"
 TOP_N = 5
 
 
-def _scoped(state: str) -> tuple[str, list]:
-    if not state:
-        return "TRUE", []
-    return "state = @state", [
-        bigquery.ScalarQueryParameter("state", "STRING", state)]
+def _scoped(state: str, column: str = "state") -> str:
+    """A scope predicate for one table's own state column.
+
+    Takes the column name rather than rewriting a finished predicate.
+    `recommendations` calls its column `to_state`, and an earlier version got
+    there with `where.replace('state', 'to_state')` — which also renamed the
+    bound parameter to `@to_state` and made every scoped request fail with
+    "Query parameter 'to_state' not found". The same string-replace shortcut
+    had already been removed from `app/surge.py` for the same reason.
+    """
+    return "TRUE" if not state else f"{column} = @state"
 
 
 def national_picture(state: str = "") -> dict:
     """Everything the executive view needs, in a single round trip."""
-    where, params = _scoped(state)
+    where = _scoped(state)
+    rec_where = _scoped(state, "to_state")
+    params = ([bigquery.ScalarQueryParameter("state", "STRING", state)]
+              if state else [])
 
     rows = run_query(f"""
     SELECT
@@ -141,7 +150,7 @@ def national_picture(state: str = "") -> dict:
          SUM(quantity) AS units,
          COUNTIF(ven_class = 'Vital') AS vital
        FROM `{D}.recommendations`
-       WHERE {where.replace('state', 'to_state')}) AS action_queue,
+       WHERE {rec_where}) AS action_queue,
 
       -- Standing scale, so the reader knows what the numbers are a slice of.
       (SELECT AS STRUCT phcs, districts, states, population
