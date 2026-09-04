@@ -107,10 +107,18 @@ class TestTheDomTheCodeExpectsActuallyExists:
 
     @staticmethod
     def _sources():
+        """Every script the page actually loads, not a hardcoded list.
+
+        This was pinned to ("app.js", "surge.js"). Adding map.js made the
+        handler check fail on handlers that were perfectly well defined — the
+        test simply could not see the file. A hardcoded list silently stops
+        covering the thing it was written to cover.
+        """
         import re
         html = (WEB / "index.html").read_text(encoding="utf-8")
-        js = "".join((WEB / f).read_text(encoding="utf-8")
-                     for f in ("app.js", "surge.js"))
+        local = [src for src in re.findall(r'<script src="([^"]+)"', html)
+                 if not src.startswith("http")]
+        js = "".join((WEB / f).read_text(encoding="utf-8") for f in local)
         ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', html))
         return html, js, ids
 
@@ -219,7 +227,7 @@ class TestNoSelfReferentialGlobalWrapper:
     correct and unaffected.
     """
 
-    @pytest.mark.parametrize("name", ["app.js", "surge.js"])
+    @pytest.mark.parametrize("name", [p.name for p in JS_FILES])
     def test_no_function_is_reexported_as_a_call_to_itself(self, name):
         import re
         src = (WEB / name).read_text(encoding="utf-8")

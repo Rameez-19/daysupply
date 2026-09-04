@@ -39,7 +39,7 @@ from app import quality
 from app import resources
 from app import surge
 from app import transfers
-from app import executive
+from app import executive, mapview
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
 from app.capture import handle_capture, handle_chat
@@ -83,6 +83,7 @@ async def lifespan(_app: FastAPI):
             # The landing view. Warmed first because it is what a first
             # visitor waits on.
             ("executive (All India)", lambda: executive.national_picture("")),
+            ("map (All India)", lambda: mapview.supply_map("")),
             ("stats", lambda: supply.get_summary(DEFAULT_STATE, "", "")),
             ("alerts", lambda: supply.get_alerts(DEFAULT_STATE, "", "", 50)),
             ("transfers",
@@ -191,6 +192,21 @@ async def executive_summary(state: str = ""):
     Defaults to All India, because the question this answers is national.
     """
     return _facility_query(executive.national_picture, state)
+
+
+@app.get("/api/v1/map")
+async def supply_map(state: str = ""):
+    """District nodes and redistribution arcs for the map view.
+
+    Every other view answers "how much". This one answers "how far", which is
+    the question that decides whether a surplus 40 km away and a surplus 600 km
+    away are the same thing. They are not, and only a map says so at a glance.
+
+    Coordinates are the mean of each district's geocoded facilities — the
+    centre of care, not the geometric centre of the polygon. All 116 reporting
+    districts resolve; none is placed by hand.
+    """
+    return _facility_query(mapview.supply_map, state)
 
 
 # ── Dashboard stats ──────────────────────────────────────────────────

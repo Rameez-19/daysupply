@@ -218,6 +218,40 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 
 ---
 
+## 7a. The map — geography of supply
+
+*Last verified against the live deployment: **2026-09-04**.*
+
+Served by `/api/v1/map` (`app/mapview.py`), drawn by `web/map.js`. One
+BigQuery round trip, 0.162 GB scanned on a dry run, ~0.22 s warm.
+
+| Figure | Derived from | Status | Computed in |
+|---|---|---|---|
+| **116 districts plotted** | every district reporting stock; all 116 resolve to coordinates | **MEASURED** | `app/mapview.py` |
+| **199,805 geocoded facilities** of 200,438 | `facilities.has_valid_coords` in the register | **REAL** | facility register |
+| District position | **mean coordinate of the district's facilities** — the centre of care, not the polygon centroid | **REAL, DERIVED** | `coords` CTE |
+| **64 of 116 districts short on a Vital line** | `reorder_status`, `ven_class = 'Vital' AND needs_reorder` | **MEASURED — LIVE** | `risk` CTE |
+| **80 districts cannot absorb a 3x spike** | `network_absorption`, `multiplier = 3.0`, threshold **<35% of positions holding** | **MEASURED** | `headroom` CTE |
+| **144 cross-district moves**, **35,905 units**, longest **148 km** | `recommendations` joined to the donor facility's district | **MEASURED — LIVE** | `flows` CTE |
+| **362 of 527** recommendations cross a district boundary | the remaining 165 are intra-district and are not drawn — the arc would be a dot on the node | **MEASURED** | `flows` CTE |
+
+**The 35% threshold is deliberately the same one the executive view's
+absorption bars use.** If the map had picked its own, the two views would
+disagree about the same district; `test_mapview.py` pins them together.
+
+**A correction worth recording.** The flow layer first shipped empty. The query
+filtered `recommendations.status = 'recommended'`, but that column holds the
+*receiver's* stock condition — `critical` / `reorder` / `stocked_out` — not a
+lifecycle state. It matched 0 of 527 rows, and the redistribution layer
+vanished while the district layer looked perfect. The status is now ranked
+rather than filtered, and colours each arc by how badly the receiving district
+needs what is being sent. `test_flows_are_not_empty` exists so an empty layer
+fails loudly rather than reading as a calm network.
+
+**Not claimed:** the arcs are recommendations, not journeys. Nothing here says
+a vehicle moved. Distance is straight-line between district centres, which
+understates road distance — so any distance shown is a floor, never a boast.
+
 ## 8. Beds and personnel
 
 *Last verified against the live deployment: **2026-09-02**.*

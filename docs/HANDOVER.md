@@ -199,12 +199,16 @@ Speech-to-Text + Translation chain (three failure points instead of one).
 daysupply/
 ├── app/
 │   ├── main.py          FastAPI, all /api/v1/... endpoints
+│   ├── executive.py     the national picture, one round trip
+│   ├── mapview.py       district nodes + redistribution arcs, one round trip
 │   ├── capture.py       Gemini audio → structured JSON
 │   ├── demo_data.py     ⚠️ seeded generator — TO BE REPLACED by BigQuery
 │   └── ...
 ├── web/
 │   ├── index.html       SPA: dashboard, filters, charts
 │   ├── app.js           views, Chart.js, MediaRecorder, IndexedDB queue
+│   ├── surge.js         surge banner and signal badges
+│   ├── map.js           Leaflet map: risk / headroom layers, flow arcs
 │   ├── styles.css       "Deep Blue" NHM-style design system
 │   └── sw.js            Service Worker, offline cache
 ├── ingestion/           load_facilities.py, build_geo_summary.py, parse_nlem.py, ...
@@ -560,3 +564,68 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
 10. **Deck and video still to build**, and both must draw every figure from
     `docs/CLAIMS.md`. Any number not in that file does not go in front of a
     judge.
+
+---
+
+## Two front-end traps that cost a day each, and the tests that now pin them
+
+Both shipped to production. Both left the page **parsing cleanly, every
+endpoint returning 200 in under a second, and the landing view completely
+blank.** They look identical to a slow backend, and both times that is what
+they were mistaken for.
+
+### 1. `window.x = () => x()` is infinite recursion, not an export
+
+```js
+window.loadExecutive = () => loadExecutive();   // NEVER DO THIS
+```
+
+A function declaration at the top level of a classic script is *already* a
+property of `window`. The assignment therefore **replaces** it, and the
+identifier inside the arrow resolves back through the scope chain to the global
+object — which now holds the arrow. It calls itself until the stack dies.
+
+All three of the landing view's loaders had this line: `loadExecutive`,
+`loadAlerts`, `loadTransfers`. The `RangeError` is thrown at *call* time,
+before the function body runs, so the `try` inside never caught it and
+`setSyncState()` fired on neither the success nor the failure path — hence a
+sync badge frozen on "Loading…".
+
+`window.onStateChange = onStateChange` — a direct reference, no arrow — is
+correct and unaffected. Pinned by `TestNoSelfReferentialGlobalWrapper`.
+
+### 2. A DOM shim cannot find either of these
+
+Two hand-written DOM shims reported the page rendering perfectly while it was
+dead in the browser, because **a shim's `global.window` is an ordinary object,
+not the real global object** — so the clobber above simply does not happen
+there. A shim also has to stub `document.querySelector`, and stubbing it to
+return the active view hardcodes the answer to the very question the dispatcher
+asks.
+
+**Use a real browser.** No install needed:
+
+```bash
+chrome --headless=new --disable-gpu --virtual-time-budget=25000 \
+  --user-data-dir=/tmp/prof --enable-logging=stderr --v=1 \
+  --dump-dom https://<service-url>/ > dom.html 2>err.txt
+grep -i "Uncaught\|CONSOLE" err.txt
+```
+
+That surfaced the RangeError with its line number on the first run, after two
+shims had said the code was fine. The `CacheStorage: Unexpected internal error`
+line in that output is a headless-profile artefact, not a page bug.
+
+### 3. Cross-file dependencies on the init path
+
+`app.js` loads first and its init IIFE runs immediately, so anything it calls
+must already exist. `loadExecutive()` called `signalBadge()` from `surge.js`,
+loaded on the *next* script tag — a race that surge.js usually won, so the
+failure looked intermittent. Either move the helper into `app.js` or guard the
+call with `typeof x === 'function'`, as `loadSurge` and `loadSurgeBanner` do.
+Pinned by `TestAppJsDoesNotDependOnAFileThatHasNotRunYet`.
+
+**A related trap in the tests themselves:** the DOM checks read a hardcoded
+`("app.js", "surge.js")`. Adding `map.js` made them fail on handlers that were
+perfectly well defined — the test could not see the file. They now read
+whatever `index.html` actually loads.

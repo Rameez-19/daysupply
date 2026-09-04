@@ -11,6 +11,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
@@ -37,6 +39,9 @@
         </button>
         <button class="nav-item" data-tab="plan-view">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg><span>Plan ahead</span>
+        </button>
+        <button class="nav-item" data-tab="map-view">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg><span>Map</span>
         </button>
         <div class="nav-group-label">PHC worker</div>
         <button class="nav-item" data-tab="capture-view">
@@ -342,6 +347,46 @@
       </section>
 
       <!-- Evidence: the methodology a judge wants and an officer does not. -->
+      <section id="map-view" class="view hidden-view">
+        <div class="view-header">
+          <h2>Where the stock is, and how far it has to travel</h2>
+          <p class="view-subtitle">
+            Every other view answers how much. This one answers how far &mdash;
+            the question that decides whether a surplus is worth moving
+          </p>
+        </div>
+
+        <div id="map-summary"></div>
+
+        <div class="map-controls">
+          <div class="segmented" role="group" aria-label="Map layer">
+            <button class="segment active" id="layer-risk"
+                    onclick="setMapLayer('risk')">Risk now</button>
+            <button class="segment" id="layer-headroom"
+                    onclick="setMapLayer('headroom')">Absorption headroom</button>
+          </div>
+          <label class="map-toggle">
+            <input type="checkbox" id="show-flows" checked onchange="toggleFlows()">
+            <span>Show recommended moves</span>
+          </label>
+        </div>
+
+        <div id="supply-map" class="supply-map"></div>
+        <div id="map-legend" class="map-legend"></div>
+
+        <p class="section-note">
+          District position is the mean coordinate of its geocoded facilities
+          &mdash; the centre of care, not the centre of the polygon. All
+          reporting districts resolve from the facility register; none is
+          placed by hand. Arc thickness is units moved, not distance.
+        </p>
+
+        <div class="dashboard-section">
+          <div class="chart-header"><h3>The moves, in order of size</h3></div>
+          <div id="flow-table"></div>
+        </div>
+      </section>
+
       <section id="evidence-view" class="view hidden-view">
         <div class="view-header">
           <h2>Evidence</h2>
@@ -397,6 +442,9 @@
       <button class="bottom-nav-item" data-tab="plan-view">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg><span>Plan</span>
       </button>
+      <button class="bottom-nav-item" data-tab="map-view">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/></svg><span>Map</span>
+      </button>
       <button class="bottom-nav-item" data-tab="capture-view">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg><span>Report</span>
       </button>
@@ -406,6 +454,7 @@
 
   <script src="app.js"></script>
   <script src="surge.js"></script>
+  <script src="map.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(reg => {

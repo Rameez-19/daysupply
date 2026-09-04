@@ -67,7 +67,12 @@ async function syncQueue() {
 }
 
 // ===== Cascading Filters =====
-let currentState = "Telangana";
+// The landing view is the national picture, so it opens on All India.
+// It used to open hardcoded to Telangana, left over from when this page
+// was a district dashboard: the header said "National picture" while the
+// numbers underneath were one state's (201 stock lines, not 2,794).
+// Empty scope is safe — loadDistricts and loadPHCs both guard on it.
+let currentState = "";
 let currentDistrict = "";
 let currentPHC = "";
 let currentChartDays = 7;
@@ -104,12 +109,8 @@ async function loadStates() {
     const { states } = await res.json();
     setOptions(sel, `All States (${states.length})`, states, 'state',
       r => `${r.state} — ${r.facility_count.toLocaleString('en-IN')} facilities`);
-    // Default to the first state that has demo coverage, else the first state.
-    const preferred = states.find(s => s.state === currentState) || states[0];
-    if (preferred) {
-      currentState = preferred.state;
-      sel.value = currentState;
-    }
+    // No auto-selection: All India is the default and the dropdown says so.
+    sel.value = currentState;
     await loadDistricts();
   } catch (e) {
     console.error('Failed to load states', e);
@@ -231,6 +232,8 @@ function refreshAll() {
   } else if (view === 'plan-view') {
     loadChart(currentChartDays);
     if (typeof loadSurge === 'function') loadSurge();
+  } else if (view === 'map-view') {
+    if (typeof loadMap === 'function') loadMap();
   } else if (view === 'evidence-view') {
     loadLeadTimeContrast();
     if (typeof loadEvidence === 'function') loadEvidence();
