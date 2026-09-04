@@ -195,13 +195,22 @@ class TestStockLeavesTheDonor:
         assert "expired" in build_current_stock.CONSUMING_EVENT_TYPES
 
     def test_the_ledger_still_reconciles_with_the_batch_view(self):
-        """The balance formula changed; the invariant must survive it."""
-        rows = run_query("""
+        """The balance formula changed; the invariant must survive it.
+
+        The consuming list is read from `CONSUMING_EVENT_TYPES` rather than
+        written out here. It was hardcoded once and drifted: Block G started
+        recording `lost` events, `current_stock` netted them out, this query
+        did not, and the invariant failed on a single 50-unit loss. The test
+        was wrong, not the view. Deriving the list makes that impossible.
+        """
+        from ingestion.build_current_stock import CONSUMING_EVENT_TYPES
+        consuming = ", ".join(f"'{e}'" for e in CONSUMING_EVENT_TYPES)
+        rows = run_query(f"""
             WITH ledger AS (
               SELECT facility_id, item_id,
                      SUM(IF(event_type = 'received', quantity, 0))
-                       - SUM(IF(event_type IN ('dispensed','expired','dispatched'),
-                                quantity, 0)) AS balance
+                       - SUM(IF(event_type IN ({consuming}), quantity, 0))
+                       AS balance
               FROM `daysupply.daysupply.stock_events`
               GROUP BY facility_id, item_id
             ),

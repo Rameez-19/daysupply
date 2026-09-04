@@ -17,23 +17,10 @@ async function loadSurge() {
   loadScenarioOptions();
 }
 
-// Three signal classes, three different things a district officer must not
-// confuse. LEADING is a clinical warning that precedes the demand it drives;
-// COINCIDENT means the presentation and the dispensing move together, so it is
-// information rather than warning; PROGRAMME means a planned campaign, not an
-// outbreak — a 22.64x Albendazole swing is National Deworming Day.
-function signalBadge(cls) {
-  if (cls === 'leading') {
-    return '<span class="signal-badge leading" title="A clinical signal that '
-      + 'rises before the medicine demand it drives">Early warning</span>';
-  }
-  if (cls === 'programme') {
-    return '<span class="signal-badge programme" title="A planned campaign, '
-      + 'not an outbreak">Planned campaign</span>';
-  }
-  return '<span class="signal-badge coincident" title="The presentation and '
-    + 'the dispensing happen together">Happening now</span>';
-}
+// `signalBadge()` used to live here. It now lives in app.js, because
+// loadExecutive() on the landing view calls it, app.js loads first, and
+// its init runs immediately — so a helper the landing view needs must not
+// sit in a file that has not executed yet. See the guard test.
 
 // Where reordering physically cannot work, say so in those words. Showing an
 // order quantity here would imply the problem is handled when it is not.

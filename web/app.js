@@ -279,6 +279,24 @@ function setSyncState(ok, detail) {
     : `Not synced — ${detail || 'could not reach the server'}`;
 }
 
+// Three signal classes, three different things a district officer must not
+// confuse. LEADING is a clinical warning that precedes the demand it drives;
+// COINCIDENT means the presentation and the dispensing move together, so it is
+// information rather than warning; PROGRAMME means a planned campaign, not an
+// outbreak — a 22.64x Albendazole swing is National Deworming Day.
+function signalBadge(cls) {
+  if (cls === 'leading') {
+    return '<span class="signal-badge leading" title="A clinical signal that '
+      + 'rises before the medicine demand it drives">Early warning</span>';
+  }
+  if (cls === 'programme') {
+    return '<span class="signal-badge programme" title="A planned campaign, '
+      + 'not an outbreak">Planned campaign</span>';
+  }
+  return '<span class="signal-badge coincident" title="The presentation and '
+    + 'the dispensing happen together">Happening now</span>';
+}
+
 // ===== Dashboard =====
 async function loadDashboard() {
   try {

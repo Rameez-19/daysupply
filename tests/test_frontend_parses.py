@@ -150,3 +150,42 @@ class TestTheDomTheCodeExpectsActuallyExists:
         for h in sorted(handlers):
             assert re.search(rf"(?:async )?function {h}\b", js), (
                 f"index.html calls {h}() inline but it is never defined")
+
+
+class TestAppJsDoesNotDependOnAFileThatHasNotRunYet:
+    """`app.js` loads first and its init IIFE runs immediately. Anything it
+    calls on that path must already exist.
+
+    This is the third variant of the same failure. The page parsed, every
+    endpoint returned 200 in under a second, and the landing view rendered
+    nothing — because `loadExecutive()` called `signalBadge()`, which was
+    defined in `surge.js`, loaded on the *next* script tag. The call sat inside
+    a `try`, so the ReferenceError was swallowed by the catch and the panel
+    showed a generic error instead of the national picture.
+
+    It was a race, which is worse than a plain break: surge.js usually won,
+    so the page usually worked, and the failure looked intermittent and
+    environmental. A DOM shim executing app.js alone reproduced it every time.
+
+    `loadSurge` and `loadSurgeBanner` are the sanctioned pattern — they are
+    called behind `typeof x === 'function'`, so a not-yet-loaded file degrades
+    instead of throwing. Unguarded calls are what this test forbids.
+    """
+
+    def test_no_unguarded_call_into_a_later_script(self):
+        import re
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        surge = (WEB / "surge.js").read_text(encoding="utf-8")
+
+        defined_in = lambda src: set(re.findall(r"function\s+(\w+)", src))
+        app_defines, surge_defines = defined_in(app), defined_in(surge)
+
+        called = set(re.findall(r"\b(\w+)\s*\(", app))
+        guarded = set(re.findall(r"typeof\s+(\w+)\s*===\s*'function'", app))
+
+        leaked = sorted((called & surge_defines) - app_defines - guarded)
+        assert not leaked, (
+            "app.js calls these without a typeof guard, but they are defined "
+            "in surge.js, which has not executed when app.js's init runs. "
+            "Either move them into app.js or guard the call: "
+            f"{leaked}")
