@@ -88,3 +88,65 @@ class TestEveryScriptTagResolves:
             assert f"'/{src}'" in sw, (
                 f"{src} is loaded by the page but not cached by the service "
                 "worker, so it will not be there offline")
+
+
+class TestTheDomTheCodeExpectsActuallyExists:
+    """Parsing is not enough. These are the failures that shipped anyway.
+
+    Twice now the file parsed perfectly and the page was dead:
+
+    * `renderStats()` wrote into `stats-grid` after the restructure deleted it.
+      Unguarded, so it threw on every load and stopped the init chain before a
+      single panel rendered. Endpoint checks all returned 200.
+    * A stat card and a retry button pointed `switchTab()` at views that had
+      been renamed, which fails silently — the click just does nothing.
+
+    Both are statically detectable, so they are detected here rather than in a
+    screenshot.
+    """
+
+    @staticmethod
+    def _sources():
+        import re
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        js = "".join((WEB / f).read_text(encoding="utf-8")
+                     for f in ("app.js", "surge.js"))
+        ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', html))
+        return html, js, ids
+
+    def test_no_unguarded_write_to_an_element_that_does_not_exist(self):
+        """`getElementById('x').innerHTML` where x is not in the page."""
+        import re
+        _, js, ids = self._sources()
+        missing = sorted({m for m in re.findall(
+            r"getElementById\('([A-Za-z0-9_-]+)'\)\.\w", js) if m not in ids})
+        assert not missing, (
+            "these elements are written to without a null guard and do not "
+            f"exist in index.html, so the page will throw on load: {missing}")
+
+    def test_every_switchtab_target_is_a_real_view(self):
+        """A tab switch to a renamed view fails silently — nothing happens."""
+        import re
+        html, js, _ = self._sources()
+        views = set(re.findall(r'<section id="([a-z-]+)"', html))
+        targets = set(re.findall(r"switchTab\('([a-z-]+)'\)", js + html))
+        missing = sorted(targets - views)
+        assert not missing, f"switchTab points at non-existent views: {missing}"
+
+    def test_every_nav_tab_has_a_matching_view(self):
+        import re
+        html, _, _ = self._sources()
+        tabs = set(re.findall(r'data-tab="([a-z-]+)"', html))
+        views = set(re.findall(r'<section id="([a-z-]+)"', html))
+        assert not (tabs - views), f"nav tabs with no view: {sorted(tabs - views)}"
+
+    def test_inline_handlers_are_defined_and_exposed(self):
+        """An onclick/onchange resolves against global scope. A handler that is
+        never defined makes the control silently inert — which is exactly how
+        the resource selector looked broken."""
+        import re
+        html, js, _ = self._sources()
+        handlers = set(re.findall(r'on(?:click|change)="([A-Za-z_]\w*)\(', html))
+        for h in sorted(handlers):
+            assert re.search(rf"(?:async )?function {h}\b", js), (
+                f"index.html calls {h}() inline but it is never defined")
