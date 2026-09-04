@@ -39,8 +39,6 @@ sidebarItems.forEach(btn => btn.addEventListener('click', () => switchTab(btn.da
 bottomItems.forEach(btn  => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 window.switchTab = switchTab;
 // Reachable from the inline onclick in panelError().
-window.loadAlerts = () => loadAlerts();
-window.loadTransfers = () => loadTransfers();
 
 // ===== Online / Offline =====
 function updateSyncUI(online) {
@@ -242,6 +240,11 @@ function refreshAll() {
 }
 
 // Make filter functions global
+// NOTE: no `window.<name> = () => <name>()` wrappers here. A global function
+// declaration in a classic script is already a property of window, so
+// that assignment REPLACES the binding, and the identifier inside the
+// arrow then resolves to the arrow itself — infinite recursion. It cost
+// the whole landing view. See the guard test.
 window.onStateChange = onStateChange;
 window.onDistrictChange = onDistrictChange;
 window.onPHCChange = onPHCChange;
@@ -1337,4 +1340,3 @@ async function loadExecutive() {
     setSyncState(false, e.message);
   }
 }
-window.loadExecutive = () => loadExecutive();

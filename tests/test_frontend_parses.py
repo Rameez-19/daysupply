@@ -189,3 +189,43 @@ class TestAppJsDoesNotDependOnAFileThatHasNotRunYet:
             "in surge.js, which has not executed when app.js's init runs. "
             "Either move them into app.js or guard the call: "
             f"{leaked}")
+
+
+class TestNoSelfReferentialGlobalWrapper:
+    """`window.x = () => x()` is infinite recursion, not an export.
+
+    This is what actually broke the landing view, and it broke all three of
+    its loaders at once — `loadExecutive`, `loadAlerts`, `loadTransfers`.
+
+    A function declaration at the top level of a classic script is *already* a
+    property of `window`. Assigning `window.loadExecutive = () => loadExecutive()`
+    therefore replaces that property, and the identifier inside the arrow
+    resolves back through the scope chain to the global object — which now
+    holds the arrow. Calling it recurses until the stack dies.
+
+    The failure is silent in the worst way. `RangeError` is thrown at call
+    time, before the function body runs, so the `try` inside `loadExecutive`
+    never catches it and `setSyncState()` fires on neither the success nor the
+    failure path. The page shows empty panels and a sync badge still reading
+    "Loading…", which looks like a slow or hung backend. Every endpoint was
+    returning 200 in under a second.
+
+    A DOM shim did not catch it, because a shim's `global.window` is an
+    ordinary object rather than the real global object, so the assignment does
+    not clobber anything and the code appears to work. Only a real browser
+    reproduces it. That is why this is a static check.
+
+    `window.onStateChange = onStateChange` — a direct reference, no arrow — is
+    correct and unaffected.
+    """
+
+    @pytest.mark.parametrize("name", ["app.js", "surge.js"])
+    def test_no_function_is_reexported_as_a_call_to_itself(self, name):
+        import re
+        src = (WEB / name).read_text(encoding="utf-8")
+        bad = re.findall(r"window\.(\w+)\s*=\s*\(\s*\)\s*=>\s*\1\s*\(", src)
+        assert not bad, (
+            f"{name} re-exports these as an arrow calling the same name, which "
+            "overwrites the global binding and recurses until the stack "
+            f"overflows: {sorted(set(bad))}. A top-level function declaration "
+            "is already on window — delete the assignment.")
