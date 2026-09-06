@@ -218,6 +218,47 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 
 ---
 
+## 7b. The Today dashboard — what the charts say
+
+*Last verified against the live deployment: **2026-09-04**.*
+
+The landing view was ninety stacked text cards; it is now eight stat tiles,
+two charts and two meters, with the prose kept underneath as the explanation
+rather than the interface. Every figure below is served by `/api/v1/executive`
+in the same single round trip.
+
+| Figure | Derived from | Status | Computed in |
+|---|---|---|---|
+| **285 stock lines run out within a week** (10% of tracked) | `days_of_cover <= 7`, plus `on_hand <= 0` | **MEASURED — LIVE** | `cover_buckets` |
+| Cover buckets **69 / 216 / 363 / 1,246 / 900** | already out, ≤7d, 8–14d, 15–30d, >30d | **MEASURED — LIVE** | same |
+| **102 of 116 districts** carry at least one shortage | `COUNT(DISTINCT IF(needs_reorder, district, NULL))` | **MEASURED — LIVE** | `medicines.districts_short` |
+| VEN short: **Vital 126/566 (22.3%)**, **Essential 422/2,112 (20.0%)**, **Desirable 49/116 (42.2%)** | `reorder_status` grouped by `ven_class` | **MEASURED — LIVE** | `ven_breakdown` |
+| Worst district **Cachar**: 5 Vital short, 14 already at zero | top 10 by Vital short | **MEASURED — LIVE** | `worst_districts` |
+
+**Two cross-checks are asserted, not assumed.** The "Already out" bucket must
+equal `medicines.stocked_out`, and the VEN rows must sum to `tracked` and
+`below_reorder`. Both reach the page by different SQL paths, so if they ever
+disagree one of the headline numbers is wrong; `test_executive.py` fails first.
+
+**Desirable is the worst class proportionally (42.2%), not Vital.** That is a
+real result and it is left visible rather than buried, because it is the
+correct prioritisation story: the network is protecting its Vital lines better
+than its Desirable ones, which is what should happen.
+
+**Colour was validated, not chosen.** `#b91c1c` against `#0369a1` scores ΔE
+20.6 under protanopia and 29.6 in normal vision, both clear of the floors, and
+each clears 3:1 against the page surface. A five-step red→amber→green ramp was
+tried for the cover chart and **failed**: five hues from one family score ΔE
+2.9 under deuteranopia, and the amber sat at 1.87:1 on a near-white surface.
+The chart uses emphasis instead — the two buckets needing action this week are
+red, the rest recessive grey.
+
+**A count that was quietly wrong.** The front end never sent a `limit`, so the
+alerts and recommendations endpoints returned their default 50 rows. The
+Action queue promised "the whole queue" and showed 50 of 597, and Today's
+hand-off read "Showing 5 of 50". It now requests more rows than exist, so the
+returned count is the true total and the hand-off states it.
+
 ## 7a. The map — geography of supply
 
 *Last verified against the live deployment: **2026-09-04**.*

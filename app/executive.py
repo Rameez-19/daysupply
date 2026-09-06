@@ -50,6 +50,9 @@ D = f"{PROJECT}.{DATASET}"
 # few enough to read.
 TOP_N = 5
 
+# The bar chart can carry more rows than the table it replaced could.
+CHART_N = 10
+
 
 def _scoped(state: str, column: str = "state") -> str:
     """A scope predicate for one table's own state column.
@@ -81,6 +84,9 @@ def national_picture(state: str = "") -> dict:
          COUNTIF(ven_class = 'Vital' AND needs_reorder) AS vital_short,
          COUNT(DISTINCT facility_id) AS facilities,
          COUNT(DISTINCT district) AS districts,
+         -- Districts carrying at least one shortage. A national count of short
+         -- lines does not say whether the problem is concentrated or spread.
+         COUNT(DISTINCT IF(needs_reorder, district, NULL)) AS districts_short,
          SUM(on_hand) AS units_on_hand
        FROM `{D}.reorder_status` WHERE {where}) AS medicines,
 
@@ -113,7 +119,49 @@ def national_picture(state: str = "") -> dict:
               GROUP BY district
               HAVING short > 0
               ORDER BY vital_short DESC, stocked_out DESC, short DESC
-              LIMIT {TOP_N})) AS worst_districts,
+              LIMIT {CHART_N})) AS worst_districts,
+
+      -- When does it actually run out? The single most decision-useful cut:
+      -- a count of lines short is a number, a timeline is a plan. Buckets are
+      -- ordered and mutually exclusive, and `days_of_cover` is NULL where
+      -- there is no demand history to divide by — those are excluded rather
+      -- than dropped into the healthiest bucket, which would flatter us.
+      ARRAY(SELECT AS STRUCT bucket, sort_order, n
+            FROM (
+              SELECT
+                CASE
+                  WHEN on_hand <= 0 THEN 'Already out'
+                  WHEN days_of_cover <= 7 THEN '7 days or less'
+                  WHEN days_of_cover <= 14 THEN '8 to 14 days'
+                  WHEN days_of_cover <= 30 THEN '15 to 30 days'
+                  ELSE 'More than 30 days'
+                END AS bucket,
+                CASE
+                  WHEN on_hand <= 0 THEN 1
+                  WHEN days_of_cover <= 7 THEN 2
+                  WHEN days_of_cover <= 14 THEN 3
+                  WHEN days_of_cover <= 30 THEN 4
+                  ELSE 5
+                END AS sort_order,
+                COUNT(*) AS n
+              FROM `{D}.reorder_status`
+              WHERE {where} AND (days_of_cover IS NOT NULL OR on_hand <= 0)
+              GROUP BY bucket, sort_order
+              ORDER BY sort_order)) AS cover_buckets,
+
+      -- Criticality, not just count. A fifth of Desirable lines short is a
+      -- different problem from a fifth of Vital lines short.
+      ARRAY(SELECT AS STRUCT ven_class, tracked, short, pct
+            FROM (
+              SELECT ven_class,
+                     COUNT(*) AS tracked,
+                     COUNTIF(needs_reorder) AS short,
+                     ROUND(100 * SAFE_DIVIDE(COUNTIF(needs_reorder), COUNT(*)), 1) AS pct
+              FROM `{D}.reorder_status`
+              WHERE {where}
+              GROUP BY ven_class
+              ORDER BY CASE ven_class WHEN 'Vital' THEN 1
+                                      WHEN 'Essential' THEN 2 ELSE 3 END)) AS ven_breakdown,
 
       -- 3. What is coming? Labelled, so an early warning is not confused with
       --    a deworming campaign.

@@ -202,6 +202,13 @@ function getFilterParams() {
   return params;
 }
 
+// The alerts and recommendations endpoints default to 50 rows. The front end
+// never sent a limit, so the Action queue — which promises the whole queue —
+// was quietly showing 50 of 597, and Today's hand-off read "Showing 5 of 50".
+// Asking for more than exists means the row count IS the true total, so the
+// hand-off can state it honestly without a separate count query.
+const QUEUE_LIMIT = 1000;
+
 // Which view the reader is actually looking at. Everything else is hidden, and
 // refreshing it costs a BigQuery round trip the reader will never see.
 function activeViewId() {
@@ -232,6 +239,11 @@ function refreshAll() {
   } else if (view === 'plan-view') {
     loadChart(currentChartDays);
     if (typeof loadSurge === 'function') loadSurge();
+  } else if (view === 'action-view') {
+    // Same two loaders as Today; they render the preview and the full queue
+    // from one fetch each, so opening the queue costs nothing extra.
+    loadAlerts();
+    loadTransfers();
   } else if (view === 'map-view') {
     if (typeof loadMap === 'function') loadMap();
   } else if (view === 'evidence-view') {
@@ -541,20 +553,35 @@ function timeAgo(iso) {
 }
 
 // ===== Alerts =====
+// How many rows the summary view shows before handing off to Action queue.
+// Ninety stacked cards is not a dashboard; it is a log with a header.
+const TODAY_PREVIEW = 5;
+
 async function loadAlerts() {
-  if (!alertsList) return;
-  alertsList.innerHTML = panelLoading('Checking what is running out…');
+  // Building 597 cards costs real time, so the full queue is only rendered
+  // when the reader is actually on it. Today gets the preview either way.
+  const full = activeViewId() === 'action-view'
+    ? document.getElementById('alerts-full') : null;
+  if (!alertsList && !full) return;
+  const loading = panelLoading('Checking what is running out…');
+  if (alertsList) alertsList.innerHTML = loading;
+  if (full) full.innerHTML = loading;
   try {
-    const res = await fetch(`/api/v1/alerts?${getFilterParams()}`);
+    const res = await fetch(
+      `/api/v1/alerts?${getFilterParams()}&limit=${QUEUE_LIMIT}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data.alerts || !data.alerts.length) {
-      alertsList.innerHTML = panelEmpty(
+      const empty = panelEmpty(
         'Nothing is below its reorder point in this scope. That is a real '
         + 'result, not a missing one.');
+      if (alertsList) alertsList.innerHTML = empty;
+      if (full) full.innerHTML = empty;
+      setCount('alerts-count', 0);
+      setBadge('action-badge', 0);
       return;
     }
-    alertsList.innerHTML = data.alerts.map(a => {
+    const cards = data.alerts.map(a => {
       const sev = severityOf(a);
       // The reorder point is this facility's own, not a flat network rule.
       const vsFlat = a.reorder_point > a.legacy_threshold
@@ -580,28 +607,73 @@ async function loadAlerts() {
           ${a.days_of_cover}<span class="alert-days-label">days left</span>
         </div>
       </div>`;
-    }).join('');
+    });
+
+    // One fetch, two audiences: the top of the queue on Today, the whole
+    // queue on Action queue.
+    if (alertsList) {
+      alertsList.innerHTML = cards.slice(0, TODAY_PREVIEW).join('')
+        + moreNote(cards.length, TODAY_PREVIEW, 'shortage');
+    }
+    if (full) full.innerHTML = cards.join('');
+    setCount('alerts-count', cards.length);
+    setBadge('action-badge', cards.length);
   } catch (e) {
-    alertsList.innerHTML = panelError(e.message, 'loadAlerts');
+    const err = panelError(e.message, 'loadAlerts');
+    if (alertsList) alertsList.innerHTML = err;
+    if (full) full.innerHTML = err;
   }
+}
+
+// "Showing 5 of 597" is the difference between a summary and a lie.
+function moreNote(total, shown, noun) {
+  if (total <= shown) return '';
+  return `<button class="more-note" onclick="switchTab('action-view')">
+      Showing ${shown} of ${total.toLocaleString('en-IN')} ${noun}${total === 1 ? '' : 's'}
+      &mdash; open the full queue &rarr;
+    </button>`;
+}
+
+function setCount(id, n) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = n ? `${n.toLocaleString('en-IN')} open` : '';
+}
+
+function setBadge(id, n) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = n ? String(n) : '';
 }
 
 // ===== Transfers =====
 async function loadTransfers() {
-  if (!transferList) return;
-  transferList.innerHTML = panelLoading('Working out what can be moved…');
+  const full = activeViewId() === 'action-view'
+    ? document.getElementById('transfers-full') : null;
+  if (!transferList && !full) return;
+  const loading = panelLoading('Working out what can be moved…');
+  if (transferList) transferList.innerHTML = loading;
+  if (full) full.innerHTML = loading;
   try {
-    const res = await fetch(`/api/v1/recommendations?${getFilterParams()}`);
+    const res = await fetch(
+      `/api/v1/recommendations?${getFilterParams()}&limit=${QUEUE_LIMIT}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data.recommendations || !data.recommendations.length) {
-      transferList.innerHTML = panelEmpty(
+      const empty = panelEmpty(
         'No transfer would help in this scope — either nothing is short, or '
         + 'no facility within reach has stock to spare.');
+      if (transferList) transferList.innerHTML = empty;
+      if (full) full.innerHTML = empty;
+      setCount('transfers-count', 0);
       return;
     }
-    transferList.innerHTML = data.recommendations.map(rec => `
-      <div class="item-card" id="rec-${rec.recommendation_id}">
+    // `interactive` controls the element ids and the approve button. Rendering
+    // the same recommendation into both views with the same id would put two
+    // `rec-<id>` nodes in the document, and advanceTransfer() would update
+    // whichever came first — so approving from the Action queue would silently
+    // redraw the card on Today instead. Today is read-only; the work happens
+    // in the queue.
+    const card = (rec, interactive) => `
+      <div class="item-card"${interactive ? ` id="rec-${rec.recommendation_id}"` : ''}>
         <div class="card-header">
           <span style="font-weight:700; color:var(--gray-900);">
             ${venBadge(rec.ven_class)} ${rec.requested_item_name}
@@ -641,16 +713,28 @@ async function loadTransfers() {
             ? ` · avoids ${rec.waste_avoided_units} ${rec.unit} of expiry waste`
             : ' · no expiry risk on this batch'}
         </div>
+        ${interactive ? `
         <div class="lifecycle" id="lc-${rec.recommendation_id}">
           <button class="btn btn-primary btn-full"
                   onclick="advanceTransfer('${rec.recommendation_id}','approve')">
             Approve transfer
           </button>
-        </div>
+        </div>` : ''}
       </div>
-    `).join('');
+    `;
+
+    const recs = data.recommendations;
+    if (transferList) {
+      transferList.innerHTML =
+        recs.slice(0, TODAY_PREVIEW).map(r => card(r, false)).join('')
+        + moreNote(recs.length, TODAY_PREVIEW, 'recommended transfer');
+    }
+    if (full) full.innerHTML = recs.map(r => card(r, true)).join('');
+    setCount('transfers-count', recs.length);
   } catch (e) {
-    transferList.innerHTML = panelError(e.message, 'loadTransfers');
+    const err = panelError(e.message, 'loadTransfers');
+    if (transferList) transferList.innerHTML = err;
+    if (full) full.innerHTML = err;
   }
 }
 
@@ -1256,7 +1340,6 @@ function postureCard(title, headline, figures, tone, provenance) {
 
 async function loadExecutive() {
   const grid = document.getElementById('posture-grid');
-  const worst = document.getElementById('worst-districts');
   const absorb = document.getElementById('absorption-panel');
   const warn = document.getElementById('early-warnings');
   if (grid) grid.innerHTML = panelLoading('Reading the national position…');
@@ -1276,6 +1359,11 @@ async function loadExecutive() {
     const verdict = document.getElementById('verdict-bar');
     if (verdict) verdict.innerHTML = verdictBar(d);
 
+    renderKpis(d);
+    renderCoverChart(d);
+    renderDistrictChart(d);
+    renderVen(d);
+
     grid.innerHTML =
       postureCard('Medicines', h.medicines, [
         ['tracked', (m.tracked || 0).toLocaleString()],
@@ -1293,18 +1381,6 @@ async function loadExecutive() {
         ['mean vacancy', `${Math.round(100 * (s.mean_vacancy || 0))}%`],
         ['cadre gaps', (s.cadres_with_a_gap || 0).toLocaleString()],
       ], (s.mean_vacancy || 0) > 0.15 ? 'bad' : 'warn', 'Vacancy from Rural Health Statistics 2017. Daily attendance modelled.');
-
-    if (worst) {
-      const rows = d.worst_districts || [];
-      worst.innerHTML = rows.length ? `<div class="table-scroll">
-        <table class="scenario-table">
-          <thead><tr><th>District</th><th>State</th><th>Vital short</th><th>Stocked out</th><th>Total short</th></tr></thead>
-          <tbody>${rows.map(r => `<tr class="${r.vital_short > 0 ? 'row-critical' : ''}">
-            <td><strong>${r.district}</strong></td><td>${r.state}</td>
-            <td>${r.vital_short}</td><td>${r.stocked_out}</td><td>${r.short}</td></tr>`).join('')}
-          </tbody></table></div>`
-        : panelEmpty('No district in scope has stock below its reorder point.');
-    }
 
     if (absorb) {
       const rows = d.absorption || [];
@@ -1342,4 +1418,225 @@ async function loadExecutive() {
     if (grid) grid.innerHTML = panelError(e.message, 'loadExecutive');
     setSyncState(false, e.message);
   }
+}
+
+// ===== The visual layer =====
+//
+// This page used to be ninety stacked text cards. Every number was present and
+// none of it was legible: a reader had to parse prose to find out whether the
+// network was holding. The rule applied here is the boring one — the data's
+// job picks the form, and colour comes last.
+//
+// PALETTE. Two colours carry meaning, and they were validated rather than
+// chosen by eye: #b91c1c against #0369a1 scores dE 20.6 under protanopia and
+// 29.6 in normal vision, both clear of the floors, and each clears 3:1 against
+// the page surface. A five-step red-amber-green ramp was tried first for the
+// cover buckets and failed: five hues from one family score dE 2.9 under
+// deuteranopia, and the amber sat at 1.87:1 on a near-white surface. So the
+// cover chart uses EMPHASIS instead — the buckets that need action are red,
+// the rest are recessive grey — which is both safer and a clearer story.
+
+const INK = '#334155';        // axis and label text, never a series colour
+const GRID = '#e2e8f0';
+const URGENT = '#b91c1c';     // needs action now
+const CALM = '#94a3b8';       // context, deliberately recessive
+const VITAL = '#b91c1c';
+const OTHER = '#0369a1';
+
+let coverChart = null, districtChart = null;
+
+function kpiTile(value, label, note, tone) {
+  return `
+    <div class="kpi-tile ${tone || ''}">
+      <div class="kpi-value">${value}</div>
+      <div class="kpi-label">${label}</div>
+      ${note ? `<div class="kpi-note">${note}</div>` : ''}
+    </div>`;
+}
+
+function renderKpis(d) {
+  const host = document.getElementById('kpi-row');
+  if (!host) return;
+  const m = d.medicines || {}, b = d.beds || {}, s = d.personnel || {};
+  const n = v => (v || 0).toLocaleString('en-IN');
+  const pct = (a, t) => t ? `${Math.round(100 * a / t)}% of ${n(t)}` : '';
+  const absorb3 = (d.absorption || []).find(a => a.multiplier === 3);
+
+  host.innerHTML =
+      kpiTile(n(m.below_reorder), 'Stock lines below reorder',
+              pct(m.below_reorder, m.tracked),
+              m.below_reorder > 0 ? 'warn' : 'ok')
+    + kpiTile(n(m.vital_short), 'Vital lines short',
+              'Death or serious harm if unavailable',
+              m.vital_short > 0 ? 'bad' : 'ok')
+    + kpiTile(n(m.stocked_out), 'Already at zero',
+              'Nothing on the shelf today',
+              m.stocked_out > 0 ? 'bad' : 'ok')
+    + kpiTile(`${n(m.districts_short)}<span class="kpi-of">/${n(m.districts)}</span>`,
+              'Districts carrying a shortage',
+              'Whether the problem is concentrated or spread',
+              (m.districts_short || 0) > 0 ? 'warn' : 'ok')
+    + kpiTile(absorb3 ? `${absorb3.pct}%` : '&mdash;',
+              'Could absorb a 3&times; demand spike',
+              'From stock already inside the district',
+              absorb3 && absorb3.pct < 35 ? 'bad' : 'warn')
+    + kpiTile(n(b.turned_away), 'Patients turned away',
+              `Over the year, at ${n(b.over_capacity)} facilities`,
+              (b.turned_away || 0) > 0 ? 'warn' : 'ok')
+    + kpiTile(`${Math.round(100 * (s.mean_vacancy || 0))}%`,
+              'Mean staff vacancy',
+              `${n(s.cadres_with_a_gap)} facility-cadres had a day with nobody present`,
+              (s.mean_vacancy || 0) > 0.15 ? 'bad' : 'warn')
+    + kpiTile(n(d.transfer_only), 'Cannot be fixed by ordering',
+              'Would run out before resupply could physically arrive',
+              (d.transfer_only || 0) > 0 ? 'bad' : 'ok');
+}
+
+// A count of shortages is a number. A timetable is a plan. Emphasis, not a
+// five-hue ramp: the two buckets that need action this week are red, the rest
+// recede.
+function renderCoverChart(d) {
+  const el = document.getElementById('cover-chart');
+  if (!el || typeof Chart === 'undefined') return;
+  const rows = d.cover_buckets || [];
+  const cap = document.getElementById('cover-caption');
+
+  if (!rows.length) {
+    if (cap) cap.innerHTML = 'No stock line in scope has demand history to project.';
+    return;
+  }
+
+  const urgent = rows.filter(r => r.sort_order <= 2).reduce((a, r) => a + r.n, 0);
+  const total = rows.reduce((a, r) => a + r.n, 0);
+
+  if (coverChart) coverChart.destroy();
+  coverChart = new Chart(el.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.bucket),
+      datasets: [{
+        label: 'Stock lines',
+        data: rows.map(r => r.n),
+        backgroundColor: rows.map(r => r.sort_order <= 2 ? URGENT : CALM),
+        borderRadius: 4,
+        borderSkipped: 'bottom',
+        maxBarThickness: 64
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },   // one series; the heading names it
+        tooltip: {
+          callbacks: {
+            label: c => `${c.parsed.y.toLocaleString('en-IN')} stock lines`
+                        + ` (${Math.round(100 * c.parsed.y / total)}%)`
+          }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: INK, font: { size: 11 } } },
+        y: { beginAtZero: true, grid: { color: GRID },
+             ticks: { color: INK, font: { size: 11 },
+                      callback: v => v.toLocaleString('en-IN') } }
+      }
+    }
+  });
+
+  if (cap) {
+    cap.innerHTML = `<strong>${urgent.toLocaleString('en-IN')} stock lines run out `
+      + `within a week</strong> &mdash; ${Math.round(100 * urgent / total)}% of `
+      + `everything tracked. Lines with no demand history to divide by are left `
+      + `out rather than counted as healthy.`;
+  }
+}
+
+// Districts are nominal, so a value-ramp across them would burn the colour
+// channel on information the bar length already carries. The split that DOES
+// carry information is Vital against the rest.
+function renderDistrictChart(d) {
+  const el = document.getElementById('district-chart');
+  if (!el || typeof Chart === 'undefined') return;
+  const rows = d.worst_districts || [];
+  const cap = document.getElementById('district-caption');
+
+  if (!rows.length) {
+    if (cap) cap.innerHTML = 'No district in scope has stock below its reorder point.';
+    return;
+  }
+
+  if (districtChart) districtChart.destroy();
+  districtChart = new Chart(el.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.district),
+      datasets: [
+        { label: 'Vital', data: rows.map(r => r.vital_short),
+          backgroundColor: VITAL, borderRadius: 3, maxBarThickness: 22 },
+        { label: 'Essential or Desirable',
+          data: rows.map(r => Math.max(0, (r.short || 0) - (r.vital_short || 0))),
+          backgroundColor: OTHER, borderRadius: 3, maxBarThickness: 22 }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', align: 'end',
+                  labels: { color: INK, boxWidth: 10, boxHeight: 10,
+                            usePointStyle: true, pointStyle: 'rectRounded',
+                            font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            afterBody: items => {
+              const r = rows[items[0].dataIndex];
+              return r.stocked_out ? `${r.stocked_out} already at zero` : '';
+            }
+          }
+        }
+      },
+      scales: {
+        x: { stacked: true, beginAtZero: true, grid: { color: GRID },
+             ticks: { color: INK, font: { size: 11 }, precision: 0 } },
+        y: { stacked: true, grid: { display: false },
+             ticks: { color: INK, font: { size: 11 } } }
+      }
+    }
+  });
+
+  const worst = rows[0];
+  if (cap) {
+    cap.innerHTML = `<strong>${worst.district}</strong> carries the most, with `
+      + `${worst.vital_short} Vital ${worst.vital_short === 1 ? 'line' : 'lines'} short`
+      + `${worst.stocked_out ? ` and ${worst.stocked_out} already at zero` : ''}.`;
+  }
+}
+
+// Three ordered classes and a share each: a meter reads this better than a pie,
+// and the label carries the identity so colour need not.
+function renderVen(d) {
+  const host = document.getElementById('ven-panel');
+  if (!host) return;
+  const rows = d.ven_breakdown || [];
+  if (!rows.length) {
+    host.innerHTML = panelEmpty('No stock lines in scope.');
+    return;
+  }
+  const why = {
+    Vital: 'Death or serious harm if unavailable',
+    Essential: 'Significant harm if unavailable',
+    Desirable: 'Useful, but not harm-critical'
+  };
+  host.innerHTML = rows.map(r => `
+    <div class="ven-row">
+      <div class="ven-head">
+        <span class="ven-name">${r.ven_class}</span>
+        <span class="ven-figure"><strong>${r.short}</strong> of ${r.tracked} short</span>
+      </div>
+      <div class="ven-track">
+        <div class="ven-fill ${r.ven_class === 'Vital' ? 'vital' : ''}"
+             style="width:${Math.min(100, r.pct)}%"></div>
+      </div>
+      <div class="ven-note">${r.pct}% &middot; ${why[r.ven_class] || ''}</div>
+    </div>`).join('');
 }

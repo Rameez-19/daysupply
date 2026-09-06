@@ -74,3 +74,72 @@ class TestItAnswersTheQuestionsInOrder:
         rows = executive.national_picture("")["worst_districts"]
         vitals = [r["vital_short"] for r in rows]
         assert vitals == sorted(vitals, reverse=True)
+
+
+class TestTheChartAggregates:
+    """The Today view is charts now, and a chart lies more convincingly than a
+    table. These pin the arithmetic a reader cannot check by looking."""
+
+    def test_cover_buckets_are_ordered_and_exclusive(self):
+        d = executive.national_picture("")
+        rows = d["cover_buckets"]
+        assert rows, "no cover buckets — the timetable chart would be empty"
+        orders = [r["sort_order"] for r in rows]
+        assert orders == sorted(orders), "buckets arrive out of order"
+        assert len(orders) == len(set(orders)), "a bucket appears twice"
+
+    def test_cover_buckets_do_not_exceed_tracked_lines(self):
+        """Buckets are exclusive, so their total cannot beat the line count.
+
+        It can be *less*: lines with no demand history have no days_of_cover
+        and are excluded rather than dropped into the healthiest bucket, which
+        would flatter the picture.
+        """
+        d = executive.national_picture("")
+        total = sum(r["n"] for r in d["cover_buckets"])
+        assert total <= d["medicines"]["tracked"]
+
+    def test_already_out_bucket_matches_the_stocked_out_count(self):
+        """Two independent paths to the same number; if they disagree, one of
+        the two headline figures on the page is wrong."""
+        d = executive.national_picture("")
+        out = next((r["n"] for r in d["cover_buckets"]
+                    if r["bucket"] == "Already out"), 0)
+        assert out == d["medicines"]["stocked_out"]
+
+    def test_ven_breakdown_sums_to_the_totals(self):
+        d = executive.national_picture("")
+        ven = d["ven_breakdown"]
+        assert ven, "no VEN breakdown"
+        assert sum(v["tracked"] for v in ven) == d["medicines"]["tracked"]
+        assert sum(v["short"] for v in ven) == d["medicines"]["below_reorder"]
+
+    def test_vital_short_agrees_between_the_headline_and_the_breakdown(self):
+        d = executive.national_picture("")
+        vital = next(v for v in d["ven_breakdown"] if v["ven_class"] == "Vital")
+        assert vital["short"] == d["medicines"]["vital_short"]
+
+    def test_ven_is_ordered_by_criticality_not_alphabetically(self):
+        """Vital first. A reader scanning down must meet the worst first."""
+        d = executive.national_picture("")
+        order = [v["ven_class"] for v in d["ven_breakdown"]]
+        assert order[0] == "Vital"
+
+    def test_worst_districts_is_ten_for_the_chart(self):
+        """The bar chart replaced a five-row table and can carry more."""
+        d = executive.national_picture("")
+        assert len(d["worst_districts"]) <= executive.CHART_N
+        assert len(d["worst_districts"]) > 5, (
+            "the chart is still being fed the old five-row table limit")
+
+    def test_district_vital_never_exceeds_its_total_short(self):
+        """The chart stacks Vital under (short - vital). A negative segment
+        would render as a bar growing the wrong way."""
+        d = executive.national_picture("")
+        for r in d["worst_districts"]:
+            assert r["vital_short"] <= r["short"], (
+                f"{r['district']} has more Vital short than short in total")
+
+    def test_districts_short_is_within_districts(self):
+        m = executive.national_picture("")["medicines"]
+        assert m["districts_short"] <= m["districts"]

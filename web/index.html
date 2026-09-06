@@ -43,6 +43,10 @@
         <button class="nav-item" data-tab="map-view">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg><span>Map</span>
         </button>
+        <button class="nav-item" data-tab="action-view">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Action queue</span>
+          <span class="nav-badge danger" id="action-badge"></span>
+        </button>
         <div class="nav-group-label">PHC worker</div>
         <button class="nav-item" data-tab="capture-view">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg><span>Report stock</span>
@@ -125,27 +129,58 @@
         <!-- The answer, before the evidence. -->
         <div id="verdict-bar"></div>
 
-        <!-- 1. Is the network holding? All three resources, because the brief
-             names all three and showing only medicines under-serves it. -->
-        <h3 class="section-heading">Is the network holding?</h3>
-        <div id="posture-grid" class="posture-grid"></div>
+        <!-- ── The numbers, as numbers. All three resources, because the brief
+             names all three. -->
+        <div id="kpi-row" class="kpi-row"></div>
 
+        <!-- ── The numbers, as shape. -->
         <div class="dashboard-row">
-          <!-- 2. Where is the risk? A national number is useless without it. -->
+          <div class="dashboard-section flex-1">
+            <h3>When does it run out?</h3>
+            <p class="section-note">
+              Every tracked stock line placed by how long its cover lasts at
+              current demand. A count of shortages is a number; this is a
+              timetable.
+            </p>
+            <div class="chart-box"><canvas id="cover-chart"></canvas></div>
+            <div id="cover-caption" class="chart-caption"></div>
+          </div>
           <div class="dashboard-section flex-1">
             <h3>Where the risk sits</h3>
-            <p class="section-note">Districts ranked by Vital medicines below their reorder point.</p>
-            <div id="worst-districts"></div>
-          </div>
-          <!-- 4. Could we absorb a shock? The one-step-ahead question. -->
-          <div class="dashboard-section flex-1">
-            <h3>Could we absorb a shock?</h3>
-            <p class="section-note">Share of district&ndash;medicine positions that could meet a demand spike from stock already inside the district, before outside resupply could land.</p>
-            <div id="absorption-panel"></div>
+            <p class="section-note">
+              The ten districts carrying the most shortage, split by whether the
+              medicine is Vital.
+            </p>
+            <div class="chart-box"><canvas id="district-chart"></canvas></div>
+            <div id="district-caption" class="chart-caption"></div>
           </div>
         </div>
 
-        <!-- 3. What is coming? -->
+        <div class="dashboard-row">
+          <div class="dashboard-section flex-1">
+            <h3>Could we absorb a shock?</h3>
+            <p class="section-note">
+              Share of district&ndash;medicine positions that could meet a demand
+              spike from stock already inside the district, before outside
+              resupply could land.
+            </p>
+            <div id="absorption-panel"></div>
+          </div>
+          <div class="dashboard-section flex-1">
+            <h3>What is short, by criticality</h3>
+            <p class="section-note">
+              A fifth of Desirable lines short is a different problem from a
+              fifth of Vital lines short.
+            </p>
+            <div id="ven-panel"></div>
+          </div>
+        </div>
+
+        <!-- ── Then the words, for the reader who wants to know why. -->
+        <h3 class="section-heading">What the numbers mean</h3>
+        <div id="posture-grid" class="posture-grid"></div>
+
+        <!-- What is coming? -->
         <h3 class="section-heading">What is coming</h3>
         <p class="section-note">
           Labelled, because an early warning and a planned campaign need
@@ -154,16 +189,27 @@
         </p>
         <div id="early-warnings" class="card-list"></div>
 
-        <!-- 5. What is queued? -->
+        <!-- The top of each queue only. The full queues are the Action queue
+             view, which is where the work actually happens. -->
         <div class="dashboard-row">
           <div class="dashboard-section flex-1">
-            <h3>What is failing</h3>
+            <div class="section-head-row">
+              <h3>What is failing</h3>
+              <button class="link-button" onclick="switchTab('action-view')">
+                View all &rarr;
+              </button>
+            </div>
             <p class="section-note">Vital first, then by how little cover is left.</p>
             <div id="alerts-list" class="card-list"></div>
           </div>
           <div class="dashboard-section flex-1">
-            <h3>What to do about it</h3>
-            <p class="section-note">Transfers you can approve now &mdash; stock that already exists, moved to where it is short.</p>
+            <div class="section-head-row">
+              <h3>What to do about it</h3>
+              <button class="link-button" onclick="switchTab('action-view')">
+                View all &rarr;
+              </button>
+            </div>
+            <p class="section-note">Stock that already exists, moved to where it is short.</p>
             <div id="transfer-list" class="card-list"></div>
           </div>
         </div>
@@ -347,6 +393,40 @@
       </section>
 
       <!-- Evidence: the methodology a judge wants and an officer does not. -->
+      <section id="action-view" class="view hidden-view">
+        <div class="view-header">
+          <h2>Action queue</h2>
+          <p class="view-subtitle">
+            Every open shortage and every transfer waiting on a decision &mdash;
+            the whole queue, not the top of it
+          </p>
+        </div>
+
+        <div class="dashboard-section">
+          <div class="section-head-row">
+            <h3>Everything that is failing</h3>
+            <span class="section-count" id="alerts-count"></span>
+          </div>
+          <p class="section-note">
+            Vital first, then by how little cover is left. Each row names the
+            reorder point it fell below and how that point was computed.
+          </p>
+          <div id="alerts-full" class="card-list"></div>
+        </div>
+
+        <div class="dashboard-section">
+          <div class="section-head-row">
+            <h3>Every transfer awaiting a decision</h3>
+            <span class="section-count" id="transfers-count"></span>
+          </div>
+          <p class="section-note">
+            Stock that already exists, moved to where it is short. Batch choice
+            is FEFO, and the donor is only asked for what it can spare.
+          </p>
+          <div id="transfers-full" class="card-list"></div>
+        </div>
+      </section>
+
       <section id="map-view" class="view hidden-view">
         <div class="view-header">
           <h2>Where the stock is, and how far it has to travel</h2>
