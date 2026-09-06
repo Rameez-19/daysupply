@@ -165,10 +165,24 @@ def national_picture(state: str = "") -> dict:
 
       -- 3. What is coming? Labelled, so an early warning is not confused with
       --    a deworming campaign.
-      ARRAY(SELECT AS STRUCT district_key, month, atc_class, surge_multiplier,
-                              signal_indicator, signal_class, signal_means
+      -- One warning per district-month-driver, NOT per ATC class.
+      --
+      -- P01BA and P01BF are different antimalarial classes driven by the same
+      -- confirmed-malaria signal, so a surge in one district produced two rows
+      -- that were identical in every field a reader could see: same district,
+      -- same month, same driver, same multiplier. The panel showed the same
+      -- warning twice and looked broken. The data was right; the grouping was
+      -- wrong. The classes affected are now named on the card instead, which
+      -- is the thing that actually differed.
+      ARRAY(SELECT AS STRUCT district_key, month, atc_classes, class_count,
+                              surge_multiplier, signal_indicator, signal_class,
+                              signal_means
             FROM (
-              SELECT s.district_key, s.month, s.atc_class, s.surge_multiplier,
+              SELECT s.district_key, s.month,
+                     STRING_AGG(DISTINCT s.atc_class, ', '
+                                ORDER BY s.atc_class) AS atc_classes,
+                     COUNT(DISTINCT s.atc_class) AS class_count,
+                     MAX(s.surge_multiplier) AS surge_multiplier,
                      l.demand_driver AS signal_indicator,
                      l.signal_class, l.means AS signal_means,
                      CASE l.signal_class WHEN 'leading' THEN 1
@@ -176,7 +190,9 @@ def national_picture(state: str = "") -> dict:
               FROM `{D}.surge_signals` s
               LEFT JOIN `{D}.signal_labels` l ON l.atc_class = s.atc_class
               WHERE s.is_surge {'' if not state else 'AND s.state = @state'}
-              ORDER BY rank_, s.surge_multiplier DESC
+              GROUP BY s.district_key, s.month, l.demand_driver,
+                       l.signal_class, l.means
+              ORDER BY rank_, surge_multiplier DESC
               LIMIT {TOP_N})) AS early_warnings,
 
       -- 4. Could we absorb a shock? The resilience headroom.

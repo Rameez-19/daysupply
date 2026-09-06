@@ -253,6 +253,24 @@ tried for the cover chart and **failed**: five hues from one family score ΔE
 The chart uses emphasis instead — the two buckets needing action this week are
 red, the rest recessive grey.
 
+**A deploy that only half arrived.** Starlette's `StaticFiles` sends `ETag`
+and `Last-Modified` but no `Cache-Control`, so Chrome applied heuristic
+freshness and served `styles.css` from disk. The browser had the new
+`index.html` and `app.js` with the old stylesheet, so the redesigned dashboard
+rendered as a column of unstyled plain text — the new markup existed, the rules
+for it did not. The service worker hid it rather than fixing it: its fetch
+handler is network-first, but `fetch()` inside a worker uses the same HTTP
+cache, so the "fresh" response was the stale copy, which it then wrote into
+Cache Storage. Static assets now send `Cache-Control: no-cache`; the ETag turns
+the revalidation into a 0-byte 304.
+
+**Early warnings are one per district-month-driver, not per ATC class.** P01BA
+and P01BF are different antimalarial classes driven by the same confirmed-
+malaria signal, so a surge produced two rows identical in every field the card
+showed. Five slots displayed three events and the panel looked broken. The data
+was right and the grouping was wrong; the affected classes are now named on the
+card, and the top five carry five distinct districts.
+
 **A count that was quietly wrong.** The front end never sent a `limit`, so the
 alerts and recommendations endpoints returned their default 50 rows. The
 Action queue promised "the whole queue" and showed 50 of 597, and Today's

@@ -795,4 +795,36 @@ async def get_stock_health(state: str = "Telangana", district: str = "",
 
 
 # ── Static files (must be last) ─────────────────────────────────────
-app.mount("/", StaticFiles(directory="web", html=True), name="web")
+class RevalidatingStatics(StaticFiles):
+    """Serve the front end with `Cache-Control: no-cache`.
+
+    **A deploy was not reaching users, and it failed in the most confusing way
+    possible: half of it arrived.** The browser had the new `index.html` and
+    the new `app.js` but an old `styles.css`, so the redesigned dashboard
+    rendered as a column of unstyled plain text — the new markup existed, the
+    rules for it did not.
+
+    Starlette's StaticFiles sends `ETag` and `Last-Modified` but **no
+    `Cache-Control`**. With no explicit directive Chrome falls back to
+    heuristic freshness — roughly 10% of the age of the file — and serves the
+    asset from disk without asking us anything.
+
+    The service worker does not save us, and in fact hides the problem. Its
+    fetch handler is network-first, but `fetch(event.request)` inside a worker
+    goes through the **same HTTP cache**, so a "fresh from the network" response
+    can be the stale disk copy. The worker then writes that stale asset into
+    the Cache Storage it owns, and looks like it is working.
+
+    `no-cache` does not mean "do not store" — it means "revalidate before
+    using". The ETag still turns almost every one of those into a 304 with no
+    body, so this costs a conditional request and guarantees that shipping a
+    fix actually ships it.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
+
+app.mount("/", RevalidatingStatics(directory="web", html=True), name="web")

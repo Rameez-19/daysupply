@@ -693,3 +693,36 @@ button { font-family: inherit; cursor: pointer; }
   .chart-box { height: 240px; }
   .kpi-value { font-size: 25px; }
 }
+
+/* ===== The two preview columns, made genuinely equal =====
+   `.dashboard-row` is a flex row, so the two panels already stretched to the
+   same height. That was not the complaint: the CONTENT ended at different
+   points, because a transfer card is roughly twice the height of an alert
+   card. Five of each left one column full and the other half empty below its
+   last card, which reads as a rendering fault rather than as a design.
+
+   So the panels become flex columns, the lists take the remaining space, and
+   both lists share one scroll height. Equal boxes and equal content area —
+   and the hand-off button stays pinned at the bottom of each, level with the
+   other, instead of floating wherever the cards happen to stop. */
+.balanced-row { align-items: stretch; }
+
+.balanced-row .dashboard-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.balanced-row .preview-list {
+  flex: 1 1 auto;
+  max-height: 560px;
+  overflow-y: auto;
+  /* Room for the scrollbar so cards do not sit under it. */
+  padding-right: 4px;
+}
+
+/* The hand-off sits below the scrolling list, level across both columns. */
+.balanced-row .more-note { margin-top: 12px; }
+
+@media (max-width: 900px) {
+  .balanced-row .preview-list { max-height: none; overflow-y: visible; }
+}

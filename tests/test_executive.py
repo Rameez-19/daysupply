@@ -143,3 +143,45 @@ class TestTheChartAggregates:
     def test_districts_short_is_within_districts(self):
         m = executive.national_picture("")["medicines"]
         assert m["districts_short"] <= m["districts"]
+
+
+class TestEarlyWarningsAreOnePerSignal:
+    """The panel showed the same warning twice and looked broken.
+
+    P01BA and P01BF are different antimalarial classes driven by the same
+    confirmed-malaria signal. A surge in one district produced two rows that
+    were identical in every field the card rendered — same district, same
+    month, same driver, same multiplier — so five slots showed three events.
+
+    The data was right and the grouping was wrong. Warnings are now one per
+    district-month-driver, with the affected classes named on the card, which
+    is the thing that actually differed between the two rows.
+    """
+
+    def test_no_two_warnings_share_a_district_month_and_driver(self):
+        d = executive.national_picture("")
+        keys = [(w["district_key"], w["month"], w["signal_indicator"])
+                for w in d["early_warnings"]]
+        assert len(keys) == len(set(keys)), (
+            "two warnings are indistinguishable to a reader: "
+            f"{[k for k in keys if keys.count(k) > 1]}")
+
+    def test_every_warning_names_the_classes_it_affects(self):
+        d = executive.national_picture("")
+        for w in d["early_warnings"]:
+            assert w["atc_classes"], f"{w['district_key']} names no ATC class"
+            assert w["class_count"] >= 1
+            assert w["class_count"] == len(w["atc_classes"].split(", "))
+
+    def test_grouping_did_not_cost_us_distinct_events(self):
+        """The point of the change: five slots should carry five events."""
+        d = executive.national_picture("")
+        districts = {w["district_key"] for w in d["early_warnings"]}
+        assert len(districts) == len(d["early_warnings"]), (
+            "a district appears twice in the top five")
+
+    def test_the_multiplier_is_the_worst_of_the_grouped_classes(self):
+        """Grouping must not average away the severity it is reporting."""
+        d = executive.national_picture("")
+        for w in d["early_warnings"]:
+            assert w["surge_multiplier"] > 1.0

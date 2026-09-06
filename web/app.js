@@ -612,8 +612,8 @@ async function loadAlerts() {
     // One fetch, two audiences: the top of the queue on Today, the whole
     // queue on Action queue.
     if (alertsList) {
-      alertsList.innerHTML = cards.slice(0, TODAY_PREVIEW).join('')
-        + moreNote(cards.length, TODAY_PREVIEW, 'shortage');
+      alertsList.innerHTML = cards.slice(0, TODAY_PREVIEW).join('');
+      setMore('alerts-more', cards.length, 'shortage');
     }
     if (full) full.innerHTML = cards.join('');
     setCount('alerts-count', cards.length);
@@ -626,10 +626,16 @@ async function loadAlerts() {
 }
 
 // "Showing 5 of 597" is the difference between a summary and a lie.
-function moreNote(total, shown, noun) {
-  if (total <= shown) return '';
-  return `<button class="more-note" onclick="switchTab('action-view')">
-      Showing ${shown} of ${total.toLocaleString('en-IN')} ${noun}${total === 1 ? '' : 's'}
+//
+// This lives in its own element rather than at the end of the list, because
+// the list scrolls: appended to the cards it would scroll out of sight, and
+// the two columns would show their hand-off at different heights.
+function setMore(id, total, noun) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = total <= TODAY_PREVIEW ? '' : `
+    <button class="more-note" onclick="switchTab('action-view')">
+      Showing ${TODAY_PREVIEW} of ${total.toLocaleString('en-IN')} ${noun}${total === 1 ? '' : 's'}
       &mdash; open the full queue &rarr;
     </button>`;
 }
@@ -726,8 +732,8 @@ async function loadTransfers() {
     const recs = data.recommendations;
     if (transferList) {
       transferList.innerHTML =
-        recs.slice(0, TODAY_PREVIEW).map(r => card(r, false)).join('')
-        + moreNote(recs.length, TODAY_PREVIEW, 'recommended transfer');
+        recs.slice(0, TODAY_PREVIEW).map(r => card(r, false)).join('');
+      setMore('transfers-more', recs.length, 'recommended transfer');
     }
     if (full) full.innerHTML = recs.map(r => card(r, true)).join('');
     setCount('transfers-count', recs.length);
@@ -1400,10 +1406,14 @@ async function loadExecutive() {
       warn.innerHTML = rows.length ? rows.map(w => `
         <div class="alert-card severity-${w.signal_class === 'leading' ? 'critical' : 'warning'}">
           <div class="alert-body">
-            <div class="alert-title">${signalBadge(w.signal_class)} ${w.signal_indicator || w.atc_class}</div>
+            <div class="alert-title">${signalBadge(w.signal_class)} ${w.signal_indicator || w.atc_classes}</div>
             <div class="alert-detail">
-              <strong>${w.signal_means || w.atc_class} is ${w.surge_multiplier}&times; expected</strong>
+              <strong>${w.signal_means || w.atc_classes} is ${w.surge_multiplier}&times; expected</strong>
               in ${w.district_key}, ${w.month}.
+            </div>
+            <div class="alert-detail muted">
+              Affects ${w.class_count} medicine ${w.class_count === 1 ? 'class' : 'classes'}:
+              ${w.atc_classes}
             </div>
           </div>
           <div class="alert-days ${w.signal_class === 'leading' ? 'critical' : 'warning'}">

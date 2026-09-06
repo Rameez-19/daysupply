@@ -191,7 +191,7 @@
 
         <!-- The top of each queue only. The full queues are the Action queue
              view, which is where the work actually happens. -->
-        <div class="dashboard-row">
+        <div class="dashboard-row balanced-row">
           <div class="dashboard-section flex-1">
             <div class="section-head-row">
               <h3>What is failing</h3>
@@ -200,7 +200,8 @@
               </button>
             </div>
             <p class="section-note">Vital first, then by how little cover is left.</p>
-            <div id="alerts-list" class="card-list"></div>
+            <div id="alerts-list" class="card-list preview-list"></div>
+            <div id="alerts-more"></div>
           </div>
           <div class="dashboard-section flex-1">
             <div class="section-head-row">
@@ -210,7 +211,8 @@
               </button>
             </div>
             <p class="section-note">Stock that already exists, moved to where it is short.</p>
-            <div id="transfer-list" class="card-list"></div>
+            <div id="transfer-list" class="card-list preview-list"></div>
+            <div id="transfers-more"></div>
           </div>
         </div>
       </section>
