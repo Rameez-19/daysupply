@@ -271,6 +271,33 @@ showed. Five slots displayed three events and the panel looked broken. The data
 was right and the grouping was wrong; the affected classes are now named on the
 card, and the top five carry five distinct districts.
 
+**Written for the people who actually read it.** The audience is district and
+state health administrators, not analysts, so the landing view went from eight
+stat tiles to five and the copy dropped the schema's vocabulary. "Stock line
+below its reorder point" became "medicine running low"; "district-medicine-class
+positions" became "district medicine stocks"; "facility-items" became
+"medicines"; Personnel became Staff. **No figure changed** — the same numbers
+from the same queries, in the words a district officer would use.
+
+The five tiles answer, worst first: what is completely out (69), what is
+life-saving and running low (126), how many in total (597), how far it has
+spread (102 of 116 districts), and could we take a surge (30.1%). Beds and
+staff moved out of that row and into the sentence cards directly beneath it,
+which sit above the charts so all three resources are visible without
+scrolling. `transfer_only` left the row because it was already the large red
+figure in the verdict bar immediately above it.
+
+**Early warnings name medicines, not codes.** "P01BA, P01BF" became
+"Chloroquine, Primaquine", read from the tracked item names. Where a surging
+class has no tracked item the card falls back to the code rather than inventing
+a name.
+
+**A test was pinning vocabulary rather than substance.**
+`test_resilience_and_transfer_only_are_present` asserted the literal words
+"absorb" and "resupply", so it failed the moment those sentences were rewritten
+for the audience — a test with an opinion about wording it should not have had.
+It now asserts the figures survive, which is what it was for.
+
 **A count that was quietly wrong.** The front end never sent a `limit`, so the
 alerts and recommendations endpoints returned their default 50 rows. The
 Action queue promised "the whole queue" and showed 50 of 597, and Today's

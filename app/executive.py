@@ -75,6 +75,15 @@ def national_picture(state: str = "") -> dict:
               if state else [])
 
     rows = run_query(f"""
+    WITH medicine_names AS (
+      -- "P01BA" is a code from the model. "Chloroquine, Primaquine" is the
+      -- thing a district officer recognises. Unscoped on purpose: a medicine's
+      -- name does not change by state.
+      SELECT atc_class,
+             STRING_AGG(DISTINCT item_name, ', ' ORDER BY item_name) AS names
+      FROM `{D}.reorder_status`
+      GROUP BY atc_class
+    )
     SELECT
       -- 1. Is it holding? Medicines.
       (SELECT AS STRUCT
@@ -175,13 +184,17 @@ def national_picture(state: str = "") -> dict:
       -- wrong. The classes affected are now named on the card instead, which
       -- is the thing that actually differed.
       ARRAY(SELECT AS STRUCT district_key, month, atc_classes, class_count,
-                              surge_multiplier, signal_indicator, signal_class,
-                              signal_means
+                              medicines, surge_multiplier, signal_indicator,
+                              signal_class, signal_means
             FROM (
               SELECT s.district_key, s.month,
                      STRING_AGG(DISTINCT s.atc_class, ', '
                                 ORDER BY s.atc_class) AS atc_classes,
                      COUNT(DISTINCT s.atc_class) AS class_count,
+                     -- NULL where a surging class has no tracked item; the
+                     -- card falls back to the code rather than inventing one.
+                     STRING_AGG(DISTINCT mn.names, ', '
+                                ORDER BY mn.names) AS medicines,
                      MAX(s.surge_multiplier) AS surge_multiplier,
                      l.demand_driver AS signal_indicator,
                      l.signal_class, l.means AS signal_means,
@@ -189,6 +202,7 @@ def national_picture(state: str = "") -> dict:
                                          WHEN 'coincident' THEN 2 ELSE 3 END AS rank_
               FROM `{D}.surge_signals` s
               LEFT JOIN `{D}.signal_labels` l ON l.atc_class = s.atc_class
+              LEFT JOIN medicine_names mn ON mn.atc_class = s.atc_class
               WHERE s.is_surge {'' if not state else 'AND s.state = @state'}
               GROUP BY s.district_key, s.month, l.demand_driver,
                        l.signal_class, l.means
@@ -243,29 +257,33 @@ def _headline(r: dict) -> dict:
     absorb3 = next((a["pct"] for a in (r.get("absorption") or [])
                     if a["multiplier"] == 3.0), None)
 
+    # Written for someone who runs health services, not someone who wrote the
+    # schema. "Stock line below its reorder point" is the model's phrase for
+    # "medicine running low", and only one of those is worth reading twice.
     return {
         "medicines": (
-            f"{short:,} of {tracked:,} stock lines are below their reorder "
-            f"point ({100 * short / tracked:.0f}%), including "
-            f"{med.get('vital_short', 0)} Vital."
-            if tracked else "No medicine lines in scope."),
+            f"{short:,} of the {tracked:,} medicines we track are running low "
+            f"({100 * short / tracked:.0f}%), and {med.get('vital_short', 0)} "
+            "of those are life-saving."
+            if tracked else "No medicines are being tracked here yet."),
         "beds": (
-            f"{beds.get('turned_away', 0):,} patients turned away over the "
-            f"year at {beds.get('over_capacity', 0)} facilities; mean "
-            f"occupancy {100 * (beds.get('mean_occupancy') or 0):.0f}%."
-            if beds.get("facilities") else "No bed data in scope."),
+            f"{beds.get('turned_away', 0):,} patients were turned away over "
+            f"the year at {beds.get('over_capacity', 0)} health centres. Beds "
+            f"are {100 * (beds.get('mean_occupancy') or 0):.0f}% full on "
+            "average."
+            if beds.get("facilities") else "No bed data here yet."),
         "personnel": (
-            f"Mean vacancy {100 * (staff.get('mean_vacancy') or 0):.0f}% "
-            f"across {staff.get('facilities', 0)} facilities; "
-            f"{staff.get('cadres_with_a_gap', 0)} facility-cadres had a day "
-            "with nobody present."
-            if staff.get("facilities") else "No personnel data in scope."),
+            f"{100 * (staff.get('mean_vacancy') or 0):.0f}% of sanctioned "
+            f"posts are unfilled across {staff.get('facilities', 0)} health "
+            f"centres. In {staff.get('cadres_with_a_gap', 0)} cases a role had "
+            "a day with nobody on duty at all."
+            if staff.get("facilities") else "No staffing data here yet."),
         "resilience": (
-            f"Only {absorb3}% of district-medicine-class positions could "
-            "absorb a 3x demand spike from stock already inside the district."
-            if absorb3 is not None else "Absorption not computed for scope."),
+            f"If demand suddenly tripled, only {absorb3}% of district medicine "
+            "stocks could cope using supplies already nearby."
+            if absorb3 is not None else "Not enough data to work this out."),
         "transfer_only": (
-            f"{r.get('transfer_only', 0)} facility-items would run out before "
-            "a resupply order could physically arrive. Those cannot be fixed "
-            "by ordering — only by moving stock that already exists."),
+            f"{r.get('transfer_only', 0)} medicines would run out before a new "
+            "order could physically reach the health centre. Ordering cannot "
+            "fix these — only moving stock that already exists."),
     }

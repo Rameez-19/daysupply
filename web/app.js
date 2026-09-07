@@ -1319,14 +1319,16 @@ function verdictBar(d) {
       <div class="verdict-main">
         <span class="verdict-label">${label}</span>
         <p class="verdict-line">
-          <strong>${pct}%</strong> of tracked stock lines are below their reorder point
-          &mdash; <strong>${vital}</strong> of them Vital, <strong>${out}</strong> already at zero.
-          ${absorb3 ? `Only <strong>${absorb3.pct}%</strong> of district positions could absorb a 3&times; demand spike.` : ''}
+          <strong>${pct}%</strong> of the medicines we track are running low
+          &mdash; <strong>${vital}</strong> of them life-saving, and
+          <strong>${out}</strong> already completely out.
+          ${absorb3 ? `If demand suddenly tripled, only <strong>${absorb3.pct}%</strong> of district medicine stocks could cope.` : ''}
         </p>
       </div>
       <div class="verdict-aside">
         <span class="verdict-figure">${d.transfer_only || 0}</span>
-        <span class="verdict-caption">facility&ndash;items could not be resupplied in time.<br>
+        <span class="verdict-caption">medicines would run out before a new
+          order could reach the health centre.<br>
           Ordering cannot fix these &mdash; only moving stock that already exists.</span>
       </div>
     </div>`;
@@ -1372,21 +1374,21 @@ async function loadExecutive() {
 
     grid.innerHTML =
       postureCard('Medicines', h.medicines, [
-        ['tracked', (m.tracked || 0).toLocaleString()],
-        ['below reorder', (m.below_reorder || 0).toLocaleString()],
-        ['stocked out', (m.stocked_out || 0).toLocaleString()],
-        ['Vital short', (m.vital_short || 0).toLocaleString()],
-      ], medTone, 'On-hand from the ledger; demand from the trained model.')
+        ['tracked', (m.tracked || 0).toLocaleString('en-IN')],
+        ['running low', (m.below_reorder || 0).toLocaleString('en-IN')],
+        ['completely out', (m.stocked_out || 0).toLocaleString('en-IN')],
+        ['life-saving, low', (m.vital_short || 0).toLocaleString('en-IN')],
+      ], medTone, 'Stock counts come from the ledger; expected demand from the trained model.')
       + postureCard('Beds', h.beds, [
-        ['facilities', (b.facilities || 0).toLocaleString()],
-        ['capacity', (b.capacity || 0).toLocaleString()],
-        ['turned away', (b.turned_away || 0).toLocaleString()],
-      ], b.turned_away > 0 ? 'warn' : 'ok', 'Capacity from the IPHS 2022 norm. Occupancy modelled from real HMIS admissions.')
-      + postureCard('Personnel', h.personnel, [
-        ['facilities', (s.facilities || 0).toLocaleString()],
-        ['mean vacancy', `${Math.round(100 * (s.mean_vacancy || 0))}%`],
-        ['cadre gaps', (s.cadres_with_a_gap || 0).toLocaleString()],
-      ], (s.mean_vacancy || 0) > 0.15 ? 'bad' : 'warn', 'Vacancy from Rural Health Statistics 2017. Daily attendance modelled.');
+        ['health centres', (b.facilities || 0).toLocaleString('en-IN')],
+        ['beds', (b.capacity || 0).toLocaleString('en-IN')],
+        ['turned away', (b.turned_away || 0).toLocaleString('en-IN')],
+      ], b.turned_away > 0 ? 'warn' : 'ok', 'Bed numbers are the IPHS 2022 government norm. How full they are is modelled from real HMIS admissions.')
+      + postureCard('Staff', h.personnel, [
+        ['health centres', (s.facilities || 0).toLocaleString('en-IN')],
+        ['posts unfilled', `${Math.round(100 * (s.mean_vacancy || 0))}%`],
+        ['roles with a gap', (s.cadres_with_a_gap || 0).toLocaleString('en-IN')],
+      ], (s.mean_vacancy || 0) > 0.15 ? 'bad' : 'warn', 'Vacancy is from Rural Health Statistics 2017. Day-to-day attendance is modelled.');
 
     if (absorb) {
       const rows = d.absorption || [];
@@ -1412,8 +1414,10 @@ async function loadExecutive() {
               in ${w.district_key}, ${w.month}.
             </div>
             <div class="alert-detail muted">
-              Affects ${w.class_count} medicine ${w.class_count === 1 ? 'class' : 'classes'}:
-              ${w.atc_classes}
+              ${w.medicines
+                ? `Medicines affected: ${w.medicines}`
+                : `Affects ${w.class_count} medicine `
+                  + `${w.class_count === 1 ? 'group' : 'groups'} (${w.atc_classes})`}
             </div>
           </div>
           <div class="alert-days ${w.signal_class === 'leading' ? 'critical' : 'warning'}">
@@ -1464,42 +1468,50 @@ function kpiTile(value, label, note, tone) {
     </div>`;
 }
 
+// Five tiles, not eight, and worst first.
+//
+// The people who read this run health services; they are not analysts, and
+// eight numbers in a row is a wall rather than a summary. So the row answers
+// five questions in the order they get asked — what is gone, what is dangerous,
+// how much in total, how far it has spread, and could we take a shock — and it
+// answers them in the words a district officer would use, not in the words the
+// schema uses. "Below reorder point" is a phrase from the model; "running low"
+// is the thing it means.
+//
+// Beds and staff moved out of this row rather than off the page: they are the
+// cards directly underneath, in sentences. A ninth number would not have been
+// read; a sentence about patients turned away is.
+//
+// `transfer_only` also left the row because it was already the large red figure
+// in the verdict bar immediately above, and saying it twice bought nothing.
 function renderKpis(d) {
   const host = document.getElementById('kpi-row');
   if (!host) return;
-  const m = d.medicines || {}, b = d.beds || {}, s = d.personnel || {};
+  const m = d.medicines || {};
   const n = v => (v || 0).toLocaleString('en-IN');
-  const pct = (a, t) => t ? `${Math.round(100 * a / t)}% of ${n(t)}` : '';
   const absorb3 = (d.absorption || []).find(a => a.multiplier === 3);
 
   host.innerHTML =
-      kpiTile(n(m.below_reorder), 'Stock lines below reorder',
-              pct(m.below_reorder, m.tracked),
-              m.below_reorder > 0 ? 'warn' : 'ok')
-    + kpiTile(n(m.vital_short), 'Vital lines short',
-              'Death or serious harm if unavailable',
-              m.vital_short > 0 ? 'bad' : 'ok')
-    + kpiTile(n(m.stocked_out), 'Already at zero',
-              'Nothing on the shelf today',
+      kpiTile(n(m.stocked_out), 'Completely out of stock',
+              'Nothing on the shelf right now',
               m.stocked_out > 0 ? 'bad' : 'ok')
-    + kpiTile(`${n(m.districts_short)}<span class="kpi-of">/${n(m.districts)}</span>`,
-              'Districts carrying a shortage',
-              'Whether the problem is concentrated or spread',
+    + kpiTile(n(m.vital_short), 'Life-saving medicines running low',
+              'Death or serious harm if these run out',
+              m.vital_short > 0 ? 'bad' : 'ok')
+    + kpiTile(n(m.below_reorder), 'Medicines running low in total',
+              `Out of ${n(m.tracked)} being tracked`,
+              m.below_reorder > 0 ? 'warn' : 'ok')
+    + kpiTile(`${n(m.districts_short)}<span class="kpi-of"> of ${n(m.districts)}</span>`,
+              'Districts affected',
+              'Have at least one medicine running low',
               (m.districts_short || 0) > 0 ? 'warn' : 'ok')
+    // Deliberately the share of district–medicine stocks, not of districts.
+    // Saying "districts" would read better and be false.
     + kpiTile(absorb3 ? `${absorb3.pct}%` : '&mdash;',
-              'Could absorb a 3&times; demand spike',
-              'From stock already inside the district',
-              absorb3 && absorb3.pct < 35 ? 'bad' : 'warn')
-    + kpiTile(n(b.turned_away), 'Patients turned away',
-              `Over the year, at ${n(b.over_capacity)} facilities`,
-              (b.turned_away || 0) > 0 ? 'warn' : 'ok')
-    + kpiTile(`${Math.round(100 * (s.mean_vacancy || 0))}%`,
-              'Mean staff vacancy',
-              `${n(s.cadres_with_a_gap)} facility-cadres had a day with nobody present`,
-              (s.mean_vacancy || 0) > 0.15 ? 'bad' : 'warn')
-    + kpiTile(n(d.transfer_only), 'Cannot be fixed by ordering',
-              'Would run out before resupply could physically arrive',
-              (d.transfer_only || 0) > 0 ? 'bad' : 'ok');
+              'Ready for a sudden surge',
+              'Share of district medicine stocks that could cope if demand '
+              + 'tripled, using supplies already nearby',
+              absorb3 && absorb3.pct < 35 ? 'bad' : 'warn');
 }
 
 // A count of shortages is a number. A timetable is a plan. Emphasis, not a
@@ -1512,7 +1524,7 @@ function renderCoverChart(d) {
   const cap = document.getElementById('cover-caption');
 
   if (!rows.length) {
-    if (cap) cap.innerHTML = 'No stock line in scope has demand history to project.';
+    if (cap) cap.innerHTML = 'No medicine here has enough usage history to project yet.';
     return;
   }
 
@@ -1525,7 +1537,7 @@ function renderCoverChart(d) {
     data: {
       labels: rows.map(r => r.bucket),
       datasets: [{
-        label: 'Stock lines',
+        label: 'Medicines',
         data: rows.map(r => r.n),
         backgroundColor: rows.map(r => r.sort_order <= 2 ? URGENT : CALM),
         borderRadius: 4,
@@ -1539,7 +1551,7 @@ function renderCoverChart(d) {
         legend: { display: false },   // one series; the heading names it
         tooltip: {
           callbacks: {
-            label: c => `${c.parsed.y.toLocaleString('en-IN')} stock lines`
+            label: c => `${c.parsed.y.toLocaleString('en-IN')} medicines`
                         + ` (${Math.round(100 * c.parsed.y / total)}%)`
           }
         }
@@ -1554,10 +1566,10 @@ function renderCoverChart(d) {
   });
 
   if (cap) {
-    cap.innerHTML = `<strong>${urgent.toLocaleString('en-IN')} stock lines run out `
+    cap.innerHTML = `<strong>${urgent.toLocaleString('en-IN')} medicines run out `
       + `within a week</strong> &mdash; ${Math.round(100 * urgent / total)}% of `
-      + `everything tracked. Lines with no demand history to divide by are left `
-      + `out rather than counted as healthy.`;
+      + `everything we track. Medicines with no usage history yet are left out `
+      + `rather than counted as healthy.`;
   }
 }
 
@@ -1571,7 +1583,7 @@ function renderDistrictChart(d) {
   const cap = document.getElementById('district-caption');
 
   if (!rows.length) {
-    if (cap) cap.innerHTML = 'No district in scope has stock below its reorder point.';
+    if (cap) cap.innerHTML = 'No district here has a medicine running low.';
     return;
   }
 
@@ -1581,9 +1593,9 @@ function renderDistrictChart(d) {
     data: {
       labels: rows.map(r => r.district),
       datasets: [
-        { label: 'Vital', data: rows.map(r => r.vital_short),
+        { label: 'Life-saving', data: rows.map(r => r.vital_short),
           backgroundColor: VITAL, borderRadius: 3, maxBarThickness: 22 },
-        { label: 'Essential or Desirable',
+        { label: 'Other medicines',
           data: rows.map(r => Math.max(0, (r.short || 0) - (r.vital_short || 0))),
           backgroundColor: OTHER, borderRadius: 3, maxBarThickness: 22 }
       ]
@@ -1600,7 +1612,8 @@ function renderDistrictChart(d) {
           callbacks: {
             afterBody: items => {
               const r = rows[items[0].dataIndex];
-              return r.stocked_out ? `${r.stocked_out} already at zero` : '';
+              return r.stocked_out
+                ? `${r.stocked_out} completely out of stock` : '';
             }
           }
         }
@@ -1616,9 +1629,10 @@ function renderDistrictChart(d) {
 
   const worst = rows[0];
   if (cap) {
-    cap.innerHTML = `<strong>${worst.district}</strong> carries the most, with `
-      + `${worst.vital_short} Vital ${worst.vital_short === 1 ? 'line' : 'lines'} short`
-      + `${worst.stocked_out ? ` and ${worst.stocked_out} already at zero` : ''}.`;
+    cap.innerHTML = `<strong>${worst.district}</strong> needs attention first: `
+      + `${worst.vital_short} life-saving `
+      + `${worst.vital_short === 1 ? 'medicine' : 'medicines'} running low`
+      + `${worst.stocked_out ? `, and ${worst.stocked_out} already completely out` : ''}.`;
   }
 }
 
@@ -1629,19 +1643,19 @@ function renderVen(d) {
   if (!host) return;
   const rows = d.ven_breakdown || [];
   if (!rows.length) {
-    host.innerHTML = panelEmpty('No stock lines in scope.');
+    host.innerHTML = panelEmpty('No medicines are being tracked here yet.');
     return;
   }
   const why = {
-    Vital: 'Death or serious harm if unavailable',
-    Essential: 'Significant harm if unavailable',
-    Desirable: 'Useful, but not harm-critical'
+    Vital: 'Life-saving &mdash; death or serious harm if these run out',
+    Essential: 'Significant harm if these run out',
+    Desirable: 'Useful, but not life-threatening if short'
   };
   host.innerHTML = rows.map(r => `
     <div class="ven-row">
       <div class="ven-head">
         <span class="ven-name">${r.ven_class}</span>
-        <span class="ven-figure"><strong>${r.short}</strong> of ${r.tracked} short</span>
+        <span class="ven-figure"><strong>${r.short}</strong> of ${r.tracked} running low</span>
       </div>
       <div class="ven-track">
         <div class="ven-fill ${r.ven_class === 'Vital' ? 'vital' : ''}"

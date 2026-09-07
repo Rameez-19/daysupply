@@ -138,14 +138,20 @@
              names all three. -->
         <div id="kpi-row" class="kpi-row"></div>
 
+        <!-- All three resources the brief names, in sentences rather than in
+             more tiles. Kept high on the page so beds and staff are visible
+             without scrolling, now that the tiles are medicines-led. -->
+        <h3 class="section-heading">Medicines, beds and staff</h3>
+        <div id="posture-grid" class="posture-grid"></div>
+
         <!-- ── The numbers, as shape. -->
         <div class="dashboard-row">
           <div class="dashboard-section flex-1">
             <h3>When does it run out?</h3>
             <p class="section-note">
-              Every tracked stock line placed by how long its cover lasts at
-              current demand. A count of shortages is a number; this is a
-              timetable.
+              Every medicine we track, grouped by how many days of supply is
+              left at the current rate of use. A count of shortages is a
+              number; this is a timetable.
             </p>
             <div class="chart-box"><canvas id="cover-chart"></canvas></div>
             <div id="cover-caption" class="chart-caption"></div>
@@ -153,8 +159,8 @@
           <div class="dashboard-section flex-1">
             <h3>Where the risk sits</h3>
             <p class="section-note">
-              The ten districts carrying the most shortage, split by whether the
-              medicine is Vital.
+              The ten districts with the most medicines running low. Red is
+              life-saving medicines.
             </p>
             <div class="chart-box"><canvas id="district-chart"></canvas></div>
             <div id="district-caption" class="chart-caption"></div>
@@ -165,32 +171,30 @@
           <div class="dashboard-section flex-1">
             <h3>Could we absorb a shock?</h3>
             <p class="section-note">
-              Share of district&ndash;medicine positions that could meet a demand
-              spike from stock already inside the district, before outside
-              resupply could land.
+              If demand suddenly rose, how much of a district&rsquo;s medicine
+              stock could cope using supplies already nearby &mdash; before any
+              new order could physically arrive.
             </p>
             <div id="absorption-panel"></div>
           </div>
           <div class="dashboard-section flex-1">
-            <h3>What is short, by criticality</h3>
+            <h3>How serious are the shortages?</h3>
             <p class="section-note">
-              A fifth of Desirable lines short is a different problem from a
-              fifth of Vital lines short.
+              Running out of a life-saving medicine matters more than running
+              out of an optional one. These are India&rsquo;s official VEN
+              categories.
             </p>
             <div id="ven-panel"></div>
           </div>
         </div>
 
-        <!-- ── Then the words, for the reader who wants to know why. -->
-        <h3 class="section-heading">What the numbers mean</h3>
-        <div id="posture-grid" class="posture-grid"></div>
-
         <!-- What is coming? -->
         <h3 class="section-heading">What is coming</h3>
         <p class="section-note">
-          Labelled, because an early warning and a planned campaign need
-          different responses. We do not predict outbreaks &mdash; we detect one
-          has begun, earlier than a 3-sigma rule can.
+          Each one is labelled, because an outbreak and a planned campaign
+          need different responses. We do not predict outbreaks &mdash; we
+          detect that one has already begun, earlier than the standard
+          3-sigma alarm can.
         </p>
         <div id="early-warnings" class="card-list"></div>
 
@@ -204,7 +208,7 @@
                 View all &rarr;
               </button>
             </div>
-            <p class="section-note">Vital first, then by how little cover is left.</p>
+            <p class="section-note">Life-saving medicines first, then whatever has the fewest days left.</p>
             <div id="alerts-list" class="card-list preview-list"></div>
             <div id="alerts-more"></div>
           </div>

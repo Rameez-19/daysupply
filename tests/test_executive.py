@@ -55,10 +55,30 @@ class TestItAnswersTheQuestionsInOrder:
 
     def test_resilience_and_transfer_only_are_present(self):
         """The one-step-ahead figures are the differentiator; if they silently
-        vanish the page loses the thing nothing else does."""
-        h = executive.national_picture("")["headline"]
-        assert "absorb" in h["resilience"]
-        assert "resupply" in h["transfer_only"]
+        vanish the page loses the thing nothing else does.
+
+        This asserts the FIGURES survive, not the wording. It used to require
+        the literal words "absorb" and "resupply", which made it fail the
+        moment those sentences were rewritten in plain English for the
+        non-specialist audience who actually reads them — a test failing on a
+        vocabulary change it should not have had an opinion about.
+        """
+        d = executive.national_picture("")
+        h = d["headline"]
+
+        absorb3 = next((a["pct"] for a in d["absorption"]
+                        if a["multiplier"] == 3.0), None)
+        assert absorb3 is not None, "the 3x absorption figure is gone entirely"
+        assert str(absorb3) in h["resilience"], (
+            f"the resilience sentence no longer reports {absorb3}%: "
+            f"{h['resilience']!r}")
+
+        assert str(d["transfer_only"]) in h["transfer_only"], (
+            f"the transfer-only sentence no longer reports "
+            f"{d['transfer_only']}: {h['transfer_only']!r}")
+        assert "moving stock" in h["transfer_only"], (
+            "the sentence must still say these are fixed by moving stock, not "
+            "by ordering — that distinction is the whole point of the figure")
 
     def test_early_warnings_lead_with_a_real_warning_not_a_campaign(self):
         """A planned deworming campaign must never head the list."""
