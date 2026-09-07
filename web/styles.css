@@ -726,3 +726,21 @@ button { font-family: inherit; cursor: pointer; }
 @media (max-width: 900px) {
   .balanced-row .preview-list { max-height: none; overflow-y: visible; }
 }
+
+/* The build the browser is running. Quiet until it disagrees with the server,
+   at which point it is the most important thing in the sidebar. */
+.build-stamp {
+  margin-top: 8px;
+  font-size: 10.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--gray-400, #94a3b8);
+  letter-spacing: 0.02em;
+}
+.build-stamp.stale {
+  color: #b91c1c;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}

@@ -62,6 +62,11 @@
           <span class="sync-dot online"></span>
           <span class="sync-label">Online</span>
         </div>
+        <!-- Stamped by the server with the hash of the front end it served,
+             so the build the BROWSER is running is visible rather than
+             guessed at. app.js compares it with /api/v1/build. -->
+        <div class="build-stamp" id="build-stamp"
+             title="The front-end build this browser is running">__BUILD__</div>
       </div>
     </aside>
 

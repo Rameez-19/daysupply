@@ -1,14 +1,19 @@
 """StockPulse — FastAPI backend."""
 
 import asyncio
+import functools
+import hashlib
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException, UploadFile, Form
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 # ---------------------------------------------------------------------------
@@ -792,6 +797,63 @@ async def get_stock_health(state: str = "Telangana", district: str = "",
 # than left showing invented numbers. Block C adds `expiry_date` to
 # `stock_events` for FEFO redistribution, at which point it can return backed
 # by real batch data.
+
+
+# ── The app shell, versioned ────────────────────────────────────────
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+
+
+@functools.lru_cache(maxsize=1)
+def build_id() -> str:
+    """A short hash of everything the browser executes.
+
+    Changes whenever any front-end file changes, and only then.
+    """
+    h = hashlib.sha256()
+    for name in sorted(p.name for p in WEB_DIR.iterdir()
+                       if p.suffix in (".js", ".css", ".html")):
+        h.update(name.encode())
+        h.update((WEB_DIR / name).read_bytes())
+    return h.hexdigest()[:8]
+
+
+@functools.lru_cache(maxsize=1)
+def _versioned_index() -> str:
+    """`index.html` with a build stamp on every local script and stylesheet.
+
+    **Cache-Control was necessary and not sufficient.** It fixed the HTTP
+    cache, but a URL is the only thing every cache layer agrees on. A stale
+    service worker, a corporate proxy, or a browser that has decided it knows
+    better can all still hand back yesterday's `styles.css` for the URL
+    `styles.css`. None of them can do it for `styles.css?v=3f9c1a20`, because
+    that is a URL they have never seen.
+
+    This is the belt to Cache-Control's braces, and it is the reason a deploy
+    can now be trusted to have actually deployed. The stamp is also rendered in
+    the sidebar, so "which build are you on" is a question with an answer
+    instead of a guess.
+
+    External CDN URLs are untouched: the pattern cannot match a `//`.
+    """
+    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    html = html.replace("__BUILD__", build_id())
+    return re.sub(r'(src|href)="([\w./-]+\.(?:js|css))"',
+                  rf'\1="\2?v={build_id()}"', html)
+
+
+@app.get("/", response_class=HTMLResponse)
+@app.get("/index.html", response_class=HTMLResponse)
+async def app_shell():
+    """Serve the shell ourselves so the asset URLs can carry the build id."""
+    return HTMLResponse(_versioned_index(),
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/v1/build")
+async def build_info():
+    """What the server is serving. If this disagrees with the stamp in the
+    page footer, the browser is running something old."""
+    return {"build": build_id()}
 
 
 # ── Static files (must be last) ─────────────────────────────────────

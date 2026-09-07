@@ -1650,3 +1650,52 @@ function renderVen(d) {
       <div class="ven-note">${r.pct}% &middot; ${why[r.ven_class] || ''}</div>
     </div>`).join('');
 }
+
+// ===== Am I running the build the server is serving? =====
+//
+// Twice now a deploy reached the browser only partly — new HTML with an old
+// stylesheet — and the page looked broken in a way no error surfaced. The
+// asset URLs now carry a build stamp, which should make that impossible, but
+// "should be impossible" is what was believed the first two times.
+//
+// So the page checks. The stamp in the footer is written by the server into
+// the HTML this browser actually loaded; /api/v1/build reports what the server
+// is serving now. If they differ, the browser is running something stale and
+// says so, with a button, instead of leaving the reader to wonder why the
+// layout is wrong.
+async function checkBuild() {
+  const el = document.getElementById('build-stamp');
+  if (!el) return;
+  const mine = (el.textContent || '').trim();
+  try {
+    const res = await fetch('/api/v1/build', { cache: 'no-store' });
+    if (!res.ok) return;
+    const { build } = await res.json();
+    if (!build || !mine || build === mine) return;
+    el.classList.add('stale');
+    el.innerHTML = `${mine} &rarr; ${build}
+      <button class="link-button" onclick="hardReload()">Update</button>`;
+  } catch (e) {
+    // Offline is a normal state here, not a failure worth reporting.
+  }
+}
+
+// Drop every cache this origin owns and reload. A plain reload can be served
+// by the very service worker that is holding the stale copy.
+async function hardReload() {
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    if (navigator.serviceWorker) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) {
+    console.warn('Could not clear caches; reloading anyway', e);
+  }
+  location.reload();
+}
+
+checkBuild();

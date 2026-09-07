@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stockpulse-v26';
+const CACHE_NAME = 'stockpulse-v27';
 const ASSETS = [
   '/',
   '/index.html',
@@ -43,6 +43,11 @@ self.addEventListener('fetch', event => {
       const clone = response.clone();
       caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
       return response;
-    }).catch(() => caches.match(event.request))
+    }).catch(() =>
+      // Assets now carry a ?v=<build> stamp. Without ignoreSearch the cached
+      // copy of '/app.js' would never match a request for '/app.js?v=abc123',
+      // so going offline would serve nothing at all — losing the one property
+      // this product cannot afford to lose.
+      caches.match(event.request, { ignoreSearch: true }))
   );
 });
