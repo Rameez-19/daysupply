@@ -191,7 +191,7 @@ function updateSubtitle() {
   // States what the page is, then what it is scoped to. The old version
   // replaced the whole line with "<scope> Network — Real-time overview", which
   // told a first-time reader the state and nothing about the product.
-  el.innerHTML = 'Medicines, beds and personnel across India&rsquo;s primary '
+  el.innerHTML = 'Medicines, beds and staff across India&rsquo;s primary '
     + `health network &mdash; <strong>${scope}</strong>`;
 }
 
