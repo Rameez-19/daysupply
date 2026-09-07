@@ -1368,6 +1368,7 @@ async function loadExecutive() {
     if (verdict) verdict.innerHTML = verdictBar(d);
 
     renderKpis(d);
+    renderNextSteps(d);
     renderCoverChart(d);
     renderDistrictChart(d);
     renderVen(d);
@@ -1392,15 +1393,28 @@ async function loadExecutive() {
 
     if (absorb) {
       const rows = d.absorption || [];
+      const said = {
+        2: 'If demand doubled',
+        3: 'If demand tripled',
+        5: 'If demand went five times higher'
+      };
+      const three = rows.find(a => a.multiplier === 3);
       absorb.innerHTML = rows.length ? `
         ${rows.map(a => `
           <div class="absorb-row">
-            <span class="absorb-label">${a.multiplier}&times; demand</span>
+            <span class="absorb-label">${said[a.multiplier] || `If demand rose ${a.multiplier} times`}</span>
             <div class="absorb-bar"><div class="absorb-fill ${a.pct < 35 ? 'bad' : a.pct < 70 ? 'warn' : 'ok'}" style="width:${a.pct}%"></div></div>
-            <span class="absorb-pct">${a.pct}% hold</span>
+            <span class="absorb-pct">${a.pct}% could cope</span>
           </div>`).join('')}
+        ${three ? `<p class="panel-verdict ${three.pct < 35 ? 'bad' : three.pct < 70 ? 'warn' : 'ok'}">
+          ${three.pct < 35
+            ? `This is low. Most district medicine stocks could not cope if demand tripled.`
+            : three.pct < 70
+              ? `This is mixed. Many district medicine stocks could not cope if demand tripled.`
+              : `This is healthy. Most district medicine stocks could cope if demand tripled.`}
+        </p>` : ''}
         <p class="section-note">${h.transfer_only || ''}</p>`
-        : panelEmpty('Absorption not computed for this scope.');
+        : panelEmpty('Not enough data here to work this out.');
     }
 
     if (warn) {
@@ -1713,3 +1727,77 @@ async function hardReload() {
 }
 
 checkBuild();
+
+// ===== What should we do first? =====
+//
+// The page described the situation in a dozen ways and never once said what to
+// do about it. For someone who runs health services rather than analyses them,
+// that is the section that matters: three numbered steps, in order, each one
+// something a person can actually go and do this morning.
+//
+// Every figure here is already in the executive response, so this costs no
+// extra round trip. Nothing here is advice we invented — step one is the
+// transfer engine's own queue, step two is the lead-time finding, step three is
+// the district ranking. The page is just saying them as instructions instead of
+// as statistics.
+function stepCard(n, title, body, action) {
+  return `
+    <div class="step">
+      <div class="step-number">${n}</div>
+      <div class="step-body">
+        <div class="step-title">${title}</div>
+        <p class="step-text">${body}</p>
+        ${action || ''}
+      </div>
+    </div>`;
+}
+
+function renderNextSteps(d) {
+  const host = document.getElementById('next-steps');
+  if (!host) return;
+
+  const q = d.action_queue || {};
+  const worst = (d.worst_districts || [])[0];
+  const n = v => (v || 0).toLocaleString('en-IN');
+  const steps = [];
+
+  if ((q.recommended || 0) > 0) {
+    steps.push(stepCard(steps.length + 1,
+      'Approve the transfers that are already worked out',
+      `<strong>${n(q.recommended)} transfers</strong> would move `
+      + `<strong>${n(q.units)} units</strong> of medicine from places that have `
+      + `spare stock to places that have run short &mdash; ${n(q.vital)} of them `
+      + `life-saving. Nothing has to be bought, and the stock already exists.`,
+      `<button class="btn btn-primary" onclick="switchTab('action-view')">
+         Open the queue</button>`));
+  }
+
+  if ((d.transfer_only || 0) > 0) {
+    steps.push(stepCard(steps.length + 1,
+      `${n(d.transfer_only)} of them cannot wait for an order`,
+      `These would run out <strong>before a delivery could physically reach the `
+      + `health centre</strong>. Placing an order will not save them. Moving `
+      + `stock that already exists is the only thing that works, which is why `
+      + `they are at the top of the queue.`));
+  }
+
+  if (worst) {
+    steps.push(stepCard(steps.length + 1,
+      `Start with ${worst.district}, ${worst.state}`,
+      `<strong>${worst.vital_short} life-saving `
+      + `${worst.vital_short === 1 ? 'medicine is' : 'medicines are'} running low</strong>`
+      + `${worst.stocked_out
+          ? ` and ${worst.stocked_out} ${worst.stocked_out === 1 ? 'is' : 'are'} `
+            + `completely out`
+          : ''}`
+      + ` &mdash; more than any other district. The map shows which neighbours `
+      + `are close enough to help.`,
+      `<button class="btn btn-secondary" onclick="switchTab('map-view')">
+         See it on the map</button>`));
+  }
+
+  host.innerHTML = steps.length
+    ? steps.join('')
+    : panelEmpty('Nothing needs a decision right now. No medicine in this area '
+                 + 'is below the level where it should be reordered.');
+}

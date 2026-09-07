@@ -298,6 +298,29 @@ a name.
 for the audience — a test with an opinion about wording it should not have had.
 It now asserts the figures survive, which is what it was for.
 
+**The page now says what to do, not only what is true.** It described the
+situation a dozen ways and never once gave an instruction, which is the section
+a person who runs services actually needs. "What should we do first?" gives
+three numbered steps, all from figures already in the same round trip: approve
+the **527** worked-out transfers (**64,218** units, **116** life-saving);
+**145** of those cannot wait for an order because they would run out before a
+delivery could physically arrive; start with **Cachar, Assam** (5 life-saving
+running low, 14 completely out — the worst district). Nothing there is advice
+we invented: step one is the transfer engine's own queue, step two is the
+lead-time finding, step three is the district ranking. The page states them as
+instructions instead of as statistics.
+
+**Numbers a non-specialist cannot grade now carry the grade.** "3x demand —
+30.1% hold" tells an analyst a great deal and a district officer nothing, since
+nothing on the page said whether 30% was good. The rows read "If demand
+tripled — 30.1% could cope", and the panel closes with "This is low. Most
+district medicine stocks could not cope if demand tripled." The threshold is
+the same 35% used everywhere else, so the wording cannot disagree with the bar.
+
+**Section headings are the questions being asked**: "What should we do first?",
+"How are medicines, beds and staff holding up?", "What is coming next?" — so
+the page is navigated by question rather than by chart type.
+
 **A count that was quietly wrong.** The front end never sent a `limit`, so the
 alerts and recommendations endpoints returned their default 50 rows. The
 Action queue promised "the whole queue" and showed 50 of 597, and Today's

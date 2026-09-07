@@ -744,3 +744,86 @@ button { font-family: inherit; cursor: pointer; }
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ===== "What should we do first?" =====
+   Numbered, in order, and visually distinct from every panel that merely
+   reports a number. A reader in a hurry should be able to stop here. */
+.next-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.step {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 12px);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.04));
+}
+
+.step-number {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #1e3a8a;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.step-body { flex: 1 1 auto; min-width: 0; }
+
+.step-title {
+  font-weight: 700;
+  font-size: 14.5px;
+  color: var(--text, #1e293b);
+  margin-bottom: 4px;
+}
+
+.step-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--gray-600, #475569);
+  margin: 0 0 10px;
+}
+.step .btn { width: auto; padding: 7px 14px; font-size: 12.5px; }
+.step:last-child .step-text:last-child { margin-bottom: 0; }
+
+/* A number a non-specialist cannot grade — is 30% good? — needs the answer
+   written next to it, not left as an exercise. */
+.panel-verdict {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm, 8px);
+  line-height: 1.45;
+}
+.panel-verdict.ok   { background: #ecfdf5; color: #166534; }
+.panel-verdict.warn { background: #fff7ed; color: #9a3412; }
+.panel-verdict.bad  { background: #fef2f2; color: #991b1b; }
+
+@media (max-width: 640px) {
+  .step { flex-direction: column; gap: 8px; }
+}
+
+/* A quieter companion to .btn-primary, for a secondary action sitting beside
+   it. Added because the map step referenced a class that did not exist, which
+   renders as an unstyled browser button. */
+.btn-secondary {
+  background: var(--gray-100, #f1f5f9);
+  color: var(--brand-700, #1e3a8a);
+  border: 1px solid var(--border, #e2e8f0);
+  cursor: pointer;
+}
+.btn-secondary:hover { background: var(--gray-200, #e2e8f0); }

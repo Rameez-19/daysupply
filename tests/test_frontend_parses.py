@@ -237,3 +237,24 @@ class TestNoSelfReferentialGlobalWrapper:
             "overwrites the global binding and recurses until the stack "
             f"overflows: {sorted(set(bad))}. A top-level function declaration "
             "is already on window — delete the assignment.")
+
+
+class TestButtonClassesExist:
+    """A button whose class is not in the stylesheet renders as a raw browser
+    button in the middle of a designed page.
+
+    Caught when the "See it on the map" step referenced `.btn-secondary`, which
+    had never been written. Nothing errors — it just looks broken.
+    """
+
+    def test_every_btn_class_used_is_defined(self):
+        import re
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        js = "".join((WEB / f).read_text(encoding="utf-8")
+                     for f in ("app.js", "surge.js", "map.js"))
+        css = (WEB / "styles.css").read_text(encoding="utf-8")
+
+        used = set(re.findall(r'class="[^"]*\b(btn-[\w-]+)', html + js))
+        undefined = sorted(c for c in used if f".{c}" not in css)
+        assert not undefined, (
+            f"these button classes are used but never styled: {undefined}")
