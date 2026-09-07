@@ -44,7 +44,7 @@ from app import quality
 from app import resources
 from app import surge
 from app import transfers
-from app import executive, mapview
+from app import executive, mapview, today_v2
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
 from app.capture import handle_capture, handle_chat
@@ -197,6 +197,20 @@ async def executive_summary(state: str = ""):
     Defaults to All India, because the question this answers is national.
     """
     return _facility_query(executive.national_picture, state)
+
+
+@app.get("/api/v1/today2")
+async def today_v2_scorecard(state: str = "", district: str = "",
+                             vital_only: bool = False):
+    """Today v2 — the supply chain graded as a scorecard.
+
+    Availability, failure, forward risk, equity, resilience: the five questions
+    public-health logistics actually uses, in that order, as rates rather than
+    counts so scopes of different sizes can be compared honestly.
+
+    One round trip, like the other two composite views.
+    """
+    return _facility_query(today_v2.scorecard, state, district, vital_only)
 
 
 @app.get("/api/v1/map")

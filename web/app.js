@@ -29,15 +29,34 @@ function switchTab(tabId) {
   const bot = document.querySelector(`.bottom-nav-item[data-tab="${tabId}"]`);
   if (bot) bot.classList.add('active');
 
+  // The address bar follows the view, so a link can point at one. "Look at the
+  // map" was previously a sentence with no URL behind it.
+  if (window.location && window.location.hash !== `#${tabId}`) {
+    history.replaceState(null, '', `#${tabId}`);
+  }
+
   // One dispatcher, shared with init and every filter change. Keeping a
   // second list here is exactly how init drifted out of step with the layout
   // and spent a release calling a loader for an element that no longer
   // existed.
   refreshAll();
 }
+
+// Open on the view the URL names, when it names a real one. Anything else
+// falls through to the default, so a stale or hand-edited link cannot land the
+// reader on a blank page.
+function viewFromHash() {
+  const id = (window.location.hash || '').replace(/^#/, '');
+  const el = id && document.getElementById(id);
+  return el && el.classList.contains('view') ? id : '';
+}
 sidebarItems.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 bottomItems.forEach(btn  => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 window.switchTab = switchTab;
+window.addEventListener('hashchange', () => {
+  const wanted = viewFromHash();
+  if (wanted && wanted !== activeViewId()) switchTab(wanted);
+});
 // Reachable from the inline onclick in panelError().
 
 // ===== Online / Offline =====
@@ -239,6 +258,9 @@ function refreshAll() {
   } else if (view === 'plan-view') {
     loadChart(currentChartDays);
     if (typeof loadSurge === 'function') loadSurge();
+  } else if (view === 'today2-view') {
+    // Self-contained: its own filters and its own fetch, so v1 is untouched.
+    if (typeof initToday2 === 'function') initToday2();
   } else if (view === 'action-view') {
     // Same two loaders as Today; they render the preview and the full queue
     // from one fetch each, so opening the queue costs nothing extra.
@@ -824,7 +846,8 @@ function showCaptureResult(data) {
   // One dispatcher, shared with switchTab and every filter change. This used
   // to name five loaders directly — the old single-dashboard list — which is
   // how it ended up calling a function that wrote into a deleted element.
-  refreshAll();
+  const wanted = viewFromHash();
+  if (wanted) switchTab(wanted); else refreshAll();
 })();
 
 // ===== Analytics Charts =====

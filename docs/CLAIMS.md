@@ -327,6 +327,68 @@ Action queue promised "the whole queue" and showed 50 of 597, and Today's
 hand-off read "Showing 5 of 50". It now requests more rows than exist, so the
 returned count is the true total and the hand-off states it.
 
+## 7c. Today v2 — the supply chain as a scorecard
+
+*Last verified against the live deployment: **2026-09-07**.*
+
+Served by `/api/v1/today2` (`app/today_v2.py`), drawn by `web/today2.js`. One
+BigQuery round trip, 0.158 GB on a dry run. **v1 is untouched** and both pages
+run side by side until v2 replaces it.
+
+Public-health logistics grades a supply chain on five questions, in this order,
+and v2 follows that shape rather than v1's accreted list of findings.
+
+| # | Question | Figure | Grade |
+|---|---|---|---|
+| 1 | **Availability** — what share is actually there? | **78.6%** (2,197 of 2,794) | warn |
+| 2 | **Criticality** — is the gap in the things that kill? | **77.7%** life-saving available (440 of 566) | bad |
+| 3 | **Failure** — what has already gone? | **2.5%** completely out (69) | warn |
+| 4 | **Forward risk** — what goes next? | **10.2%** gone within a week (285) | warn |
+| 5 | **Equity** — concentrated or systemic? | **87.9%** of districts affected (102 of 116) | bad |
+| — | **Resilience** | **30.1%** could absorb a 3x surge | bad |
+
+**Rates, not counts.** 597 short means nothing until you know whether it is out
+of 600 or 6,000, and a district with more facilities always looks worse. Every
+headline is a rate with its count beside it, so Telangana and Assam read on the
+same scale.
+
+**A finding v1 never surfaced: life-saving availability (77.7%) is WORSE than
+overall availability (78.6%).** Vital medicines should be the last thing to run
+short, not the same as everything else. The page says so in those words, and
+the comparison is computed rather than asserted, so it will flip on its own if
+the network improves.
+
+**Four visuals, four questions, four forms.** *When* — time to stock-out (69
+already out / 216 within a week / 363 / 1,246 / 900). *What* — medicines by
+name, ranked by how many health centres are short (Vitamin A in 49 centres
+across 40 districts; 2 of the top ten are life-saving). *Where* — every district
+plotted by share running low against ability to absorb a tripling. *How robust*
+— absorption at 2x, 3x, 5x.
+
+**The quadrant is the one that earns its place hardest.** Shortage and
+resilience are normally read separately, and separately they mislead: a district
+can be short but able to cover itself from stock next door, or comfortable today
+and unable to survive any surge. Plotted together, **16 districts fall in the
+danger corner** — badly short *and* unable to cover themselves. The worst is
+**Lakhimpur, Assam: 91.7% of its medicines running low, 0% able to cope with a
+tripling of demand.** No ranked list on v1 puts that district in front of
+anyone.
+
+**Districts with fewer than 8 tracked medicines are excluded from the
+quadrant** (`MIN_LINES_FOR_RATE`). A district with three lines reads 100% short
+on one bad line, and a rate with no floor under its denominator shows noise as
+crisis. 110 of 116 districts qualify.
+
+**The three views must agree.** `test_today_v2.py` asserts that tracked, short,
+stocked-out and vital-short match `/api/v1/executive` exactly, that absorption
+matches it multiplier for multiplier, and that the 3x shock and the 35%
+fragility threshold are the same constants the map uses. Three pages showing
+the same figures differently is a credibility risk, not a feature, unless they
+provably agree.
+
+**Beds and staff are not graded here yet** and the page says so rather than
+showing medicine numbers under a "Beds" heading.
+
 ## 7a. The map — geography of supply
 
 *Last verified against the live deployment: **2026-09-04**.*

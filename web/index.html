@@ -34,6 +34,10 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Today</span>
           <span class="nav-badge danger" id="alert-badge"></span>
         </button>
+        <button class="nav-item" data-tab="today2-view">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg><span>Today v2</span>
+          <span class="nav-badge new">new</span>
+        </button>
         <button class="nav-item" data-tab="network-view">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Network</span>
         </button>
@@ -233,6 +237,111 @@
       </section>
 
       <!-- Network -->
+      <section id="today2-view" class="view hidden-view">
+        <div class="view-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h2>How is the network doing?</h2>
+            <p class="view-subtitle" id="v2-subtitle">
+              Medicine supply graded the way public health grades it &mdash;
+              availability first, then what has failed, what fails next, how
+              widely, and whether it could take a shock
+            </p>
+          </div>
+          <div class="last-synced" id="v2-synced">Loading&hellip;</div>
+        </div>
+
+        <!-- Filters. A segmented control for the two choices with few options,
+             because it shows every option at once and takes one click; the
+             cascading geography stays a dropdown because 37 states cannot be
+             segments. -->
+        <div class="v2-filters">
+          <div class="v2-filter-row">
+            <div class="filter-group">
+              <label class="filter-label">View</label>
+              <div class="segmented" role="group" aria-label="Resource">
+                <button class="segment active" id="v2-res-med"
+                        onclick="v2SetResource('medicine')">Medicines</button>
+                <button class="segment" id="v2-res-bed"
+                        onclick="v2SetResource('bed')">Beds</button>
+                <button class="segment" id="v2-res-staff"
+                        onclick="v2SetResource('personnel')">Staff</button>
+              </div>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">State</label>
+              <select id="v2-state" onchange="v2OnState()">
+                <option value="">All India</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">District</label>
+              <select id="v2-district" onchange="v2OnDistrict()">
+                <option value="">All districts</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Show</label>
+              <div class="segmented" role="group" aria-label="Criticality">
+                <button class="segment active" id="v2-all"
+                        onclick="v2SetVital(false)">All medicines</button>
+                <button class="segment" id="v2-vital"
+                        onclick="v2SetVital(true)">Life-saving only</button>
+              </div>
+            </div>
+          </div>
+          <!-- What the numbers below are actually counting. Without this a
+               reader cannot tell whether a filter did anything. -->
+          <div class="v2-scope" id="v2-scope"></div>
+        </div>
+
+        <div id="v2-kpis" class="v2-kpi-row"></div>
+
+        <div class="dashboard-row">
+          <div class="dashboard-section flex-1">
+            <h3>When will it run out?</h3>
+            <p class="section-note">
+              Every medicine we track, grouped by how many days of supply is
+              left at the current rate of use.
+            </p>
+            <div class="chart-box"><canvas id="v2-timeline"></canvas></div>
+            <div id="v2-timeline-note" class="chart-caption"></div>
+          </div>
+          <div class="dashboard-section flex-1">
+            <h3>Which medicines are short in the most places?</h3>
+            <p class="section-note">
+              Counted by how many health centres are short of each one. Red is
+              life-saving.
+            </p>
+            <div class="chart-box"><canvas id="v2-medicines"></canvas></div>
+            <div id="v2-medicines-note" class="chart-caption"></div>
+          </div>
+        </div>
+
+        <div class="dashboard-row">
+          <div class="dashboard-section flex-1">
+            <h3>Which districts need help first?</h3>
+            <p class="section-note">
+              Every district placed by how much is running low (across) against
+              how much it could cope with if demand tripled (up). The bottom
+              right is the worst place to be: badly short, and unable to help
+              itself.
+            </p>
+            <div class="chart-box"><canvas id="v2-quadrant"></canvas></div>
+            <div id="v2-quadrant-note" class="chart-caption"></div>
+          </div>
+          <div class="dashboard-section flex-1">
+            <h3>Could the network take a shock?</h3>
+            <p class="section-note">
+              How much of each district&rsquo;s medicine stock could meet a
+              sudden jump in demand using supplies already nearby, before any
+              new order could arrive.
+            </p>
+            <div class="chart-box"><canvas id="v2-shock"></canvas></div>
+            <div id="v2-shock-note" class="chart-caption"></div>
+          </div>
+        </div>
+      </section>
+
       <section id="network-view" class="view hidden-view">
         <div class="view-header">
           <h2>Network</h2>
@@ -552,6 +661,7 @@
   <script src="app.js"></script>
   <script src="surge.js"></script>
   <script src="map.js"></script>
+  <script src="today2.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(reg => {

@@ -827,3 +827,104 @@ button { font-family: inherit; cursor: pointer; }
   cursor: pointer;
 }
 .btn-secondary:hover { background: var(--gray-200, #e2e8f0); }
+
+/* ===== Today v2 =====
+   A scorecard, so the tiles are graded rather than merely coloured, and each
+   one carries its own verdict. */
+
+.v2-filters {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 12px);
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+
+.v2-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 24px;
+  align-items: flex-end;
+}
+
+/* What the numbers are actually counting. Without it a reader cannot tell
+   whether a filter did anything at all. */
+.v2-scope {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #e2e8f0);
+  font-size: 12.5px;
+  color: var(--gray-600, #475569);
+}
+.v2-scope strong { color: var(--text, #1e293b); }
+
+.v2-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.v2-kpi {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-top: 4px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  padding: 16px 16px 14px;
+  display: flex;
+  flex-direction: column;
+}
+/* Graded, not decorated: the bar reads as a mark on a report card. */
+.v2-kpi.ok      { border-top-color: #15803d; }
+.v2-kpi.warn    { border-top-color: #ea580c; }
+.v2-kpi.bad     { border-top-color: #b91c1c; }
+.v2-kpi.unknown { border-top-color: #cbd5e1; }
+
+.v2-kpi-value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text, #1e293b);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+.v2-kpi.bad .v2-kpi-value { color: #b91c1c; }
+.v2-kpi.ok  .v2-kpi-value { color: #15803d; }
+.v2-kpi-unit { font-size: 17px; font-weight: 600; margin-left: 1px; }
+
+.v2-kpi-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text, #1e293b);
+  margin-top: 8px;
+}
+.v2-kpi-sub {
+  font-size: 11.5px;
+  color: var(--gray-500, #64748b);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+/* The verdict. A percentage nobody can grade has not communicated anything. */
+.v2-kpi-says {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--gray-600, #475569);
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--border, #e2e8f0);
+}
+
+.nav-badge.new {
+  background: #dbeafe;
+  color: #1e40af;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#today2-view .chart-box { height: 300px; }
+
+@media (max-width: 640px) {
+  .v2-kpi-value { font-size: 27px; }
+  #today2-view .chart-box { height: 250px; }
+}
