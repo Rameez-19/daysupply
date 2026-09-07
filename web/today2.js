@@ -32,9 +32,12 @@ const V2_OTHER = '#0369a1';
 
 let v2State = '';
 let v2District = '';
+let v2Phc = '';
+let v2PhcName = '';
 let v2VitalOnly = false;
 let v2Resource = 'medicine';
 let v2Charts = { timeline: null, medicines: null, quadrant: null, shock: null };
+let v2LastData = null;
 
 const v2n = v => (v === null || v === undefined ? '—' : v.toLocaleString('en-IN'));
 
@@ -62,20 +65,37 @@ function v2SetVital(on) {
   const v = document.getElementById('v2-vital');
   if (a) a.classList.toggle('active', !on);
   if (v) v.classList.toggle('active', on);
+  v2WriteUrl();
   loadToday2();
 }
 
 async function v2OnState() {
   const sel = document.getElementById('v2-state');
   v2State = sel ? sel.value : '';
-  v2District = '';
+  // Clear everything below, or the page would keep filtering by a district and
+  // a facility that are not in the newly chosen state.
+  v2District = ''; v2Phc = ''; v2PhcName = '';
   await v2LoadDistricts();
+  await v2LoadPhcs();
+  v2WriteUrl();
   loadToday2();
 }
 
-function v2OnDistrict() {
+async function v2OnDistrict() {
   const sel = document.getElementById('v2-district');
   v2District = sel ? sel.value : '';
+  v2Phc = ''; v2PhcName = '';
+  await v2LoadPhcs();
+  v2WriteUrl();
+  loadToday2();
+}
+
+function v2OnPhc() {
+  const sel = document.getElementById('v2-phc');
+  v2Phc = sel ? sel.value : '';
+  v2PhcName = sel && sel.selectedIndex > 0
+    ? sel.options[sel.selectedIndex].textContent.trim() : '';
+  v2WriteUrl();
   loadToday2();
 }
 
@@ -110,6 +130,61 @@ async function v2LoadDistricts() {
   } catch (e) {
     sel.innerHTML = '<option value="">Districts unavailable</option>';
   }
+}
+
+// A facility list needs both a state and a district; the endpoint returns 422
+// without them. Until both are chosen the control says what it needs rather
+// than sitting empty and looking broken.
+async function v2LoadPhcs() {
+  const sel = document.getElementById('v2-phc');
+  if (!sel) return;
+  if (!v2State || !v2District) {
+    sel.innerHTML = `<option value="">${
+      v2State ? 'Choose a district first' : 'Choose a state first'}</option>`;
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  try {
+    const res = await fetch(`/api/v1/facilities?state=${encodeURIComponent(v2State)}`
+      + `&district=${encodeURIComponent(v2District)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { facilities } = await res.json();
+    sel.innerHTML = `<option value="">All health centres (${facilities.length})</option>`
+      + facilities.map(f =>
+          `<option value="${v2Esc(f.facility_id)}">${v2Esc(f.name)}</option>`).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="">Health centres unavailable</option>';
+  }
+}
+
+// The scope line is drawn separately so it can be redrawn once the facility's
+// NAME is known. The scorecard now fetches in parallel with the dropdowns, so
+// on a shared link the numbers arrive before the facility list does, and the
+// line briefly had only the id to work with — it read "IN-129024" where it
+// should read "Jail Dispensary Sirohi".
+function v2RenderScope(d) {
+  const scope = document.getElementById('v2-scope');
+  if (!scope || !d) return;
+  const s = d.scorecard || {};
+  const where = v2Phc
+    ? `${v2Esc(v2PhcName || v2Phc)}, ${v2Esc(v2District)}`
+    : v2District ? `${v2Esc(v2District)}, ${v2Esc(v2State)}`
+    : (v2State ? v2Esc(v2State) : 'All India');
+  const stayed = (d.scope && d.scope.district_level_panels) || [];
+  scope.innerHTML = `
+    Showing <strong>${v2n(s.tracked)}</strong>
+    ${v2VitalOnly ? 'life-saving ' : ''}medicines
+    ${v2Phc ? 'at' : 'across'}
+    <strong>${v2n(s.facilities)}</strong> health centre${s.facilities === 1 ? '' : 's'}
+    ${v2Phc ? '' : `in <strong>${v2n(s.districts)}</strong> districts`}
+    &mdash; <strong>${where}</strong>.`
+    + (stayed.length ? `<div class="v2-scope-caveat">
+         Whether stock could absorb a surge is a district-level measure &mdash;
+         it pools what every centre in the district holds &mdash; so
+         &ldquo;${stayed.join('&rdquo; and &ldquo;')}&rdquo; still
+         ${stayed.length === 1 ? 'covers' : 'cover'} the whole district.
+       </div>` : '');
 }
 
 // ===== The scorecard =====
@@ -156,6 +231,7 @@ async function v2Fetch() {
     const q = new URLSearchParams();
     if (v2State) q.set('state', v2State);
     if (v2District) q.set('district', v2District);
+    if (v2Phc) q.set('phc', v2Phc);
     if (v2VitalOnly) q.set('vital_only', 'true');
     const res = await fetch(`/api/v1/today2?${q}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -165,17 +241,8 @@ async function v2Fetch() {
     const g = d.grades || {};
     const s = d.scorecard || {};
 
-    if (scope) {
-      const where = v2District
-        ? `${v2Esc(v2District)}, ${v2Esc(v2State)}`
-        : (v2State ? v2Esc(v2State) : 'All India');
-      scope.innerHTML = `
-        Showing <strong>${v2n(s.tracked)}</strong>
-        ${v2VitalOnly ? 'life-saving ' : ''}medicines across
-        <strong>${v2n(s.facilities)}</strong> health centres in
-        <strong>${v2n(s.districts)}</strong> districts &mdash;
-        <strong>${where}</strong>.`;
-    }
+    v2LastData = d;
+    v2RenderScope(d);
 
     // Five tiles: availability, failure, forward risk, equity, resilience.
     host.innerHTML =
@@ -191,8 +258,9 @@ async function v2Fetch() {
       + v2Kpi(g.at_risk_week.pct, '%', 'Gone within a week',
               `${v2n(g.at_risk_week.count)} at the current rate of use`,
               g.at_risk_week.tone, g.at_risk_week.says)
-      + v2Kpi(g.spread.pct, '%', 'Districts affected',
-              `${v2n(g.spread.count)} of ${v2n(g.spread.of)} districts`,
+      + v2Kpi(g.spread.pct === null ? '—' : g.spread.pct,
+              g.spread.pct === null ? '' : '%', 'Districts affected',
+              `${v2n(g.spread.count)} of ${v2n(g.spread.of)} district${g.spread.of === 1 ? '' : 's'}`,
               g.spread.tone, g.spread.says);
 
     v2Timeline(d);
@@ -267,8 +335,11 @@ function v2Timeline(d) {
     }
   });
   if (note) {
-    note.innerHTML = `<strong>${v2n(urgent)} run out within a week</strong> — `
-      + `${Math.round(100 * urgent / total)}% of everything tracked here.`;
+    note.innerHTML = urgent
+      ? `<strong>${v2n(urgent)} run out within a week</strong> — `
+        + `${Math.round(100 * urgent / total)}% of everything tracked here.`
+      : `Nothing here runs out within a week. The earliest is `
+        + `${v2Esc(rows.find(r => r.n > 0).bucket).toLowerCase()} away.`;
   }
 }
 
@@ -319,10 +390,16 @@ function v2Medicines(d) {
   });
 
   const vital = rows.filter(r => r.ven_class === 'Vital');
+  const top = rows[0];
+  const plural = (n, one, many) => `${v2n(n)} ${n === 1 ? one : many}`;
   if (note) {
-    note.innerHTML = `<strong>${v2Esc(rows[0].item_name)}</strong> is short in `
-      + `${v2n(rows[0].centres)} health centres across ${rows[0].districts} districts`
-      + `${vital.length ? `. ${vital.length} of these ten are life-saving.` : '.'}`;
+    note.innerHTML = `<strong>${v2Esc(top.item_name)}</strong> is short in `
+      + `${plural(top.centres, 'health centre', 'health centres')} across `
+      + `${plural(top.districts, 'district', 'districts')}`
+      + (vital.length
+          ? `. ${vital.length} of ${rows.length === 1 ? 'it' : `these ${rows.length}`}`
+            + ` ${vital.length === 1 ? 'is' : 'are'} life-saving.`
+          : '.');
   }
 }
 
@@ -461,12 +538,93 @@ function v2Shock(d, g) {
   }
 }
 
+// ===== Filters live in the URL =====
+//
+// Two reasons, one of them the important one.
+//
+// The obvious one: "look at Shahdara" becomes a link somebody can send. A
+// filtered view that cannot be shared has to be re-created by hand at the
+// other end, and usually is not.
+//
+// The one that mattered here: it makes the filters *verifiable*. Headless
+// Chrome cannot click a dropdown, so without this the only proof the controls
+// work would be that the endpoint behaves when called directly — which is a
+// test of the backend, not of the page. With the state in the URL the whole
+// chain can be loaded and checked in a real browser.
+function v2ReadUrl() {
+  const q = new URLSearchParams(window.location.search || '');
+  v2State = q.get('state') || '';
+  v2District = q.get('district') || '';
+  v2Phc = q.get('phc') || '';
+  v2VitalOnly = q.get('vital') === '1';
+  const a = document.getElementById('v2-all');
+  const v = document.getElementById('v2-vital');
+  if (a) a.classList.toggle('active', !v2VitalOnly);
+  if (v) v.classList.toggle('active', v2VitalOnly);
+}
+
+function v2WriteUrl() {
+  const q = new URLSearchParams();
+  if (v2State) q.set('state', v2State);
+  if (v2District) q.set('district', v2District);
+  if (v2Phc) q.set('phc', v2Phc);
+  if (v2VitalOnly) q.set('vital', '1');
+  const qs = q.toString();
+  history.replaceState(null, '',
+    `${window.location.pathname}${qs ? '?' + qs : ''}${window.location.hash}`);
+}
+
+// Put the dropdowns where the state says they should be. Selecting a value
+// that is not in the list is a silent no-op in the DOM, so this reports back
+// whether it actually took.
+function v2SyncControls() {
+  let ok = true;
+  for (const [id, want] of [['v2-state', v2State],
+                            ['v2-district', v2District],
+                            ['v2-phc', v2Phc]]) {
+    const sel = document.getElementById(id);
+    if (!sel) continue;
+    sel.value = want;
+    if (sel.value !== want) { ok = false; sel.value = ''; }
+  }
+  // v2PhcName is set when a person picks from the dropdown. Arriving by link
+  // skips that, and the scope line then read "IN-129024" where it should have
+  // read "Jail Dispensary Sirohi".
+  const phcSel = document.getElementById('v2-phc');
+  v2PhcName = phcSel && phcSel.selectedIndex > 0
+    ? phcSel.options[phcSel.selectedIndex].textContent.trim() : '';
+  return ok;
+}
+
 // Initialise once, when the view is first opened.
 let v2Ready = false;
 async function initToday2() {
   if (v2Ready) { loadToday2(); return; }
   v2Ready = true;
-  await v2LoadStates();
-  await v2LoadDistricts();
+  v2ReadUrl();
+
+  // The scorecard does not wait for the dropdowns. It needs only the scope,
+  // which came from the URL, so it starts now and renders the moment it lands.
+  // Chained behind three geography lookups it was four round trips of blank
+  // page before a single number appeared.
   loadToday2();
+
+  // The three lookups do not depend on each other either — each needs only the
+  // state and district already known — so they run together rather than in a
+  // queue three deep.
+  await Promise.all([v2LoadStates(), v2LoadDistricts(), v2LoadPhcs()]);
+
+  // A link naming a district or facility that does not exist would otherwise
+  // leave the dropdown blank while the numbers stayed filtered by it. Only
+  // then is a second fetch warranted.
+  if (!v2SyncControls()) {
+    v2District = document.getElementById('v2-district').value || '';
+    v2Phc = document.getElementById('v2-phc').value || '';
+    v2WriteUrl();
+    loadToday2();
+  } else {
+    // The scope was valid, so no refetch is needed — but the facility's name
+    // is only now available, so the line is redrawn from the payload we have.
+    v2RenderScope(v2LastData);
+  }
 }

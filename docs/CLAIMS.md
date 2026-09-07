@@ -386,6 +386,43 @@ fragility threshold are the same constants the map uses. Three pages showing
 the same figures differently is a credibility risk, not a feature, unless they
 provably agree.
 
+**All four filters are verified to narrow, not merely to be accepted.** A
+filter that is accepted and ignored is worse than one that errors: the page
+redraws, the numbers do not move, and the reader concludes the data is wrong
+rather than the filter. The chain measured live:
+
+| Scope | Medicines | Centres | Availability |
+|---|---|---|---|
+| All India | 2,794 | 200 | 78.6% |
+| Rajasthan | 660 | 46 | 79.7% |
+| Rajasthan → Sirohi | 43 | 2 | 86.0% |
+| → Jail Dispensary Sirohi | **22** | 1 | **90.9%** |
+| → Alpa | **21** | 1 | **81.0%** |
+
+Sirohi's two health centres are the decisive case: 22 + 21 = 43, and they grade
+differently, so the facility filter provably bites rather than passing the
+district's numbers through. Pinned by `test_two_facilities_in_one_district_partition_its_lines`.
+
+**The PHC filter cannot apply to absorption, and the page says so.**
+`network_absorption` has no facility column because it asks whether a
+*district's* pooled stock could cover a surge — one facility's absorption is
+not a thing that exists. Rather than drop the filter silently, the response
+declares which panels stayed at district level and the scope line explains it.
+
+**Two nonsense claims that only a narrow scope revealed.** At one facility,
+"Districts affected: 100% — Systemic. Almost every district is affected" was
+being stated over a sample of one district: the arithmetic was right and the
+sentence was drivel, which is worse than a wrong number because a reader checks
+a number and believes a sentence. The metric is now withheld below two
+districts. The scope line was also printing the facility **id** rather than its
+name when arrived at by link.
+
+**Filters live in the URL** (`?state=&district=&phc=&vital=1`), which makes a
+filtered view shareable and — the reason it was built — makes the controls
+verifiable in a real browser, since headless Chrome cannot click a dropdown.
+Without it the only evidence would have been that the endpoint behaves when
+called directly, which tests the backend and not the page.
+
 **Beds and staff are not graded here yet** and the page says so rather than
 showing medicine numbers under a "Beds" heading.
 

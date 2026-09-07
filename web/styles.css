@@ -928,3 +928,16 @@ button { font-family: inherit; cursor: pointer; }
   .v2-kpi-value { font-size: 27px; }
   #today2-view .chart-box { height: 250px; }
 }
+
+/* Says which panels a facility filter could not narrow, so a reader is not
+   left thinking a district figure is a facility figure. */
+.v2-scope-caveat {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-left: 3px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--gray-600, #475569);
+}

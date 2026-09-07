@@ -201,7 +201,7 @@ async def executive_summary(state: str = ""):
 
 @app.get("/api/v1/today2")
 async def today_v2_scorecard(state: str = "", district: str = "",
-                             vital_only: bool = False):
+                             phc: str = "", vital_only: bool = False):
     """Today v2 — the supply chain graded as a scorecard.
 
     Availability, failure, forward risk, equity, resilience: the five questions
@@ -210,7 +210,7 @@ async def today_v2_scorecard(state: str = "", district: str = "",
 
     One round trip, like the other two composite views.
     """
-    return _facility_query(today_v2.scorecard, state, district, vital_only)
+    return _facility_query(today_v2.scorecard, state, district, phc, vital_only)
 
 
 @app.get("/api/v1/map")

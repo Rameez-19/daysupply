@@ -75,8 +75,9 @@ MIN_LINES_FOR_RATE = 8
 TOP_N = 10
 
 
-def _predicates(state: str, district: str, vital_only: bool,
+def _predicates(state: str, district: str, phc: str, vital_only: bool,
                 state_col: str = "state", district_col: str = "district",
+                facility_col: str | None = "facility_id",
                 ven_col: str = "ven_class") -> str:
     """Build a WHERE body against one table's own column names.
 
@@ -84,22 +85,38 @@ def _predicates(state: str, district: str, vital_only: bool,
     `where.replace('state', 'to_state')` shortcut has broken this codebase
     twice by renaming the bound parameter along with the column, so it is not
     available here by construction.
+
+    `facility_col=None` means the table has no facility column and the PHC
+    filter cannot apply to it. That is deliberate rather than an oversight:
+    `network_absorption` asks whether a DISTRICT's pooled stock could cover a
+    surge, so there is no such thing as one facility's absorption. Silently
+    dropping the filter would leave a reader thinking they had narrowed a
+    number they had not, so the caller reports the mismatch and the page says
+    which panels stayed at district level.
     """
     parts = []
     if state:
         parts.append(f"{state_col} = @state")
     if district:
         parts.append(f"{district_col} = @district")
+    if phc and facility_col:
+        parts.append(f"{facility_col} = @phc")
     if vital_only:
         parts.append(f"{ven_col} = 'Vital'")
     return " AND ".join(parts) if parts else "TRUE"
 
 
-def scorecard(state: str = "", district: str = "",
+def scorecard(state: str = "", district: str = "", phc: str = "",
               vital_only: bool = False) -> dict:
     """Everything Today v2 needs, in a single round trip."""
-    rs = _predicates(state, district, vital_only)
-    na = _predicates(state, district, vital_only)
+    # Tables that carry a facility column take the PHC filter.
+    rs = _predicates(state, district, phc, vital_only)
+    ssi = _predicates(state, district, phc, vital_only)
+    rec = _predicates(state, district, phc, vital_only,
+                      state_col="to_state", district_col="to_district",
+                      facility_col="to_facility_id")
+    # `network_absorption` has no facility column, by design — see _predicates.
+    na = _predicates(state, district, phc, vital_only, facility_col=None)
 
     params = []
     if state:
@@ -107,6 +124,8 @@ def scorecard(state: str = "", district: str = "",
     if district:
         params.append(
             bigquery.ScalarQueryParameter("district", "STRING", district))
+    if phc:
+        params.append(bigquery.ScalarQueryParameter("phc", "STRING", phc))
 
     rows = run_query(f"""
     SELECT
@@ -197,18 +216,14 @@ def scorecard(state: str = "", district: str = "",
 
       -- What a purchase order cannot save.
       (SELECT COUNTIF(lead_time_decisive)
-       FROM `{D}.surge_supply_impact`
-       WHERE {_predicates(state, district, vital_only)}) AS transfer_only,
+       FROM `{D}.surge_supply_impact` WHERE {ssi}) AS transfer_only,
 
       -- Queued decisions, for the scope line.
       (SELECT AS STRUCT COUNT(*) AS recommended, SUM(quantity) AS units,
               COUNTIF(ven_class = 'Vital') AS vital
-       FROM `{D}.recommendations`
-       WHERE {_predicates(state, district, vital_only,
-                          state_col='to_state', district_col='to_district')})
-        AS queue
+       FROM `{D}.recommendations` WHERE {rec}) AS queue
     """, params,
-        cache_key=f"v2:{state}:{district}:{int(vital_only)}", ttl=300)
+        cache_key=f"v2:{state}:{district}:{phc}:{int(vital_only)}", ttl=300)
 
     if not rows:
         return {"error": "no data"}
@@ -217,7 +232,13 @@ def scorecard(state: str = "", district: str = "",
     r["scope"] = {
         "state": state or "All India",
         "district": district,
+        "phc": phc,
         "vital_only": vital_only,
+        # Panels the PHC filter could not narrow, so the page can say so
+        # instead of showing a district figure under a facility heading.
+        "district_level_panels": (
+            ["Could the network take a shock?", "Which districts need help first?"]
+            if phc else []),
     }
     r["grades"] = _grades(r)
     return r
@@ -278,10 +299,19 @@ def _grades(r: dict) -> dict:
             "pct": week_rate, "count": s.get("at_risk_week"), "of": tracked,
             "tone": band(week_rate, 5, 15, higher_is_better=False),
             "says": "Gone within seven days at the current rate of use."},
-        "spread": {
+        # Meaningless below two districts: one district short of one district
+        # is 100%, and "almost every district is affected" is then a sentence
+        # about a sample of one. Showing it anyway is how a filtered view ends
+        # up making a confident claim that is not about anything.
+        "spread": ({
             "pct": spread, "count": s.get("districts_short"), "of": districts,
             "tone": band(spread, 25, 60, higher_is_better=False),
-            "says": _say_spread(spread)},
+            "says": _say_spread(spread)}
+            if districts > 1 else {
+            "pct": None, "count": s.get("districts_short"), "of": districts,
+            "tone": "unknown",
+            "says": "Not meaningful for a single district — widen the area to "
+                    "compare districts against each other."}),
         "resilience": {
             "pct": absorb3, "tone": band(absorb3, 70, FRAGILE_BELOW),
             "says": _say_resilience(absorb3)},
