@@ -256,7 +256,7 @@
              segments. -->
         <div class="v2-filters">
           <div class="v2-filter-row">
-            <div class="filter-group">
+            <div class="filter-group" id="v2-view-group">
               <label class="filter-label">View</label>
               <div class="segmented" role="group" aria-label="Resource">
                 <button class="segment active" id="v2-res-med"
@@ -265,6 +265,15 @@
                         onclick="v2SetResource('bed')">Beds</button>
                 <button class="segment" id="v2-res-staff"
                         onclick="v2SetResource('personnel')">Staff</button>
+              </div>
+            </div>
+            <div class="filter-group" id="v2-vital-group">
+              <label class="filter-label">Show</label>
+              <div class="segmented" role="group" aria-label="Criticality">
+                <button class="segment active" id="v2-all"
+                        onclick="v2SetVital(false)">All medicines</button>
+                <button class="segment" id="v2-vital"
+                        onclick="v2SetVital(true)">Life-saving only</button>
               </div>
             </div>
             <div class="filter-group">
@@ -285,15 +294,7 @@
                 <option value="">All health centres</option>
               </select>
             </div>
-            <div class="filter-group" id="v2-vital-group">
-              <label class="filter-label">Show</label>
-              <div class="segmented" role="group" aria-label="Criticality">
-                <button class="segment active" id="v2-all"
-                        onclick="v2SetVital(false)">All medicines</button>
-                <button class="segment" id="v2-vital"
-                        onclick="v2SetVital(true)">Life-saving only</button>
-              </div>
-            </div>
+            
           </div>
           <!-- What the numbers below are actually counting. Without this a
                reader cannot tell whether a filter did anything. -->

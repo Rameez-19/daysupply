@@ -840,11 +840,34 @@ button { font-family: inherit; cursor: pointer; }
   margin-bottom: 18px;
 }
 
+/* A grid, not a wrapping flex row.
+   The controls used to reflow as you used them: a <select> sizes itself to the
+   option you picked, so choosing "Maharashtra — 35 districts" made the box
+   wider than "All districts" and pushed "Show" onto a second row. The filter
+   bar rearranging itself in response to being used is disorienting — you look
+   back and the control you just touched has moved.
+   Fixed columns and full-width selects mean the bar looks identical whatever
+   is selected: what changes is the reading, never the furniture. */
 .v2-filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px 24px;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 20px;
+  align-items: end;
+}
+
+/* Row one is what you are looking at, row two is where. */
+#v2-view-group  { grid-column: 1 / span 2; }
+#v2-vital-group { grid-column: 3; }
+
+.v2-filter-row .filter-group { min-width: 0; }
+/* The width comes from the column, never from the chosen option. */
+.v2-filter-row select { width: 100%; }
+.v2-filter-row .segmented { display: inline-flex; width: 100%; }
+.v2-filter-row .segment { flex: 1 1 0; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .v2-filter-row { grid-template-columns: 1fr; }
+  #v2-view-group, #v2-vital-group { grid-column: 1; }
 }
 
 /* What the numbers are actually counting. Without it a reader cannot tell
