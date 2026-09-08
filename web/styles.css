@@ -964,3 +964,36 @@ button { font-family: inherit; cursor: pointer; }
   line-height: 1.45;
   color: var(--gray-600, #475569);
 }
+
+/* Every control pinned to a fixed cell.
+   Switching to Beds hides the "Show" group, and with auto-placement that
+   pulled State up into the space it left, which pushed District and Health
+   centre onto a new row — the whole bar rearranged because one control went
+   away. Explicit placement means a hidden control leaves a gap and nothing
+   else moves. */
+#v2-view-group     { grid-column: 1 / span 2; grid-row: 1; }
+#v2-vital-group    { grid-column: 3;          grid-row: 1; }
+#v2-state-group    { grid-column: 1;          grid-row: 2; }
+#v2-district-group { grid-column: 2;          grid-row: 2; }
+#v2-phc-group      { grid-column: 3;          grid-row: 2; }
+
+.v2-filter-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+.v2-filter-foot .v2-scope { margin: 0; padding: 0; border: none; }
+/* Hidden when nothing is filtered, so it never invites a no-op click. */
+.v2-reset { flex: 0 0 auto; white-space: nowrap; cursor: pointer; }
+
+@media (max-width: 760px) {
+  #v2-view-group, #v2-vital-group, #v2-state-group,
+  #v2-district-group, #v2-phc-group {
+    grid-column: 1; grid-row: auto;
+  }
+  .v2-filter-foot { flex-direction: column; align-items: flex-start; }
+}

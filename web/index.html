@@ -276,19 +276,19 @@
                         onclick="v2SetVital(true)">Life-saving only</button>
               </div>
             </div>
-            <div class="filter-group">
+            <div class="filter-group" id="v2-state-group">
               <label class="filter-label">State</label>
               <select id="v2-state" onchange="v2OnState()">
                 <option value="">All India</option>
               </select>
             </div>
-            <div class="filter-group">
+            <div class="filter-group" id="v2-district-group">
               <label class="filter-label">District</label>
               <select id="v2-district" onchange="v2OnDistrict()">
                 <option value="">All districts</option>
               </select>
             </div>
-            <div class="filter-group">
+            <div class="filter-group" id="v2-phc-group">
               <label class="filter-label">Health centre</label>
               <select id="v2-phc" onchange="v2OnPhc()">
                 <option value="">All health centres</option>
@@ -298,7 +298,11 @@
           </div>
           <!-- What the numbers below are actually counting. Without this a
                reader cannot tell whether a filter did anything. -->
-          <div class="v2-scope" id="v2-scope"></div>
+          <div class="v2-filter-foot">
+            <div class="v2-scope" id="v2-scope"></div>
+            <button class="btn btn-secondary v2-reset" id="v2-reset"
+                    onclick="v2Reset()" hidden>Clear filters</button>
+          </div>
         </div>
 
         <div id="v2-kpis" class="v2-kpi-row"></div>

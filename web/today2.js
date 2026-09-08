@@ -60,8 +60,47 @@ function v2SetResource(kind) {
   // or staff would offer a filter that silently does nothing.
   const vitalGroup = document.getElementById('v2-vital-group');
   if (vitalGroup) vitalGroup.style.display = kind === 'medicine' ? '' : 'none';
+  // Leaving it set while the control is hidden would apply a filter the reader
+  // cannot see and cannot turn off.
+  if (kind !== 'medicine' && v2VitalOnly) {
+    v2VitalOnly = false;
+    const a = document.getElementById('v2-all');
+    const v = document.getElementById('v2-vital');
+    if (a) a.classList.add('active');
+    if (v) v.classList.remove('active');
+  }
   v2WriteUrl();
   loadToday2();
+  v2FillPhcs();   // relabel: the counts are medicine counts
+}
+
+// Back to the whole network. The resource stays, because which resource you
+// are looking at is the view rather than a filter on it — resetting that too
+// would throw away the thing the reader most recently chose on purpose.
+function v2Reset() {
+  v2State = ''; v2District = ''; v2Phc = ''; v2PhcName = '';
+  if (v2VitalOnly) v2SetVitalControls(false);
+  v2FillStates();
+  v2FillDistricts();
+  v2WriteUrl();
+  loadToday2();
+  v2FillPhcs();
+}
+
+function v2SetVitalControls(on) {
+  v2VitalOnly = on;
+  const a = document.getElementById('v2-all');
+  const v = document.getElementById('v2-vital');
+  if (a) a.classList.toggle('active', !on);
+  if (v) v.classList.toggle('active', on);
+}
+
+// Shown only when there is something to clear.
+function v2SyncReset() {
+  const b = document.getElementById('v2-reset');
+  if (!b) return;
+  const filtered = !!(v2State || v2District || v2Phc || v2VitalOnly);
+  b.hidden = !filtered;
 }
 
 function v2SetVital(on) {
@@ -231,9 +270,17 @@ async function v2FillPhcs() {
   const rows = await v2DistrictPhcs();
   const on = rows.filter(f => f.reports);
   const off = rows.filter(f => !f.reports);
+  // The line count is a medicine count, so it is only shown when medicines
+  // are what you are looking at. Under Beds it read "Gangaram — 10 medicines",
+  // which is a true number attached to the wrong question. All three resources
+  // cover the same 200 centres, so "reporting" is the fact that carries over.
   const opt = f =>
     `<option value="${v2Esc(f.facility_id)}">${v2Esc(f.name)}`
-    + (f.reports ? ` — ${f.lines} medicine${f.lines === 1 ? '' : 's'}` : '')
+    + (f.reports
+        ? (v2Resource === 'medicine'
+            ? ` — ${f.lines} medicine${f.lines === 1 ? '' : 's'}`
+            : ' — reporting')
+        : '')
     + `</option>`;
 
   sel.disabled = false;
@@ -742,6 +789,7 @@ function v2ReadUrl() {
 }
 
 function v2WriteUrl() {
+  v2SyncReset();
   const q = new URLSearchParams();
   if (v2State) q.set('state', v2State);
   if (v2District) q.set('district', v2District);
@@ -760,6 +808,10 @@ async function initToday2() {
   if (v2Ready) { loadToday2(); return; }
   v2Ready = true;
   v2ReadUrl();
+  // Arriving on a shared filtered link is a change of state too, even though
+  // nothing was clicked — without this the button stayed hidden on exactly the
+  // page most likely to need it.
+  v2SyncReset();
   const before = `${v2State}|${v2District}|${v2Phc}`;
 
   // The scorecard does not wait for the dropdowns. It needs only the scope,
