@@ -434,6 +434,39 @@ footprint — it stops the product implying facility-level coverage of all
 200,438. It is 200 rows, so it is fetched once and the cascade needs no further
 round trips.
 
+**The health-centre list is the register, not the reporting set.** Narrowing
+it to the 200 reporting centres fixed blank pages and created a worse problem:
+it hid the facility master. These five states hold **7,092 PHCs** and 200 of
+them report, so a list of 200 made national government data look like a pilot
+of two hundred clinics. The list now shows every PHC in the district in two
+groups — **"Reporting stock"** first with each centre's line count, then
+**"In the register, not yet reporting"**. Brihan Mumbai reads *2 reporting of
+296*; Khammam *2 of 71*.
+
+Both facts are worth showing and neither may be implied by the other: the
+200,438-facility register is real government data, and the 200-centre reporting
+footprint is the demo's. Picking a non-reporting centre is answered with a
+sentence — *"Allapalli is in the national facility register but is not yet
+reporting stock data"* — and answered without a round trip, because a centre
+that does not report cannot have a scorecard.
+
+Coverage by level, for the five demo states:
+
+| Level | Reporting | In the register |
+|---|---|---|
+| States | 5 | 5 |
+| Districts | 116 | 116 — **complete** |
+| PHCs | **200** | **7,092** |
+
+Districts are already complete (Assam 27/27, Delhi 11/11, Maharashtra 35/35,
+Rajasthan 33/33, Telangana 10/10), so only the PHC level ever had a gap.
+
+**One way the merge could fail invisibly:** a reporting centre missing from the
+district's facility list would be unreachable — its data exists and no dropdown
+could select it. `test_reporting_centres_appear_in_the_register_list` pins that
+across three districts, and a companion test asserts all 200 are typed `phc`,
+since the register list is fetched with that filter.
+
 **A percentage can legitimately be null, and it was reaching the page as the
 literal text "null%".** A facility with no life-saving medicines has no
 life-saving availability. Handled once, inside the tile, so no tile added later

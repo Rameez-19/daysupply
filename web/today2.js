@@ -81,18 +81,18 @@ function v2OnState() {
   // a facility that are not in the newly chosen state.
   v2District = ''; v2Phc = ''; v2PhcName = '';
   v2FillDistricts();
-  v2FillPhcs();
   v2WriteUrl();
   loadToday2();
+  v2FillPhcs();
 }
 
 function v2OnDistrict() {
   const sel = document.getElementById('v2-district');
   v2District = sel ? sel.value : '';
   v2Phc = ''; v2PhcName = '';
-  v2FillPhcs();
   v2WriteUrl();
   loadToday2();
+  v2FillPhcs();
 }
 
 function v2OnPhc() {
@@ -168,7 +168,55 @@ function v2FillDistricts() {
   if (sel.value !== v2District) { v2District = ''; sel.value = ''; }
 }
 
-function v2FillPhcs() {
+// Every PHC in the district, not only the ones reporting stock.
+//
+// Restricting the list to reporting centres fixed the blank-page problem and
+// created a worse one: it hid the register. These five states hold 7,092 PHCs
+// and 200 of them report, so a list of 200 makes a national facility master
+// look like a pilot of two hundred clinics.
+//
+// So the list shows all of them, in two groups, and says which is which. The
+// register is real government data and worth seeing; the reporting footprint
+// is the demo's, and pretending otherwise in either direction would be
+// misleading. Picking a non-reporting centre is answered with a sentence
+// rather than an empty page.
+const v2PhcCache = {};
+
+async function v2DistrictPhcs() {
+  if (!v2State || !v2District) return [];
+  const key = `${v2State}|${v2District}`;
+  if (v2PhcCache[key]) return v2PhcCache[key];
+  const reporting = new Map(v2FacilitiesList().map(f => [f.facility_id, f]));
+  let all = [];
+  try {
+    const res = await fetch(`/api/v1/facilities?state=${encodeURIComponent(v2State)}`
+      + `&district=${encodeURIComponent(v2District)}`);
+    if (res.ok) all = (await res.json()).facilities || [];
+  } catch (e) {
+    // The reporting list alone is better than nothing.
+  }
+  const seen = new Set(all.map(f => f.facility_id));
+  const merged = all.map(f => ({
+    facility_id: f.facility_id,
+    name: f.name,
+    lines: (reporting.get(f.facility_id) || {}).lines || 0,
+    reports: reporting.has(f.facility_id),
+  }));
+  // A reporting centre missing from the register page would be unreachable.
+  for (const [id, f] of reporting) {
+    if (!seen.has(id)) merged.push({ ...f, reports: true });
+  }
+  merged.sort((a, b) => Number(b.reports) - Number(a.reports)
+                     || a.name.localeCompare(b.name));
+  v2PhcCache[key] = merged;
+  return merged;
+}
+
+function v2PhcIsReporting(id) {
+  return v2FacilitiesList().some(f => f.facility_id === id);
+}
+
+async function v2FillPhcs() {
   const sel = document.getElementById('v2-phc');
   if (!sel) return;
   if (!v2State || !v2District) {
@@ -178,19 +226,27 @@ function v2FillPhcs() {
     v2Phc = ''; v2PhcName = '';
     return;
   }
-  const rows = v2FacilitiesList();
+  sel.disabled = true;
+  sel.innerHTML = '<option value="">Loading health centres…</option>';
+  const rows = await v2DistrictPhcs();
+  const on = rows.filter(f => f.reports);
+  const off = rows.filter(f => !f.reports);
+  const opt = f =>
+    `<option value="${v2Esc(f.facility_id)}">${v2Esc(f.name)}`
+    + (f.reports ? ` — ${f.lines} medicine${f.lines === 1 ? '' : 's'}` : '')
+    + `</option>`;
+
   sel.disabled = false;
-  // Every centre here reports, and the line count says how much, so a reader
-  // can tell a well-covered centre from a thin one before choosing it.
-  sel.innerHTML = `<option value="">All health centres (${rows.length})</option>`
-    + rows.map(f =>
-        `<option value="${v2Esc(f.facility_id)}">${v2Esc(f.name)} — `
-        + `${f.lines} medicine${f.lines === 1 ? '' : 's'}</option>`).join('');
+  sel.innerHTML =
+    `<option value="">All reporting centres (${on.length} of ${rows.length})</option>`
+    + (on.length ? `<optgroup label="Reporting stock (${on.length})">`
+        + on.map(opt).join('') + '</optgroup>' : '')
+    + (off.length ? `<optgroup label="In the register, not yet reporting (${off.length})">`
+        + off.map(opt).join('') + '</optgroup>' : '');
+
   sel.value = v2Phc;
-  if (sel.value !== v2Phc) { v2Phc = ''; }
-  v2PhcName = sel.selectedIndex > 0
-    ? (v2FacilitiesList().find(f => f.facility_id === v2Phc) || {}).name || ''
-    : '';
+  if (sel.value !== v2Phc) { v2Phc = ''; sel.value = ''; }
+  v2PhcName = (rows.find(f => f.facility_id === v2Phc) || {}).name || '';
 }
 
 // The scope line is drawn separately so it can be redrawn once the facility's
@@ -204,6 +260,20 @@ function v2RenderScope(d) {
   // Counts and the noun come from the payload. Reading `scorecard.tracked`
   // and hardcoding "medicines" worked only for medicines, and printed
   // "Showing — medicines across — health centres" for beds and staff.
+  // A centre on the register that has not started reporting gets its own
+  // line. Two paths reach here — the early guard when the geography is
+  // already loaded, and the empty payload when a cold link beats it — and
+  // they must say the same thing. Falling through printed "Showing 0
+  // medicines at 0 health centres", which reads as a fault rather than as an
+  // explanation, under a panel that was explaining it correctly.
+  if (v2Phc && (d.empty || (v2Geo && !v2PhcIsReporting(v2Phc)))) {
+    scope.innerHTML =
+      `Showing <strong>${v2Esc(v2PhcName || v2Phc)}</strong>, `
+      + `${v2Esc(v2District)} &mdash; a centre on the national register that `
+      + `has not started reporting.`;
+    return;
+  }
+
   const sum = d.summary || {};
   const where = v2Phc
     ? `${v2Esc(v2PhcName || v2Phc)}, ${v2Esc(v2District)}`
@@ -254,6 +324,13 @@ async function v2Fetch() {
   const host = document.getElementById('v2-kpis');
   const synced = document.getElementById('v2-synced');
   const scope = document.getElementById('v2-scope');
+
+  // A centre that does not report cannot have a scorecard, so do not ask the
+  // server for one — answer it here, immediately.
+  if (v2Phc && v2Geo && !v2PhcIsReporting(v2Phc)) {
+    v2ShowNonReporting();
+    return;
+  }
 
   try {
     const q = new URLSearchParams();
@@ -590,13 +667,43 @@ function v2FourthPanel(d) {
   }
 }
 
-// What an empty scope should say, in terms of the resource being viewed.
+// Drawn from both the early guard and again after the facility list arrives,
+// because on a cold link the panel would otherwise name the centre by its id:
+// "IN-156093 is in the national facility register" where it should read
+// "Allapalli".
+function v2ShowNonReporting() {
+  const host = document.getElementById('v2-kpis');
+  const synced = document.getElementById('v2-synced');
+  if (host) host.innerHTML = panelEmpty(v2EmptyMessage());
+  v2ClearCharts();
+  v2RenderScope({ empty: true });
+  if (synced) {
+    synced.className = 'last-synced';
+    synced.textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
+  }
+}
+
+// What an empty scope should say.
+//
+// "No data" is the least useful thing a page can say, because it does not tell
+// the reader whether they chose badly, whether the thing is broken, or whether
+// the answer is genuinely nothing. A centre in the register that has not
+// started reporting is a different situation from a reporting centre with
+// nothing short, and the two must not read the same.
 function v2EmptyMessage() {
   const what = v2Resource === 'bed' ? 'bed data'
              : v2Resource === 'personnel' ? 'staffing data'
-             : 'medicines';
-  return `No ${what} at this scope yet. Every health centre in the list does `
-       + `report — try a wider area.`;
+             : 'stock data';
+
+  if (v2Phc && !v2PhcIsReporting(v2Phc)) {
+    const reporting = v2FacilitiesList().length;
+    return `<strong>${v2Esc(v2PhcName || v2Phc)}</strong> is in the national `
+      + `facility register but is not yet reporting ${what}. It is one of `
+      + `200,438 health facilities on file; the ${reporting} reporting `
+      + `centre${reporting === 1 ? '' : 's'} in this district are grouped at `
+      + `the top of the list.`;
+  }
+  return `No ${what} at this scope yet. Try a wider area.`;
 }
 
 // ===== Filters live in the URL =====
@@ -667,7 +774,13 @@ async function initToday2() {
     await v2LoadGeography();
     v2FillStates();
     v2FillDistricts();
-    v2FillPhcs();
+    await v2FillPhcs();
+    // Names are known now. Redraw if the scope is a centre that does not
+    // report, so the panel says "Allapalli" rather than "IN-156093".
+    if (v2Phc && !v2PhcIsReporting(v2Phc)) {
+      v2ShowNonReporting();
+      return;
+    }
     // A link naming a scope that does not report would otherwise leave the
     // dropdown blank while the numbers stayed filtered by it. The fill
     // functions clear anything they cannot honour, so compare and refetch.

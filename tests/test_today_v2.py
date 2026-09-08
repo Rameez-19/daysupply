@@ -489,3 +489,71 @@ class TestAllThreeResourcesShareOneContract:
             assert {"name", "value", "sub", "flag"} <= set(r)
         for r in d["quadrant"]:
             assert {"name", "sub", "x", "y", "critical"} <= set(r)
+
+
+class TestEveryReportingCentreIsReachableInTheDropdown:
+    """The PHC list is the register merged with the reporting set.
+
+    Restricting it to the 200 reporting centres fixed blank pages and hid the
+    register: these five states hold 7,092 PHCs, and a list of 200 makes a
+    national facility master look like a pilot of two hundred clinics. So the
+    list shows every PHC in the district, with the reporting ones grouped
+    first.
+
+    That merge has one way to go wrong that a reader could not detect: a
+    reporting centre missing from the register page would be unreachable — its
+    data exists and nothing in the UI can select it.
+    """
+
+    from app import facilities as _facility_repo
+
+    @pytest.mark.parametrize("state,district", [
+        ("Telangana", "Khammam"),
+        ("Maharashtra", "Brihan Mumbai"),
+        ("Rajasthan", "Sirohi"),
+    ])
+    def test_reporting_centres_appear_in_the_register_list(self, state,
+                                                           district):
+        geo = today_v2.reporting_geography()
+        st = next(s for s in geo["states"] if s["state"] == state)
+        di = next(d for d in st["districts"] if d["district"] == district)
+        reporting = {f["facility_id"] for f in di["facilities"]}
+
+        register = {f["facility_id"] for f in
+                    self._facility_repo.list_facilities(state, district)}
+
+        missing = sorted(reporting - register)
+        assert not missing, (
+            "these centres report stock but are not in the district's facility "
+            f"list, so no dropdown can reach them: {missing}")
+
+    @pytest.mark.parametrize("state,district", [
+        ("Telangana", "Khammam"),
+        ("Maharashtra", "Brihan Mumbai"),
+    ])
+    def test_the_register_list_is_much_larger_than_the_reporting_set(
+            self, state, district):
+        """If these ever converge, the list has been narrowed back to the
+        reporting set and the register is hidden again."""
+        geo = today_v2.reporting_geography()
+        st = next(s for s in geo["states"] if s["state"] == state)
+        di = next(d for d in st["districts"] if d["district"] == district)
+        register = self._facility_repo.list_facilities(state, district)
+        assert len(register) > len(di["facilities"]) * 3, (
+            f"{district}: {len(register)} in the register vs "
+            f"{len(di['facilities'])} reporting")
+
+    def test_every_reporting_centre_is_a_phc(self):
+        """The register list is fetched with the default facility_type filter,
+        so a reporting centre of another type would drop out of the dropdown
+        entirely."""
+        from app.bq import run_query
+        rows = run_query("""
+            SELECT COUNTIF(f.facility_type != 'phc') AS not_phc
+            FROM `daysupply.daysupply.facilities` f
+            WHERE f.facility_id IN (
+              SELECT DISTINCT facility_id FROM `daysupply.daysupply.reorder_status`)
+        """)
+        assert rows[0]["not_phc"] == 0, (
+            "a reporting centre is not typed 'phc', so the district facility "
+            "list will not include it")
