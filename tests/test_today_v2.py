@@ -557,3 +557,42 @@ class TestEveryReportingCentreIsReachableInTheDropdown:
         assert rows[0]["not_phc"] == 0, (
             "a reporting centre is not typed 'phc', so the district facility "
             "list will not include it")
+
+
+class TestTheViewIsWarmedAtStartup:
+    """A view that is not warmed shows "Loading…" to whoever arrives first
+    after a deploy.
+
+    Today v2 was added as an endpoint and never added to the startup warm-up,
+    so every deploy left the first visitor watching three uncached BigQuery
+    jobs run. It is not a code failure and nothing errors — the page simply
+    takes seconds to say anything, which is indistinguishable from being hung.
+
+    This test exists because that gap is invisible: it does not fail a request,
+    it does not log an error, and it only bites the one person who arrives
+    first.
+    """
+
+    def test_today_v2_is_in_the_warm_list(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent
+               / "app" / "main.py").read_text(encoding="utf-8")
+        warm = src[src.index("for label, fn in ("):]
+        warm = warm[:warm.index("):")]
+        assert "today_v2.reporting_geography" in warm, (
+            "the v2 dropdowns block on the geography query and it is not "
+            "warmed")
+        assert "today_v2.scorecard" in warm, (
+            "the v2 scorecard is the default view and is not warmed")
+
+    def test_every_composite_view_is_warmed(self):
+        """The three one-round-trip views are the expensive ones, and each is
+        the first thing somebody sees on its page."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent
+               / "app" / "main.py").read_text(encoding="utf-8")
+        warm = src[src.index("for label, fn in ("):]
+        warm = warm[:warm.index("):")]
+        for module in ("executive.national_picture", "mapview.supply_map",
+                       "today_v2.scorecard"):
+            assert module in warm, f"{module} backs a view and is not warmed"

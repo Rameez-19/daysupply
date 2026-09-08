@@ -84,22 +84,40 @@ async def lifespan(_app: FastAPI):
         #
         # Deliberately only the default scope. Warming all 37 states would be
         # 37x the cost for a reader who will look at one.
+        warmers = []
         for label, fn in (
             # The landing view. Warmed first because it is what a first
             # visitor waits on.
             ("executive (All India)", lambda: executive.national_picture("")),
             ("map (All India)", lambda: mapview.supply_map("")),
+            # Today v2. These were added as endpoints and never added here,
+            # so every deploy left the first visitor to that page watching
+            # "Loading…" while three uncached BigQuery jobs ran. The geography
+            # goes first: it is cheap, cached for an hour, and every v2 load
+            # blocks its dropdowns on it.
+            ("today2 geography", today_v2.reporting_geography),
+            ("today2 (All India)", lambda: today_v2.scorecard("")),
             ("stats", lambda: supply.get_summary(DEFAULT_STATE, "", "")),
             ("alerts", lambda: supply.get_alerts(DEFAULT_STATE, "", "", 50)),
             ("transfers",
              lambda: supply.get_recommendations(DEFAULT_STATE, "", "", 50)),
         ):
+            warmers.append((label, fn))
+
+        # Warmed together, not in a queue. These are independent queries, and
+        # run one after another they took roughly ten seconds end to end —
+        # during which whoever arrived first still watched "Loading…", which
+        # is the exact problem the warm-up exists to prevent. Concurrently the
+        # window is about as long as the slowest single query.
+        async def warm_one(label, fn):
             try:
                 await asyncio.to_thread(fn)
-                log.info("Warmed %s for %s", label, DEFAULT_STATE)
+                log.info("Warmed %s", label)
             except Exception:
                 log.exception("Could not warm %s; it will load on demand",
                               label)
+
+        await asyncio.gather(*(warm_one(label, fn) for label, fn in warmers))
 
     task = asyncio.create_task(warm())
     yield
