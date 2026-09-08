@@ -351,3 +351,141 @@ class TestNarrowScopesDoNotMakeNonsenseClaims:
         for m in d["worst_medicines"]:
             assert m["centres"] == 1
             assert m["districts"] == 1
+
+
+class TestTheDropdownsOfferOnlyScopesThatReport:
+    """The reported bug, and the reason it looked like broken filters.
+
+    The dropdowns were fed from the facility register — 200,438 facilities
+    across 668 districts — while only 200 facilities in 116 districts report
+    stock. Picking a health centre had roughly a one-in-a-thousand chance of
+    landing on one with data, and every other pick emptied the page. The filter
+    was working; the choices could not.
+    """
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def geo(cls):
+        return today_v2.reporting_geography()
+
+    def test_it_matches_what_actually_reports(self, geo, national):
+        assert geo["totals"]["facilities"] == national["scorecard"]["facilities"]
+        assert geo["totals"]["districts"] == national["scorecard"]["districts"]
+        assert geo["totals"]["states"] == national["scorecard"]["states"]
+
+    def test_it_is_far_smaller_than_the_facility_register(self, geo):
+        """If this ever approaches 200,438 the dropdowns are being fed from the
+        register again."""
+        assert geo["totals"]["facilities"] < 1000
+
+    def test_every_offered_facility_has_lines(self, geo):
+        for st in geo["states"]:
+            for di in st["districts"]:
+                assert di["facilities"], f"{di['district']} offers no centres"
+                for f in di["facilities"]:
+                    assert f["lines"] > 0, f
+                    assert f["name"], f
+
+    def test_every_offered_scope_actually_returns_data(self, geo):
+        """The end of the chain: take the first offered centre and confirm the
+        page would not be blank on it."""
+        st = geo["states"][0]
+        di = st["districts"][0]
+        fac = di["facilities"][0]
+        d = today_v2.scorecard(st["state"], di["district"], fac["facility_id"])
+        assert d["scorecard"]["tracked"] > 0
+        assert not d["grades"].get("empty")
+
+
+class TestBedsAndStaffAreGraded:
+    """"Beds and personnel have nothing to show" — they showed a placeholder.
+
+    They are graded now, on the same five-question shape as medicines, because
+    the questions an official asks about beds are the same questions in a
+    different unit.
+    """
+
+    @pytest.mark.parametrize("fn,resource", [
+        (today_v2.bed_scorecard, "bed"),
+        (today_v2.staff_scorecard, "personnel"),
+    ])
+    def test_the_resource_returns_a_full_scorecard(self, fn, resource):
+        d = fn()
+        assert d["resource"] == resource
+        assert d["empty"] is False
+        assert len(d["kpis"]) == 5, "the scorecard is five questions"
+        assert d["distribution"] and d["ranking"] and d["quadrant"]
+
+    @pytest.mark.parametrize("fn", [today_v2.bed_scorecard,
+                                    today_v2.staff_scorecard])
+    def test_every_tile_is_graded_and_explained(self, fn):
+        for k in fn()["kpis"]:
+            assert k["label"]
+            assert k["tone"] in {"ok", "warn", "bad", "unknown"}
+            assert k["says"], f"{k['label']} carries no verdict"
+
+    @pytest.mark.parametrize("fn", [today_v2.bed_scorecard,
+                                    today_v2.staff_scorecard])
+    def test_the_geography_filters_narrow(self, fn):
+        national = fn()
+        state = fn("Assam")
+        district = fn("Assam", "Kamrup R")
+        counts = [national, state, district]
+        key = ("centres" if fn is today_v2.bed_scorecard else "facility_cadres")
+        vals = [c["scorecard"][key] for c in counts]
+        assert vals == sorted(vals, reverse=True), vals
+        assert vals[-1] > 0
+
+    @pytest.mark.parametrize("fn", [today_v2.bed_scorecard,
+                                    today_v2.staff_scorecard])
+    def test_a_single_district_withholds_the_spread_metric(self, fn):
+        d = fn("Assam", "Kamrup R")
+        spread = d["kpis"][-1]
+        assert spread["label"] == "Districts affected"
+        assert spread["value"] is None
+        assert "single district" in spread["says"]
+
+    def test_beds_disclose_that_occupancy_is_modelled(self):
+        """Capacity is a real government norm; how full the beds are is not.
+        A reader would assume both were counted unless told."""
+        prov = today_v2.bed_scorecard()["labels"]["provenance"]
+        assert "IPHS" in prov and "modelled" in prov
+
+    def test_staff_disclose_that_attendance_is_modelled(self):
+        prov = today_v2.staff_scorecard()["labels"]["provenance"]
+        assert "Rural Health Statistics" in prov and "modelled" in prov
+
+    def test_staff_ranking_is_by_role_not_by_facility(self):
+        """"Male health assistants are 38% vacant" is a recruitment decision;
+        no per-facility list adds up to that sentence."""
+        rows = today_v2.staff_scorecard()["ranking"]
+        names = {r["name"] for r in rows}
+        assert "Health assistant (male)" in names or "Doctor (allopathic)" in names
+        assert all(0 <= r["value"] <= 100 for r in rows)
+
+
+class TestAllThreeResourcesShareOneContract:
+    """One front-end path renders all three. If a resource drops a key, that
+    path silently renders nothing rather than erroring."""
+
+    @pytest.mark.parametrize("fn", [today_v2.scorecard,
+                                    today_v2.bed_scorecard,
+                                    today_v2.staff_scorecard])
+    def test_the_shape_is_identical(self, fn):
+        d = fn()
+        for key in ("resource", "empty", "kpis", "labels", "distribution",
+                    "ranking", "quadrant"):
+            assert key in d, f"{fn.__name__} is missing {key}"
+        for block in ("distribution", "ranking", "quadrant"):
+            assert block in d["labels"], f"{fn.__name__} has no {block} title"
+            assert d["labels"][block].get("title")
+
+    @pytest.mark.parametrize("fn", [today_v2.scorecard,
+                                    today_v2.bed_scorecard,
+                                    today_v2.staff_scorecard])
+    def test_ranking_and_quadrant_rows_carry_the_generic_fields(self, fn):
+        d = fn()
+        for r in d["ranking"]:
+            assert {"name", "value", "sub", "flag"} <= set(r)
+        for r in d["quadrant"]:
+            assert {"name", "sub", "x", "y", "critical"} <= set(r)

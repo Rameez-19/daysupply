@@ -285,7 +285,7 @@
                 <option value="">All health centres</option>
               </select>
             </div>
-            <div class="filter-group">
+            <div class="filter-group" id="v2-vital-group">
               <label class="filter-label">Show</label>
               <div class="segmented" role="group" aria-label="Criticality">
                 <button class="segment active" id="v2-all"
@@ -304,20 +304,16 @@
 
         <div class="dashboard-row">
           <div class="dashboard-section flex-1">
-            <h3>When will it run out?</h3>
-            <p class="section-note">
-              Every medicine we track, grouped by how many days of supply is
-              left at the current rate of use.
-            </p>
+            <h3 id="v2-t1">When will it run out?</h3>
+            <p class="section-note" id="v2-n1">Every medicine we track, grouped by how many days of supply is
+              left at the current rate of use.</p>
             <div class="chart-box"><canvas id="v2-timeline"></canvas></div>
             <div id="v2-timeline-note" class="chart-caption"></div>
           </div>
           <div class="dashboard-section flex-1">
-            <h3>Which medicines are short in the most places?</h3>
-            <p class="section-note">
-              Counted by how many health centres are short of each one. Red is
-              life-saving.
-            </p>
+            <h3 id="v2-t2">Which medicines are short in the most places?</h3>
+            <p class="section-note" id="v2-n2">Counted by how many health centres are short of each one. Red is
+              life-saving.</p>
             <div class="chart-box"><canvas id="v2-medicines"></canvas></div>
             <div id="v2-medicines-note" class="chart-caption"></div>
           </div>
@@ -325,23 +321,19 @@
 
         <div class="dashboard-row">
           <div class="dashboard-section flex-1">
-            <h3>Which districts need help first?</h3>
-            <p class="section-note">
-              Every district placed by how much is running low (across) against
+            <h3 id="v2-t3">Which districts need help first?</h3>
+            <p class="section-note" id="v2-n3">Every district placed by how much is running low (across) against
               how much it could cope with if demand tripled (up). The bottom
               right is the worst place to be: badly short, and unable to help
-              itself.
-            </p>
+              itself.</p>
             <div class="chart-box"><canvas id="v2-quadrant"></canvas></div>
             <div id="v2-quadrant-note" class="chart-caption"></div>
           </div>
           <div class="dashboard-section flex-1">
-            <h3>Could the network take a shock?</h3>
-            <p class="section-note">
-              How much of each district&rsquo;s medicine stock could meet a
+            <h3 id="v2-t4">Could the network take a shock?</h3>
+            <p class="section-note" id="v2-n4">How much of each district&rsquo;s medicine stock could meet a
               sudden jump in demand using supplies already nearby, before any
-              new order could arrive.
-            </p>
+              new order could arrive.</p>
             <div class="chart-box"><canvas id="v2-shock"></canvas></div>
             <div id="v2-shock-note" class="chart-caption"></div>
           </div>

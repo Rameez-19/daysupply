@@ -241,7 +241,108 @@ def scorecard(state: str = "", district: str = "", phc: str = "",
             if phc else []),
     }
     r["grades"] = _grades(r)
+    r["resource"] = "medicine"
+    # Nothing tracked at all is a real answer, not an error. Kept out of
+    # `grades` because it is not a grade, and everything in there is iterated
+    # as one.
+    r["empty"] = (sc.get("tracked") or 0) == 0 if (sc := r.get("scorecard")) else True
+    r["labels"] = MEDICINE_LABELS
+    # The same `kpis` list beds and staff return, so the front end renders any
+    # resource through one path instead of a branch per resource.
+    g = r["grades"]
+    sc = r.get("scorecard") or {}
+    r["kpis"] = [
+        _kpi(g["availability"]["pct"], "%", "Medicines available",
+             f"{g['availability']['count'] or 0:,} of "
+             f"{g['availability']['of'] or 0:,} at a safe level",
+             g["availability"]["tone"], g["availability"]["says"]),
+        _kpi(g["vital_availability"]["pct"], "%", "Life-saving available",
+             f"{g['vital_availability']['count'] or 0:,} of "
+             f"{g['vital_availability']['of'] or 0:,}",
+             g["vital_availability"]["tone"], g["vital_availability"]["says"]),
+        _kpi(g["stocked_out"]["pct"], "%", "Completely out",
+             f"{g['stocked_out']['count'] or 0:,} with nothing on the shelf",
+             g["stocked_out"]["tone"], g["stocked_out"]["says"]),
+        _kpi(g["at_risk_week"]["pct"], "%", "Gone within a week",
+             f"{g['at_risk_week']['count'] or 0:,} at the current rate of use",
+             g["at_risk_week"]["tone"], g["at_risk_week"]["says"]),
+        _kpi(g["spread"]["pct"], "%", "Districts affected",
+             f"{g['spread']['count'] or 0:,} of {g['spread']['of'] or 0:,} "
+             f"district{'' if (g['spread']['of'] or 0) == 1 else 's'}",
+             g["spread"]["tone"], g["spread"]["says"]),
+    ]
+    # Same generic keys the other two resources use.
+    r["summary"] = {"primary": sc.get("tracked") or 0,
+                    "noun": "medicines",
+                    "centres": sc.get("facilities") or 0,
+                    "districts": sc.get("districts") or 0}
+    r["distribution"] = r.get("timeline") or []
+    r["ranking"] = [
+        {"name": m["item_name"], "value": m["centres"],
+         "sub": f"{m['districts']} district"
+                f"{'' if m['districts'] == 1 else 's'}",
+         "flag": m["ven_class"] == "Vital"}
+        for m in (r.get("worst_medicines") or [])
+    ]
+    r["quadrant"] = [
+        {"name": d["district"], "sub": d["state"], "x": d["pct_short"],
+         "y": d["pct_cope"], "tracked": d["tracked"],
+         "critical": d["pct_short"] >= 40 and d["pct_cope"] < FRAGILE_BELOW}
+        for d in (r.get("districts_plot") or [])
+    ]
     return r
+
+
+def reporting_geography() -> dict:
+    """The states, districts and health centres that actually report.
+
+    **This is the fix for the filters "not working".** The dropdowns were fed
+    from the facility register — 200,438 facilities across 668 districts —
+    while only **200 facilities in 116 districts** report stock. Picking a
+    health centre therefore had roughly a **one in a thousand** chance of
+    landing on one with data, and every other choice emptied the page. The
+    filter was working perfectly; it was being offered choices that could not
+    work.
+
+    Offering only what reports is also the honest presentation of the demo
+    footprint, and stops the product implying facility-level coverage of all
+    200,438 that it does not have.
+
+    Small enough to send whole — 200 rows — so the cascade needs no further
+    round trips and changing a state repopulates its districts instantly.
+    """
+    rows = run_query(f"""
+        SELECT state, district, facility_id, ANY_VALUE(facility_name) AS name,
+               COUNT(*) AS lines
+        FROM `{D}.reorder_status`
+        GROUP BY state, district, facility_id
+        ORDER BY state, district, name
+    """, cache_key="v2:geography", ttl=3600)
+
+    states: dict = {}
+    for r in rows:
+        st = states.setdefault(r["state"],
+                               {"state": r["state"], "lines": 0, "districts": {}})
+        di = st["districts"].setdefault(
+            r["district"],
+            {"district": r["district"], "lines": 0, "facilities": []})
+        di["facilities"].append({"facility_id": r["facility_id"],
+                                 "name": r["name"], "lines": r["lines"]})
+        di["lines"] += r["lines"]
+        st["lines"] += r["lines"]
+
+    return {
+        "states": [
+            {**st, "districts": sorted(st["districts"].values(),
+                                       key=lambda d: d["district"])}
+            for st in sorted(states.values(), key=lambda x: x["state"])
+        ],
+        "totals": {
+            "states": len(states),
+            "districts": sum(len(st["districts"]) for st in states.values()),
+            "facilities": len(rows),
+        },
+    }
 
 
 def _grades(r: dict) -> dict:
@@ -284,10 +385,14 @@ def _grades(r: dict) -> dict:
         "vital_availability": {
             "pct": vital_availability, "count": s.get("vital_available"),
             "of": vital_tracked, "tone": band(vital_availability, 95, 85),
-            "says": ("Life-saving medicines should be the last thing to run "
+            # A scope with no life-saving lines is not "protecting them well",
+            # it simply has none. The old sentence passed judgement on an
+            # empty set, and the tile rendered "null%" above it.
+            "says": ("No life-saving medicines are tracked here."
+                     if vital_availability is None else
+                     "Life-saving medicines should be the last thing to run "
                      "short, not the same as everything else."
-                     if vital_availability is not None
-                     and availability is not None
+                     if availability is not None
                      and vital_availability <= availability
                      else "Life-saving medicines are being protected ahead of "
                           "the rest, which is what should happen.")},
@@ -316,6 +421,34 @@ def _grades(r: dict) -> dict:
             "pct": absorb3, "tone": band(absorb3, 70, FRAGILE_BELOW),
             "says": _say_resilience(absorb3)},
     }
+
+
+MEDICINE_LABELS = {
+    "distribution": {
+        "title": "When will it run out?",
+        "note": "Every medicine we track, grouped by how many days of supply "
+                "is left at the current rate of use.",
+    },
+    "ranking": {
+        "title": "Which medicines are short in the most places?",
+        "note": "Counted by how many health centres are short of each one. "
+                "Red is life-saving.",
+        "unit": "health centres short",
+    },
+    "quadrant": {
+        "title": "Which districts need help first?",
+        "note": "Every district placed by how much is running low (across) "
+                "against how much it could cope with if demand tripled (up). "
+                "The bottom right is the worst place to be: badly short, and "
+                "unable to help itself.",
+        "x": "Share of medicines running low",
+        "y": "Could cope if demand tripled",
+        "critical": "Needs help first",
+        "other": "Other districts",
+    },
+    "provenance": "Stock counts come from the ledger. Expected demand comes "
+                  "from the trained model.",
+}
 
 
 def _say_availability(pct: float | None) -> str:
@@ -347,3 +480,352 @@ def _say_resilience(pct: float | None) -> str:
     if pct >= FRAGILE_BELOW:
         return "Many district stocks could not cope if demand tripled."
     return "Low. Most district stocks could not cope if demand tripled."
+
+
+# ── Beds and staff ───────────────────────────────────────────────────
+#
+# The page showed "not graded yet" for these, which was honest and useless.
+# They are graded the same way medicines are, because the questions a health
+# official asks about beds are the same questions in a different unit.
+#
+# All three resources return the same shape — a `kpis` list plus `distribution`,
+# `ranking` and `quadrant` — so one front-end path renders any of them and the
+# titles travel with the data instead of living in a branch per resource.
+
+
+def _kpi(value, unit, label, sub, tone, says) -> dict:
+    return {"value": value, "unit": unit, "label": label, "sub": sub,
+            "tone": tone, "says": says}
+
+
+def _band(value, good, fair, higher_is_better=True) -> str:
+    if value is None:
+        return "unknown"
+    if higher_is_better:
+        return "ok" if value >= good else "warn" if value >= fair else "bad"
+    return "ok" if value <= good else "warn" if value <= fair else "bad"
+
+
+def _rate(num, den):
+    return round(100 * num / den, 1) if den else None
+
+
+def _geo_where(state: str, district: str, phc: str) -> str:
+    """Geography predicate for the bed and staff tables.
+
+    Both carry state, district and facility_id, so all three filters apply —
+    unlike `network_absorption`, which has no facility column at all.
+    """
+    parts = []
+    if state:
+        parts.append("state = @state")
+    if district:
+        parts.append("district = @district")
+    if phc:
+        parts.append("facility_id = @phc")
+    return " AND ".join(parts) if parts else "TRUE"
+
+
+def _geo_params(state: str, district: str, phc: str) -> list:
+    params = []
+    if state:
+        params.append(bigquery.ScalarQueryParameter("state", "STRING", state))
+    if district:
+        params.append(
+            bigquery.ScalarQueryParameter("district", "STRING", district))
+    if phc:
+        params.append(bigquery.ScalarQueryParameter("phc", "STRING", phc))
+    return params
+
+
+BED_LABELS = {
+    "distribution": {
+        "title": "How full are the health centres?",
+        "note": "Every centre placed by how much of its bed capacity is in use.",
+    },
+    "ranking": {
+        "title": "Where are patients being turned away?",
+        "note": "The centres turning away the most people over the year. Red "
+                "is a centre that is over capacity.",
+        "unit": "patients turned away",
+    },
+    "quadrant": {
+        "title": "Which districts are under most pressure?",
+        "note": "Districts placed by how full their beds are (across) against "
+                "how much spare capacity is left (up). The bottom right is "
+                "full, with nothing held in reserve.",
+        "x": "Average occupancy",
+        "y": "Spare capacity left",
+        "critical": "Under pressure",
+        "other": "Other districts",
+    },
+    "provenance": "Bed numbers are the IPHS 2022 government norm, which is "
+                  "real. How full they are is modelled from real HMIS "
+                  "admission volumes.",
+}
+
+STAFF_LABELS = {
+    "distribution": {
+        "title": "How badly staffed are the roles?",
+        "note": "Every role at every centre, placed by how many of its "
+                "sanctioned posts are unfilled.",
+    },
+    "ranking": {
+        "title": "Which roles are hardest to fill?",
+        "note": "Average share of sanctioned posts unfilled, by role. Red is "
+                "30% or worse.",
+        "unit": "% of posts unfilled",
+    },
+    "quadrant": {
+        "title": "Which districts are worst staffed?",
+        "note": "Districts placed by how many posts are unfilled (across) "
+                "against how many people are actually on duty (up). The "
+                "bottom right is empty posts and poor attendance together.",
+        "x": "Posts unfilled",
+        "y": "Actually on duty",
+        "critical": "Worst staffed",
+        "other": "Other districts",
+    },
+    "provenance": "Vacancy is from Rural Health Statistics 2017, which is "
+                  "real. Day-to-day attendance is modelled.",
+}
+
+
+def bed_scorecard(state: str = "", district: str = "", phc: str = "") -> dict:
+    """Bed availability, graded.
+
+    Capacity is the IPHS 2022 government norm and is real. How full those beds
+    are is modelled from real HMIS admission volumes, which the page states
+    rather than buries — occupancy is the number a reader would otherwise
+    assume had been counted.
+    """
+    where = _geo_where(state, district, phc)
+    params = _geo_params(state, district, phc)
+
+    rows = run_query(f"""
+    SELECT
+      (SELECT AS STRUCT
+         COUNT(*) AS centres,
+         SUM(bed_capacity) AS beds,
+         SUM(free_beds) AS free_beds,
+         SUM(turned_away) AS turned_away,
+         ROUND(AVG(occupancy_rate), 4) AS mean_occupancy,
+         COUNTIF(status = 'over_capacity') AS over_capacity,
+         COUNTIF(turned_away > 0) AS turning_away,
+         COUNT(DISTINCT district) AS districts,
+         COUNT(DISTINCT IF(turned_away > 0, district, NULL)) AS districts_affected
+       FROM `{D}.bed_status` WHERE {where}) AS s,
+
+      ARRAY(SELECT AS STRUCT bucket, sort_order, n FROM (
+        SELECT CASE WHEN occupancy_rate >= 1 THEN 'Over capacity'
+                    WHEN occupancy_rate >= 0.85 THEN '85% or more full'
+                    WHEN occupancy_rate >= 0.5 THEN 'Half to 85% full'
+                    WHEN occupancy_rate > 0 THEN 'Under half full'
+                    ELSE 'Empty' END AS bucket,
+               CASE WHEN occupancy_rate >= 1 THEN 1
+                    WHEN occupancy_rate >= 0.85 THEN 2
+                    WHEN occupancy_rate >= 0.5 THEN 3
+                    WHEN occupancy_rate > 0 THEN 4 ELSE 5 END AS sort_order,
+               COUNT(*) AS n
+        FROM `{D}.bed_status` WHERE {where}
+        GROUP BY bucket, sort_order ORDER BY sort_order)) AS distribution,
+
+      ARRAY(SELECT AS STRUCT name, value, sub, flag FROM (
+        SELECT facility_name AS name, turned_away AS value,
+               CONCAT(district, ' - ', CAST(bed_capacity AS STRING), ' beds') AS sub,
+               status = 'over_capacity' AS flag
+        FROM `{D}.bed_status` WHERE {where} AND turned_away > 0
+        ORDER BY turned_away DESC LIMIT {TOP_N})) AS ranking,
+
+      ARRAY(SELECT AS STRUCT name, sub, x, y, tracked, critical FROM (
+        SELECT district AS name, ANY_VALUE(state) AS sub,
+               ROUND(100 * AVG(occupancy_rate), 1) AS x,
+               ROUND(100 * SAFE_DIVIDE(SUM(free_beds), SUM(bed_capacity)), 1) AS y,
+               COUNT(*) AS tracked,
+               SUM(turned_away) > 0 AND AVG(occupancy_rate) >= 0.5 AS critical
+        FROM `{D}.bed_status` WHERE {where}
+        GROUP BY district)) AS quadrant
+    """, params, cache_key=f"v2bed:{state}:{district}:{phc}", ttl=300)
+
+    if not rows:
+        return {"resource": "bed", "empty": True, "kpis": [],
+                "labels": BED_LABELS}
+
+    r = dict(rows[0])
+    s = dict(r["s"])
+    centres = s.get("centres") or 0
+    if not centres:
+        return {"resource": "bed", "empty": True, "scorecard": s, "kpis": [],
+                "labels": BED_LABELS}
+
+    occ = 100 * (s.get("mean_occupancy") or 0)
+    free = round(100 - occ, 1)
+    over = _rate(s.get("over_capacity") or 0, centres)
+    turning = _rate(s.get("turning_away") or 0, centres)
+    districts = s.get("districts") or 0
+    spread = (_rate(s.get("districts_affected") or 0, districts)
+              if districts > 1 else None)
+
+    return {
+        "resource": "bed",
+        "empty": False,
+        "scorecard": s,
+        "labels": BED_LABELS,
+        "summary": {"primary": s.get("beds") or 0, "noun": "beds",
+                    "centres": centres, "districts": districts},
+        "kpis": [
+            _kpi(free, "%", "Beds free on average",
+                 f"{s.get('beds') or 0:,} beds across {centres:,} centres",
+                 _band(free, 40, 15),
+                 "Spare capacity is what absorbs a bad week. Too little and a "
+                 "surge turns patients away."),
+            _kpi(over, "%", "Centres over capacity",
+                 f"{s.get('over_capacity') or 0:,} of {centres:,} centres",
+                 _band(over, 5, 20, higher_is_better=False),
+                 "More patients than beds, so somebody is being sent "
+                 "elsewhere."),
+            _kpi(s.get("turned_away") or 0, "", "Patients turned away",
+                 f"Over the year, at {s.get('turning_away') or 0:,} centres",
+                 "bad" if (s.get("turned_away") or 0) > 0 else "ok",
+                 "Every one of these is a person who arrived and could not be "
+                 "admitted."),
+            _kpi(turning, "%", "Centres turning people away",
+                 f"{s.get('turning_away') or 0:,} of {centres:,}",
+                 _band(turning, 5, 20, higher_is_better=False),
+                 "Whether this is a few overwhelmed centres or a general "
+                 "shortage of beds."),
+            _kpi(spread, "%", "Districts affected",
+                 f"{s.get('districts_affected') or 0:,} of {districts:,} districts",
+                 _band(spread, 25, 60, higher_is_better=False),
+                 _say_spread(spread) if spread is not None
+                 else "Not meaningful for a single district - widen the area "
+                      "to compare districts against each other."),
+        ],
+        "distribution": [dict(x) for x in (r.get("distribution") or [])],
+        "ranking": [dict(x) for x in (r.get("ranking") or [])],
+        "quadrant": [dict(x) for x in (r.get("quadrant") or [])],
+    }
+
+
+def staff_scorecard(state: str = "", district: str = "",
+                    phc: str = "") -> dict:
+    """Staffing, graded.
+
+    Vacancy is real, from Rural Health Statistics 2017. Day-to-day attendance
+    is modelled, and the page says so.
+    """
+    where = _geo_where(state, district, phc)
+    params = _geo_params(state, district, phc)
+
+    rows = run_query(f"""
+    SELECT
+      (SELECT AS STRUCT
+         COUNT(*) AS facility_cadres,
+         COUNT(DISTINCT facility_id) AS centres,
+         SUM(sanctioned_posts) AS posts,
+         SUM(expected_in_position) AS filled,
+         ROUND(AVG(vacancy_rate), 4) AS mean_vacancy,
+         ROUND(AVG(attendance_vs_sanctioned), 4) AS mean_attendance,
+         COUNTIF(days_none_present > 0) AS cadres_with_a_gap,
+         SUM(nurses_short_of_bed_norm) AS nurses_short,
+         COUNT(DISTINCT district) AS districts,
+         COUNT(DISTINCT IF(days_none_present > 0, district, NULL)) AS districts_affected
+       FROM `{D}.staff_status` WHERE {where}) AS s,
+
+      ARRAY(SELECT AS STRUCT bucket, sort_order, n FROM (
+        SELECT CASE WHEN vacancy_rate >= 0.5 THEN 'Half the posts empty'
+                    WHEN vacancy_rate >= 0.3 THEN '30% to 50% empty'
+                    WHEN vacancy_rate >= 0.1 THEN '10% to 30% empty'
+                    WHEN vacancy_rate > 0 THEN 'Under 10% empty'
+                    ELSE 'Fully staffed' END AS bucket,
+               CASE WHEN vacancy_rate >= 0.5 THEN 1
+                    WHEN vacancy_rate >= 0.3 THEN 2
+                    WHEN vacancy_rate >= 0.1 THEN 3
+                    WHEN vacancy_rate > 0 THEN 4 ELSE 5 END AS sort_order,
+               COUNT(*) AS n
+        FROM `{D}.staff_status` WHERE {where}
+        GROUP BY bucket, sort_order ORDER BY sort_order)) AS distribution,
+
+      -- By role, not by centre. "Male health assistants are 38% vacant" is a
+      -- recruitment decision; no per-facility list adds up to that sentence.
+      ARRAY(SELECT AS STRUCT name, value, sub, flag FROM (
+        SELECT cadre AS name,
+               ROUND(100 * AVG(vacancy_rate), 1) AS value,
+               CONCAT(CAST(SUM(sanctioned_posts) AS STRING),
+                      ' sanctioned posts') AS sub,
+               AVG(vacancy_rate) >= 0.3 AS flag
+        FROM `{D}.staff_status` WHERE {where}
+        GROUP BY cadre ORDER BY value DESC LIMIT {TOP_N})) AS ranking,
+
+      ARRAY(SELECT AS STRUCT name, sub, x, y, tracked, critical FROM (
+        SELECT district AS name, ANY_VALUE(state) AS sub,
+               ROUND(100 * AVG(vacancy_rate), 1) AS x,
+               ROUND(100 * AVG(attendance_vs_sanctioned), 1) AS y,
+               COUNT(*) AS tracked,
+               AVG(vacancy_rate) >= 0.3
+                 AND AVG(attendance_vs_sanctioned) < 0.5 AS critical
+        FROM `{D}.staff_status` WHERE {where}
+        GROUP BY district)) AS quadrant
+    """, params, cache_key=f"v2staff:{state}:{district}:{phc}", ttl=300)
+
+    if not rows:
+        return {"resource": "personnel", "empty": True, "kpis": [],
+                "labels": STAFF_LABELS}
+
+    r = dict(rows[0])
+    s = dict(r["s"])
+    cadres = s.get("facility_cadres") or 0
+    if not cadres:
+        return {"resource": "personnel", "empty": True, "scorecard": s,
+                "kpis": [], "labels": STAFF_LABELS}
+
+    filled = round(100 - 100 * (s.get("mean_vacancy") or 0), 1)
+    attendance = round(100 * (s.get("mean_attendance") or 0), 1)
+    gaps = _rate(s.get("cadres_with_a_gap") or 0, cadres)
+    districts = s.get("districts") or 0
+    spread = (_rate(s.get("districts_affected") or 0, districts)
+              if districts > 1 else None)
+
+    return {
+        "resource": "personnel",
+        "empty": False,
+        "scorecard": s,
+        "labels": STAFF_LABELS,
+        "summary": {"primary": s.get("posts") or 0,
+                    "noun": "sanctioned posts",
+                    "centres": s.get("centres") or 0,
+                    "districts": districts},
+        "kpis": [
+            _kpi(filled, "%", "Posts filled",
+                 f"{s.get('posts') or 0:,} sanctioned posts at "
+                 f"{s.get('centres') or 0:,} centres",
+                 _band(filled, 90, 75),
+                 "A vacant post cannot be attended by anybody, so this is the "
+                 "ceiling on everything below it."),
+            _kpi(attendance, "%", "Actually on duty",
+                 "Against sanctioned strength, day to day",
+                 _band(attendance, 80, 60),
+                 "Filling a post and turning up are different things, and only "
+                 "the second one treats a patient."),
+            _kpi(gaps, "%", "Roles with a day nobody came",
+                 f"{s.get('cadres_with_a_gap') or 0:,} of {cadres:,} "
+                 "centre-roles",
+                 _band(gaps, 10, 40, higher_is_better=False),
+                 "At least one day in the year with nobody in that role at "
+                 "that centre at all."),
+            _kpi(s.get("nurses_short") or 0, "", "Nurses below the bed norm",
+                 "Against the Indian Nursing Council ratio IPHS cites",
+                 "bad" if (s.get("nurses_short") or 0) > 0 else "ok",
+                 "Nursing need is set by how many beds a centre has, not by "
+                 "its sanctioned list."),
+            _kpi(spread, "%", "Districts affected",
+                 f"{s.get('districts_affected') or 0:,} of {districts:,} districts",
+                 _band(spread, 25, 60, higher_is_better=False),
+                 _say_spread(spread) if spread is not None
+                 else "Not meaningful for a single district - widen the area "
+                      "to compare districts against each other."),
+        ],
+        "distribution": [dict(x) for x in (r.get("distribution") or [])],
+        "ranking": [dict(x) for x in (r.get("ranking") or [])],
+        "quadrant": [dict(x) for x in (r.get("quadrant") or [])],
+    }

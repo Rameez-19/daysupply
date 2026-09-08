@@ -423,8 +423,51 @@ verifiable in a real browser, since headless Chrome cannot click a dropdown.
 Without it the only evidence would have been that the endpoint behaves when
 called directly, which tests the backend and not the page.
 
-**Beds and staff are not graded here yet** and the page says so rather than
-showing medicine numbers under a "Beds" heading.
+**The filters were never broken; the choices were.** The dropdowns were fed
+from the facility register — **200,438 facilities across 668 districts** —
+while only **200 facilities in 116 districts** report stock. Picking a health
+centre therefore had roughly a **one in a thousand** chance of landing on one
+with data, and every other pick emptied the page. `/api/v1/today2/geography`
+now returns only what reports (5 states, 116 districts, 200 centres, with the
+line count on each), which is also the honest presentation of the demo
+footprint — it stops the product implying facility-level coverage of all
+200,438. It is 200 rows, so it is fetched once and the cascade needs no further
+round trips.
+
+**A percentage can legitimately be null, and it was reaching the page as the
+literal text "null%".** A facility with no life-saving medicines has no
+life-saving availability. Handled once, inside the tile, so no tile added later
+can reintroduce it; the affected scopes now render "—" with the sentence "No
+life-saving medicines are tracked here."
+
+**Beds and staff are graded, not deferred.**
+
+| Beds | | Staff | |
+|---|---|---|---|
+| Beds free on average | **69.5%** | Posts filled | **78.2%** |
+| Centres over capacity | **22.5%** (45 of 200) | Actually on duty | **53.2%** |
+| Patients turned away | **392** | Roles with a day nobody came | **94.3%** (875 of 928) |
+| Centres turning people away | **22.5%** | Nurses below the bed norm | **11** |
+| Districts affected | **25.9%** | Districts affected | **100%** |
+
+The staff ranking is by **role, not by facility**: "male health assistants are
+**38.4%** vacant, against doctors at **8.6%**" is a recruitment decision, and
+no per-facility list adds up to that sentence.
+
+**All three resources return one contract** — `kpis`, `labels`, `distribution`,
+`ranking`, `quadrant`, `summary` — so a single front-end path renders any of
+them. Three near-identical copies of each chart would have been three places
+for one bug to be fixed twice and missed once; `TestAllThreeResourcesShareOneContract`
+pins the shape.
+
+**Beds and staff have no fourth question.** Medicines ask "could the network
+take a shock"; there is no bed equivalent, so rather than invent one those two
+get the provenance panel — which matters more for them anyway, because bed
+occupancy and daily attendance are **modelled** while capacity (IPHS 2022) and
+vacancy (RHS 2017) are real, and a reader would otherwise assume all four were
+counted.
+
+*(Superseded: beds and staff are graded — see above.)*
 
 ## 7a. The map — geography of supply
 

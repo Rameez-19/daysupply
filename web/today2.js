@@ -56,6 +56,11 @@ function v2SetResource(kind) {
     const b = document.getElementById(id);
     if (b) b.classList.toggle('active', on);
   }
+  // Life-saving is a medicine classification. Leaving the toggle live on beds
+  // or staff would offer a filter that silently does nothing.
+  const vitalGroup = document.getElementById('v2-vital-group');
+  if (vitalGroup) vitalGroup.style.display = kind === 'medicine' ? '' : 'none';
+  v2WriteUrl();
   loadToday2();
 }
 
@@ -69,23 +74,23 @@ function v2SetVital(on) {
   loadToday2();
 }
 
-async function v2OnState() {
+function v2OnState() {
   const sel = document.getElementById('v2-state');
   v2State = sel ? sel.value : '';
   // Clear everything below, or the page would keep filtering by a district and
   // a facility that are not in the newly chosen state.
   v2District = ''; v2Phc = ''; v2PhcName = '';
-  await v2LoadDistricts();
-  await v2LoadPhcs();
+  v2FillDistricts();
+  v2FillPhcs();
   v2WriteUrl();
   loadToday2();
 }
 
-async function v2OnDistrict() {
+function v2OnDistrict() {
   const sel = document.getElementById('v2-district');
   v2District = sel ? sel.value : '';
   v2Phc = ''; v2PhcName = '';
-  await v2LoadPhcs();
+  v2FillPhcs();
   v2WriteUrl();
   loadToday2();
 }
@@ -93,69 +98,99 @@ async function v2OnDistrict() {
 function v2OnPhc() {
   const sel = document.getElementById('v2-phc');
   v2Phc = sel ? sel.value : '';
-  v2PhcName = sel && sel.selectedIndex > 0
-    ? sel.options[sel.selectedIndex].textContent.trim() : '';
+  v2PhcName = (v2FacilitiesList().find(f => f.facility_id === v2Phc) || {}).name || '';
   v2WriteUrl();
   loadToday2();
 }
 
-async function v2LoadStates() {
-  const sel = document.getElementById('v2-state');
-  if (!sel) return;
-  try {
-    const res = await fetch('/api/v1/states');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { states } = await res.json();
-    if (!Array.isArray(states)) throw new Error('states missing from response');
-    sel.innerHTML = `<option value="">All India (${states.length} states)</option>`
-      + states.map(s => `<option value="${v2Esc(s.state)}">${v2Esc(s.state)}</option>`).join('');
-  } catch (e) {
-    sel.innerHTML = '<option value="">States unavailable</option>';
-  }
+// ===== Geography that actually reports =====
+//
+// The dropdowns used to be fed from the facility register: 200,438 facilities
+// across 668 districts. Only 200 facilities in 116 districts report stock, so
+// choosing a health centre had roughly a one-in-a-thousand chance of landing
+// on one with data — and every other choice emptied the page. The filter was
+// working; the choices could not.
+//
+// The whole reporting tree is 200 rows, so it is fetched once and the cascade
+// is then instant and offline-safe, instead of a round trip per level.
+let v2Geo = null;
+
+async function v2LoadGeography() {
+  if (v2Geo) return v2Geo;
+  const res = await fetch('/api/v1/today2/geography');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  v2Geo = await res.json();
+  return v2Geo;
 }
 
-async function v2LoadDistricts() {
+function v2StatesList() { return (v2Geo && v2Geo.states) || []; }
+
+function v2DistrictsList() {
+  const st = v2StatesList().find(x => x.state === v2State);
+  return st ? st.districts : [];
+}
+
+function v2FacilitiesList() {
+  const di = v2DistrictsList().find(x => x.district === v2District);
+  return di ? di.facilities : [];
+}
+
+function v2FillStates() {
+  const sel = document.getElementById('v2-state');
+  if (!sel) return;
+  const states = v2StatesList();
+  const t = (v2Geo && v2Geo.totals) || {};
+  sel.innerHTML =
+    `<option value="">All India (${t.states || states.length} reporting states)</option>`
+    + states.map(x =>
+        `<option value="${v2Esc(x.state)}">${v2Esc(x.state)} — `
+        + `${x.districts.length} district${x.districts.length === 1 ? '' : 's'}</option>`).join('');
+  sel.value = v2State;
+  if (sel.value !== v2State) { v2State = ''; sel.value = ''; }
+}
+
+function v2FillDistricts() {
   const sel = document.getElementById('v2-district');
   if (!sel) return;
   if (!v2State) {
     sel.innerHTML = '<option value="">All districts</option>';
+    sel.disabled = true;
+    v2District = '';
     return;
   }
-  try {
-    const res = await fetch(`/api/v1/districts?state=${encodeURIComponent(v2State)}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { districts } = await res.json();
-    sel.innerHTML = `<option value="">All districts (${districts.length})</option>`
-      + districts.map(d => `<option value="${v2Esc(d.district)}">${v2Esc(d.display_name || d.district)}</option>`).join('');
-  } catch (e) {
-    sel.innerHTML = '<option value="">Districts unavailable</option>';
-  }
+  const rows = v2DistrictsList();
+  sel.disabled = false;
+  sel.innerHTML = `<option value="">All districts (${rows.length})</option>`
+    + rows.map(d =>
+        `<option value="${v2Esc(d.district)}">${v2Esc(d.district)} — `
+        + `${d.facilities.length} centre${d.facilities.length === 1 ? '' : 's'}</option>`).join('');
+  sel.value = v2District;
+  if (sel.value !== v2District) { v2District = ''; sel.value = ''; }
 }
 
-// A facility list needs both a state and a district; the endpoint returns 422
-// without them. Until both are chosen the control says what it needs rather
-// than sitting empty and looking broken.
-async function v2LoadPhcs() {
+function v2FillPhcs() {
   const sel = document.getElementById('v2-phc');
   if (!sel) return;
   if (!v2State || !v2District) {
     sel.innerHTML = `<option value="">${
       v2State ? 'Choose a district first' : 'Choose a state first'}</option>`;
     sel.disabled = true;
+    v2Phc = ''; v2PhcName = '';
     return;
   }
+  const rows = v2FacilitiesList();
   sel.disabled = false;
-  try {
-    const res = await fetch(`/api/v1/facilities?state=${encodeURIComponent(v2State)}`
-      + `&district=${encodeURIComponent(v2District)}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { facilities } = await res.json();
-    sel.innerHTML = `<option value="">All health centres (${facilities.length})</option>`
-      + facilities.map(f =>
-          `<option value="${v2Esc(f.facility_id)}">${v2Esc(f.name)}</option>`).join('');
-  } catch (e) {
-    sel.innerHTML = '<option value="">Health centres unavailable</option>';
-  }
+  // Every centre here reports, and the line count says how much, so a reader
+  // can tell a well-covered centre from a thin one before choosing it.
+  sel.innerHTML = `<option value="">All health centres (${rows.length})</option>`
+    + rows.map(f =>
+        `<option value="${v2Esc(f.facility_id)}">${v2Esc(f.name)} — `
+        + `${f.lines} medicine${f.lines === 1 ? '' : 's'}</option>`).join('');
+  sel.value = v2Phc;
+  if (sel.value !== v2Phc) { v2Phc = ''; }
+  v2PhcName = sel.selectedIndex > 0
+    ? (v2FacilitiesList().find(f => f.facility_id === v2Phc) || {}).name || ''
+    : '';
 }
 
 // The scope line is drawn separately so it can be redrawn once the facility's
@@ -166,18 +201,22 @@ async function v2LoadPhcs() {
 function v2RenderScope(d) {
   const scope = document.getElementById('v2-scope');
   if (!scope || !d) return;
-  const s = d.scorecard || {};
+  // Counts and the noun come from the payload. Reading `scorecard.tracked`
+  // and hardcoding "medicines" worked only for medicines, and printed
+  // "Showing — medicines across — health centres" for beds and staff.
+  const sum = d.summary || {};
   const where = v2Phc
     ? `${v2Esc(v2PhcName || v2Phc)}, ${v2Esc(v2District)}`
     : v2District ? `${v2Esc(v2District)}, ${v2Esc(v2State)}`
     : (v2State ? v2Esc(v2State) : 'All India');
   const stayed = (d.scope && d.scope.district_level_panels) || [];
+  const centres = sum.centres || 0;
   scope.innerHTML = `
-    Showing <strong>${v2n(s.tracked)}</strong>
-    ${v2VitalOnly ? 'life-saving ' : ''}medicines
+    Showing <strong>${v2n(sum.primary)}</strong>
+    ${v2VitalOnly && d.resource === 'medicine' ? 'life-saving ' : ''}${v2Esc(sum.noun || '')}
     ${v2Phc ? 'at' : 'across'}
-    <strong>${v2n(s.facilities)}</strong> health centre${s.facilities === 1 ? '' : 's'}
-    ${v2Phc ? '' : `in <strong>${v2n(s.districts)}</strong> districts`}
+    <strong>${v2n(centres)}</strong> health centre${centres === 1 ? '' : 's'}
+    ${v2Phc ? '' : `in <strong>${v2n(sum.districts)}</strong> district${sum.districts === 1 ? '' : 's'}`}
     &mdash; <strong>${where}</strong>.`
     + (stayed.length ? `<div class="v2-scope-caveat">
          Whether stock could absorb a surge is a district-level measure &mdash;
@@ -189,10 +228,15 @@ function v2RenderScope(d) {
 
 // ===== The scorecard =====
 
+// A percentage can legitimately be null — a scope with no life-saving lines
+// has no life-saving availability, and one with nothing tracked has no
+// availability at all. That was reaching the page as the literal text "null%".
+// Handled here, once, so no tile added later can reintroduce it.
 function v2Kpi(value, unit, label, sub, tone, says) {
+  const missing = value === null || value === undefined || value === '';
   return `
-    <div class="v2-kpi ${tone || ''}">
-      <div class="v2-kpi-value">${value}<span class="v2-kpi-unit">${unit || ''}</span></div>
+    <div class="v2-kpi ${missing ? 'unknown' : (tone || '')}">
+      <div class="v2-kpi-value">${missing ? '—' : value}<span class="v2-kpi-unit">${missing ? '' : (unit || '')}</span></div>
       <div class="v2-kpi-label">${label}</div>
       <div class="v2-kpi-sub">${sub || ''}</div>
       <div class="v2-kpi-says">${says || ''}</div>
@@ -211,62 +255,43 @@ async function v2Fetch() {
   const synced = document.getElementById('v2-synced');
   const scope = document.getElementById('v2-scope');
 
-  // Beds and staff are not yet graded on this page. Saying so beats showing
-  // medicine numbers under a "Beds" heading, which would be a lie the reader
-  // could not detect.
-  if (v2Resource !== 'medicine') {
-    const what = v2Resource === 'bed' ? 'Beds' : 'Staff';
-    if (host) {
-      host.innerHTML = panelEmpty(
-        `${what} are not graded on this page yet — only medicines are. `
-        + `The ${what.toLowerCase()} figures are on the Today page, under `
-        + `"How are medicines, beds and staff holding up?".`);
-    }
-    if (scope) scope.innerHTML = '';
-    v2ClearCharts();
-    return;
-  }
-
   try {
     const q = new URLSearchParams();
     if (v2State) q.set('state', v2State);
     if (v2District) q.set('district', v2District);
     if (v2Phc) q.set('phc', v2Phc);
-    if (v2VitalOnly) q.set('vital_only', 'true');
+    // The life-saving split is a medicine classification; beds and staff have
+    // no equivalent, so it is not sent for them.
+    if (v2VitalOnly && v2Resource === 'medicine') q.set('vital_only', 'true');
+    q.set('resource', v2Resource);
     const res = await fetch(`/api/v1/today2?${q}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
     if (d.error) throw new Error(d.error);
 
-    const g = d.grades || {};
-    const s = d.scorecard || {};
-
     v2LastData = d;
     v2RenderScope(d);
 
-    // Five tiles: availability, failure, forward risk, equity, resilience.
-    host.innerHTML =
-        v2Kpi(g.availability.pct, '%', 'Medicines available',
-              `${v2n(g.availability.count)} of ${v2n(g.availability.of)} at a safe level`,
-              g.availability.tone, g.availability.says)
-      + v2Kpi(g.vital_availability.pct, '%', 'Life-saving available',
-              `${v2n(g.vital_availability.count)} of ${v2n(g.vital_availability.of)}`,
-              g.vital_availability.tone, g.vital_availability.says)
-      + v2Kpi(g.stocked_out.pct, '%', 'Completely out',
-              `${v2n(g.stocked_out.count)} with nothing on the shelf`,
-              g.stocked_out.tone, g.stocked_out.says)
-      + v2Kpi(g.at_risk_week.pct, '%', 'Gone within a week',
-              `${v2n(g.at_risk_week.count)} at the current rate of use`,
-              g.at_risk_week.tone, g.at_risk_week.says)
-      + v2Kpi(g.spread.pct === null ? '—' : g.spread.pct,
-              g.spread.pct === null ? '' : '%', 'Districts affected',
-              `${v2n(g.spread.count)} of ${v2n(g.spread.of)} district${g.spread.of === 1 ? '' : 's'}`,
-              g.spread.tone, g.spread.says);
+    if (d.empty || !(d.kpis || []).length) {
+      host.innerHTML = panelEmpty(v2EmptyMessage());
+      v2ClearCharts();
+      if (synced) {
+        synced.className = 'last-synced';
+        synced.textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
+      }
+      return;
+    }
 
-    v2Timeline(d);
-    v2Medicines(d);
+    // One render path for all three resources: the server sends five tiles
+    // already graded and worded, so this does not need to know whether it is
+    // looking at medicines, beds or staff.
+    host.innerHTML = d.kpis.map(k =>
+      v2Kpi(k.value, k.unit, k.label, k.sub, k.tone, k.says)).join('');
+
+    v2Distribution(d);
+    v2Ranking(d);
     v2Quadrant(d);
-    v2Shock(d, g);
+    v2FourthPanel(d);
 
     if (synced) {
       synced.className = 'last-synced';
@@ -292,28 +317,46 @@ function v2ClearCharts() {
   }
 }
 
-// WHEN. Emphasis rather than a five-step ramp: five hues from one family fail
-// colour-blind separation, and the buckets needing action this week are the
-// only ones that need to shout.
-function v2Timeline(d) {
+// ===== Four charts, three resources, one implementation =====
+//
+// The server sends the same four blocks — distribution, ranking, quadrant, and
+// a fourth panel — whatever resource is selected, along with the titles and
+// axis labels. So these functions never ask what they are drawing. The
+// alternative was three near-identical copies of each chart, which is three
+// places for the same bug to be fixed twice and missed once.
+
+function v2SetHeading(id, noteId, label) {
+  const h = document.getElementById(id);
+  const n = document.getElementById(noteId);
+  if (h && label && label.title) h.textContent = label.title;
+  if (n && label && label.note) n.textContent = label.note;
+}
+
+// A distribution over ordered buckets. Emphasis, not a colour ramp: the first
+// two buckets are the ones that need action, and five hues from one family
+// fail colour-blind separation anyway.
+function v2Distribution(d) {
   const el = document.getElementById('v2-timeline');
-  if (!el || typeof Chart === 'undefined') return;
-  const rows = d.timeline || [];
   const note = document.getElementById('v2-timeline-note');
+  const lab = (d.labels || {}).distribution || {};
+  v2SetHeading('v2-t1', 'v2-n1', lab);
+  if (!el || typeof Chart === 'undefined') return;
+
+  const rows = d.distribution || [];
+  if (v2Charts.timeline) { v2Charts.timeline.destroy(); v2Charts.timeline = null; }
   if (!rows.length) {
-    if (note) note.textContent = 'No medicine here has enough usage history yet.';
+    if (note) note.textContent = 'Nothing to show at this scope.';
     return;
   }
   const urgent = rows.filter(r => r.sort_order <= 2).reduce((a, r) => a + r.n, 0);
   const total = rows.reduce((a, r) => a + r.n, 0);
 
-  if (v2Charts.timeline) v2Charts.timeline.destroy();
   v2Charts.timeline = new Chart(el.getContext('2d'), {
     type: 'bar',
     data: {
       labels: rows.map(r => r.bucket),
       datasets: [{
-        label: 'Medicines',
+        label: 'Count',
         data: rows.map(r => r.n),
         backgroundColor: rows.map(r => r.sort_order <= 2 ? V2_URGENT : V2_CALM),
         borderRadius: 4, borderSkipped: 'bottom', maxBarThickness: 60
@@ -324,7 +367,7 @@ function v2Timeline(d) {
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: {
-          label: c => `${v2n(c.parsed.y)} medicines (${Math.round(100 * c.parsed.y / total)}%)`
+          label: c => `${v2n(c.parsed.y)} (${Math.round(100 * c.parsed.y / total)}%)`
         } }
       },
       scales: {
@@ -334,37 +377,41 @@ function v2Timeline(d) {
       }
     }
   });
+
   if (note) {
+    const worst = rows.find(r => r.sort_order <= 2 && r.n > 0);
     note.innerHTML = urgent
-      ? `<strong>${v2n(urgent)} run out within a week</strong> — `
-        + `${Math.round(100 * urgent / total)}% of everything tracked here.`
-      : `Nothing here runs out within a week. The earliest is `
-        + `${v2Esc(rows.find(r => r.n > 0).bucket).toLowerCase()} away.`;
+      ? `<strong>${v2n(urgent)} in the two most urgent bands</strong> — `
+        + `${Math.round(100 * urgent / total)}% of everything counted here`
+        + `${worst ? `, ${v2Esc(worst.bucket.toLowerCase())}` : ''}.`
+      : `Nothing falls in the two most urgent bands at this scope.`;
   }
 }
 
-// WHAT. By name, because "Vitamin A is short in 49 health centres" is a
-// sentence someone can act on.
-function v2Medicines(d) {
+// A ranked horizontal bar. `flag` is the one thing worth colouring — a
+// life-saving medicine, an over-capacity centre, a badly vacant role.
+function v2Ranking(d) {
   const el = document.getElementById('v2-medicines');
-  if (!el || typeof Chart === 'undefined') return;
-  const rows = d.worst_medicines || [];
   const note = document.getElementById('v2-medicines-note');
+  const lab = (d.labels || {}).ranking || {};
+  v2SetHeading('v2-t2', 'v2-n2', lab);
+  if (!el || typeof Chart === 'undefined') return;
+
+  const rows = d.ranking || [];
+  if (v2Charts.medicines) { v2Charts.medicines.destroy(); v2Charts.medicines = null; }
   if (!rows.length) {
-    if (note) note.textContent = 'Nothing is running low here.';
-    if (v2Charts.medicines) { v2Charts.medicines.destroy(); v2Charts.medicines = null; }
+    if (note) note.textContent = 'Nothing to rank at this scope.';
     return;
   }
 
-  if (v2Charts.medicines) v2Charts.medicines.destroy();
   v2Charts.medicines = new Chart(el.getContext('2d'), {
     type: 'bar',
     data: {
-      labels: rows.map(r => r.item_name),
+      labels: rows.map(r => r.name),
       datasets: [{
-        label: 'Health centres short',
-        data: rows.map(r => r.centres),
-        backgroundColor: rows.map(r => r.ven_class === 'Vital' ? V2_VITAL : V2_OTHER),
+        label: lab.unit || 'Count',
+        data: rows.map(r => r.value),
+        backgroundColor: rows.map(r => r.flag ? V2_VITAL : V2_OTHER),
         borderRadius: 3, maxBarThickness: 20
       }]
     },
@@ -373,65 +420,53 @@ function v2Medicines(d) {
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: {
-          label: c => `${v2n(c.parsed.x)} health centres`,
-          afterLabel: c => {
-            const r = rows[c.dataIndex];
-            return `${r.districts} districts · ${r.ven_class === 'Vital'
-              ? 'life-saving' : r.ven_class.toLowerCase()}`;
-          }
+          label: c => `${v2n(c.parsed.x)} ${lab.unit || ''}`.trim(),
+          afterLabel: c => rows[c.dataIndex].sub || ''
         } }
       },
       scales: {
         x: { beginAtZero: true, grid: { color: V2_GRID },
-             ticks: { color: V2_INK, font: { size: 11 }, precision: 0 } },
+             ticks: { color: V2_INK, font: { size: 11 } } },
         y: { grid: { display: false }, ticks: { color: V2_INK, font: { size: 11 } } }
       }
     }
   });
 
-  const vital = rows.filter(r => r.ven_class === 'Vital');
   const top = rows[0];
-  const plural = (n, one, many) => `${v2n(n)} ${n === 1 ? one : many}`;
+  const flagged = rows.filter(r => r.flag).length;
   if (note) {
-    note.innerHTML = `<strong>${v2Esc(top.item_name)}</strong> is short in `
-      + `${plural(top.centres, 'health centre', 'health centres')} across `
-      + `${plural(top.districts, 'district', 'districts')}`
-      + (vital.length
-          ? `. ${vital.length} of ${rows.length === 1 ? 'it' : `these ${rows.length}`}`
-            + ` ${vital.length === 1 ? 'is' : 'are'} life-saving.`
-          : '.');
+    note.innerHTML = `<strong>${v2Esc(top.name)}</strong> leads with `
+      + `${v2n(top.value)} ${v2Esc(lab.unit || '')}`
+      + `${top.sub ? ` (${v2Esc(top.sub)})` : ''}`
+      + (flagged ? `. ${flagged} of these ${rows.length} are flagged.` : '.');
   }
 }
 
-// WHERE. Exposure against ability to cope. Read separately these two mislead;
-// together they separate the districts that are both badly short and unable to
-// help themselves — the bottom-right corner.
+// Two measures that mislead apart and separate when plotted together.
 function v2Quadrant(d) {
   const el = document.getElementById('v2-quadrant');
-  if (!el || typeof Chart === 'undefined') return;
-  const rows = d.districts_plot || [];
   const note = document.getElementById('v2-quadrant-note');
+  const lab = (d.labels || {}).quadrant || {};
+  v2SetHeading('v2-t3', 'v2-n3', lab);
+  if (!el || typeof Chart === 'undefined') return;
+
+  const rows = d.quadrant || [];
+  if (v2Charts.quadrant) { v2Charts.quadrant.destroy(); v2Charts.quadrant = null; }
   if (!rows.length) {
-    if (note) note.textContent = 'Not enough tracked medicines here to compare districts.';
-    if (v2Charts.quadrant) { v2Charts.quadrant.destroy(); v2Charts.quadrant = null; }
+    if (note) note.textContent = 'Not enough here to compare districts.';
     return;
   }
 
-  // "Needs help first" = badly short AND unable to absorb a surge. One hue
-  // plus grey; a scatter cannot carry more than three colours safely and this
-  // only needs two.
-  const critical = r => r.pct_short >= 40 && r.pct_cope < 35;
-
-  if (v2Charts.quadrant) v2Charts.quadrant.destroy();
+  const pt = r => ({ x: r.x, y: r.y, r_: r });
   v2Charts.quadrant = new Chart(el.getContext('2d'), {
     type: 'scatter',
     data: {
       datasets: [
-        { label: 'Needs help first',
-          data: rows.filter(critical).map(r => ({ x: r.pct_short, y: r.pct_cope, r_: r })),
+        { label: lab.critical || 'Needs attention',
+          data: rows.filter(r => r.critical).map(pt),
           backgroundColor: V2_URGENT, pointRadius: 6, pointHoverRadius: 9 },
-        { label: 'Other districts',
-          data: rows.filter(r => !critical(r)).map(r => ({ x: r.pct_short, y: r.pct_cope, r_: r })),
+        { label: lab.other || 'Other districts',
+          data: rows.filter(r => !r.critical).map(pt),
           backgroundColor: V2_CALM, pointRadius: 4, pointHoverRadius: 7 }
       ]
     },
@@ -444,24 +479,22 @@ function v2Quadrant(d) {
         tooltip: { callbacks: {
           title: items => {
             const r = items[0].raw.r_;
-            return `${r.district}, ${r.state}`;
+            return r.sub ? `${r.name}, ${r.sub}` : r.name;
           },
           label: c => {
             const r = c.raw.r_;
-            return [`${r.pct_short}% of its medicines running low`,
-                    `${r.pct_cope}% could cope if demand tripled`,
-                    `${r.tracked} medicines tracked, ${r.vital_short} life-saving short`];
+            return [`${lab.x || 'x'}: ${r.x}%`, `${lab.y || 'y'}: ${r.y}%`];
           }
         } }
       },
       scales: {
-        x: { title: { display: true, text: 'Share of medicines running low →',
+        // The arrow points up on the vertical axis because up is more. It
+        // pointed left once, which reads as "less is up".
+        x: { title: { display: true, text: `${lab.x || ''} →`,
                       color: V2_INK, font: { size: 11 } },
              beginAtZero: true, grid: { color: V2_GRID },
              ticks: { color: V2_INK, font: { size: 10 }, callback: v => `${v}%` } },
-        // Up is more, so the arrow points up. It pointed left, which on a
-        // vertical axis reads as "less is up" — the opposite of the truth.
-        y: { title: { display: true, text: 'Could cope if demand tripled ↑',
+        y: { title: { display: true, text: `${lab.y || ''} ↑`,
                       color: V2_INK, font: { size: 11 } },
              beginAtZero: true, grid: { color: V2_GRID },
              ticks: { color: V2_INK, font: { size: 10 }, callback: v => `${v}%` } }
@@ -469,34 +502,52 @@ function v2Quadrant(d) {
     }
   });
 
-  const worst = rows.filter(critical)
-    .sort((a, b) => b.pct_short - a.pct_short || a.pct_cope - b.pct_cope);
+  const bad = rows.filter(r => r.critical).sort((a, b) => b.x - a.x || a.y - b.y);
   if (note) {
-    note.innerHTML = worst.length
-      ? `<strong>${v2n(worst.length)} districts are in the danger corner</strong> — `
-        + `badly short and unable to cover themselves. The worst is `
-        + `<strong>${v2Esc(worst[0].district)}, ${v2Esc(worst[0].state)}</strong>, with `
-        + `${worst[0].pct_short}% of its medicines running low and only `
-        + `${worst[0].pct_cope}% able to cope with a tripling of demand.`
-      : `No district here is both badly short and unable to cover itself.`;
+    note.innerHTML = bad.length
+      ? `<strong>${v2n(bad.length)} in the danger corner</strong> — worst is `
+        + `<strong>${v2Esc(bad[0].name)}${bad[0].sub ? ', ' + v2Esc(bad[0].sub) : ''}</strong>`
+        + ` at ${bad[0].x}% against ${bad[0].y}%.`
+      : `None here falls in the danger corner.`;
   }
 }
 
-// HOW ROBUST. Three ordered stress levels, so a bar reads better than a gauge.
-function v2Shock(d, g) {
+// Medicines have a fourth question — could the network take a shock — that
+// beds and staff have no equivalent for. Rather than invent one, those two get
+// the provenance panel, which matters more for them anyway: occupancy and
+// attendance are modelled, and a reader would otherwise assume both were
+// counted.
+function v2FourthPanel(d) {
   const el = document.getElementById('v2-shock');
-  if (!el || typeof Chart === 'undefined') return;
-  const rows = d.absorption || [];
   const note = document.getElementById('v2-shock-note');
+  const box = el ? el.parentElement : null;
+  if (v2Charts.shock) { v2Charts.shock.destroy(); v2Charts.shock = null; }
+
+  const rows = d.absorption || [];
   if (!rows.length) {
-    if (note) note.textContent = 'Not enough data here to work this out.';
-    if (v2Charts.shock) { v2Charts.shock.destroy(); v2Charts.shock = null; }
+    if (box) box.style.display = 'none';
+    v2SetHeading('v2-t4', 'v2-n4', {
+      title: 'What these numbers are based on',
+      note: 'Nothing on this page is presented as counted when it is modelled.'
+    });
+    if (note) {
+      note.innerHTML = `<p class="section-note">`
+        + `${v2Esc((d.labels || {}).provenance || '')}</p>`;
+    }
     return;
   }
+
+  if (box) box.style.display = '';
+  v2SetHeading('v2-t4', 'v2-n4', {
+    title: 'Could the network take a shock?',
+    note: 'How much of each district’s medicine stock could meet a sudden '
+        + 'jump in demand using supplies already nearby, before any new order '
+        + 'could arrive.'
+  });
+  if (!el || typeof Chart === 'undefined') return;
+
   const said = { 2: 'If demand doubled', 3: 'If demand tripled',
                  5: 'If demand went 5× higher' };
-
-  if (v2Charts.shock) v2Charts.shock.destroy();
   v2Charts.shock = new Chart(el.getContext('2d'), {
     type: 'bar',
     data: {
@@ -528,14 +579,24 @@ function v2Shock(d, g) {
     }
   });
 
-  const r3 = g.resilience || {};
+  const r3 = ((d.grades || {}).resilience) || {};
   if (note) {
-    note.innerHTML = `<span class="panel-verdict ${r3.tone || 'warn'}">${r3.says || ''}</span>`
+    note.innerHTML =
+      `<span class="panel-verdict ${r3.tone || 'warn'}">${v2Esc(r3.says || '')}</span>`
       + `<p class="section-note" style="margin-top:8px">`
       + `${v2n(d.transfer_only)} medicines would run out before a new order `
       + `could physically reach the health centre. Ordering cannot fix those — `
       + `only moving stock that already exists.</p>`;
   }
+}
+
+// What an empty scope should say, in terms of the resource being viewed.
+function v2EmptyMessage() {
+  const what = v2Resource === 'bed' ? 'bed data'
+             : v2Resource === 'personnel' ? 'staffing data'
+             : 'medicines';
+  return `No ${what} at this scope yet. Every health centre in the list does `
+       + `report — try a wider area.`;
 }
 
 // ===== Filters live in the URL =====
@@ -557,6 +618,16 @@ function v2ReadUrl() {
   v2District = q.get('district') || '';
   v2Phc = q.get('phc') || '';
   v2VitalOnly = q.get('vital') === '1';
+  const res = q.get('resource');
+  if (res === 'bed' || res === 'personnel') v2Resource = res;
+  for (const [id, on] of [['v2-res-med', v2Resource === 'medicine'],
+                          ['v2-res-bed', v2Resource === 'bed'],
+                          ['v2-res-staff', v2Resource === 'personnel']]) {
+    const b = document.getElementById(id);
+    if (b) b.classList.toggle('active', on);
+  }
+  const vitalGroup = document.getElementById('v2-vital-group');
+  if (vitalGroup) vitalGroup.style.display = v2Resource === 'medicine' ? '' : 'none';
   const a = document.getElementById('v2-all');
   const v = document.getElementById('v2-vital');
   if (a) a.classList.toggle('active', !v2VitalOnly);
@@ -569,32 +640,12 @@ function v2WriteUrl() {
   if (v2District) q.set('district', v2District);
   if (v2Phc) q.set('phc', v2Phc);
   if (v2VitalOnly) q.set('vital', '1');
+  if (v2Resource !== 'medicine') q.set('resource', v2Resource);
   const qs = q.toString();
   history.replaceState(null, '',
     `${window.location.pathname}${qs ? '?' + qs : ''}${window.location.hash}`);
 }
 
-// Put the dropdowns where the state says they should be. Selecting a value
-// that is not in the list is a silent no-op in the DOM, so this reports back
-// whether it actually took.
-function v2SyncControls() {
-  let ok = true;
-  for (const [id, want] of [['v2-state', v2State],
-                            ['v2-district', v2District],
-                            ['v2-phc', v2Phc]]) {
-    const sel = document.getElementById(id);
-    if (!sel) continue;
-    sel.value = want;
-    if (sel.value !== want) { ok = false; sel.value = ''; }
-  }
-  // v2PhcName is set when a person picks from the dropdown. Arriving by link
-  // skips that, and the scope line then read "IN-129024" where it should have
-  // read "Jail Dispensary Sirohi".
-  const phcSel = document.getElementById('v2-phc');
-  v2PhcName = phcSel && phcSel.selectedIndex > 0
-    ? phcSel.options[phcSel.selectedIndex].textContent.trim() : '';
-  return ok;
-}
 
 // Initialise once, when the view is first opened.
 let v2Ready = false;
@@ -602,6 +653,7 @@ async function initToday2() {
   if (v2Ready) { loadToday2(); return; }
   v2Ready = true;
   v2ReadUrl();
+  const before = `${v2State}|${v2District}|${v2Phc}`;
 
   // The scorecard does not wait for the dropdowns. It needs only the scope,
   // which came from the URL, so it starts now and renders the moment it lands.
@@ -609,22 +661,27 @@ async function initToday2() {
   // page before a single number appeared.
   loadToday2();
 
-  // The three lookups do not depend on each other either — each needs only the
-  // state and district already known — so they run together rather than in a
-  // queue three deep.
-  await Promise.all([v2LoadStates(), v2LoadDistricts(), v2LoadPhcs()]);
-
-  // A link naming a district or facility that does not exist would otherwise
-  // leave the dropdown blank while the numbers stayed filtered by it. Only
-  // then is a second fetch warranted.
-  if (!v2SyncControls()) {
-    v2District = document.getElementById('v2-district').value || '';
-    v2Phc = document.getElementById('v2-phc').value || '';
-    v2WriteUrl();
-    loadToday2();
-  } else {
-    // The scope was valid, so no refetch is needed — but the facility's name
-    // is only now available, so the line is redrawn from the payload we have.
-    v2RenderScope(v2LastData);
+  // One fetch for the whole reporting tree, then every dropdown is filled
+  // from memory — no round trip per cascade level.
+  try {
+    await v2LoadGeography();
+    v2FillStates();
+    v2FillDistricts();
+    v2FillPhcs();
+    // A link naming a scope that does not report would otherwise leave the
+    // dropdown blank while the numbers stayed filtered by it. The fill
+    // functions clear anything they cannot honour, so compare and refetch.
+    if (before !== `${v2State}|${v2District}|${v2Phc}`) {
+      v2WriteUrl();
+      loadToday2();
+    } else {
+      // The scope held; only the facility's NAME is new, so redraw the line.
+      v2RenderScope(v2LastData);
+    }
+  } catch (e) {
+    for (const id of ['v2-state', 'v2-district', 'v2-phc']) {
+      const sel = document.getElementById(id);
+      if (sel) sel.innerHTML = '<option value="">Geography unavailable</option>';
+    }
   }
 }

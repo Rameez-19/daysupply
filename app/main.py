@@ -199,9 +199,25 @@ async def executive_summary(state: str = ""):
     return _facility_query(executive.national_picture, state)
 
 
+@app.get("/api/v1/today2/geography")
+async def today_v2_geography():
+    """The states, districts and health centres that actually report.
+
+    The v2 filters were fed from the facility register — 200,438 facilities
+    across 668 districts — while only 200 facilities in 116 districts report
+    stock. Choosing a health centre therefore had about a one-in-a-thousand
+    chance of landing on one with data, and every other choice emptied the
+    page. The filter worked; the choices could not.
+
+    Returned whole (200 rows), so the cascade needs no further round trips.
+    """
+    return _facility_query(today_v2.reporting_geography)
+
+
 @app.get("/api/v1/today2")
 async def today_v2_scorecard(state: str = "", district: str = "",
-                             phc: str = "", vital_only: bool = False):
+                             phc: str = "", vital_only: bool = False,
+                             resource: str = "medicine"):
     """Today v2 — the supply chain graded as a scorecard.
 
     Availability, failure, forward risk, equity, resilience: the five questions
@@ -210,6 +226,10 @@ async def today_v2_scorecard(state: str = "", district: str = "",
 
     One round trip, like the other two composite views.
     """
+    if resource == "bed":
+        return _facility_query(today_v2.bed_scorecard, state, district, phc)
+    if resource == "personnel":
+        return _facility_query(today_v2.staff_scorecard, state, district, phc)
     return _facility_query(today_v2.scorecard, state, district, phc, vital_only)
 
 
