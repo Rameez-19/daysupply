@@ -41,6 +41,32 @@ function netEsc(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Filters live in the URL, as they do on Today v2: "staff in Rajasthan"
+// becomes a link, and the view can be reached without clicking — which is the
+// only way a headless browser can check it renders.
+function netReadUrl() {
+  const q = new URLSearchParams(window.location.search || '');
+  const r = q.get('nresource');
+  if (r === 'bed' || r === 'personnel') netResource = r;
+  netState = q.get('nstate') || '';
+  for (const [id, on] of [['net-res-med', netResource === 'medicine'],
+                          ['net-res-bed', netResource === 'bed'],
+                          ['net-res-staff', netResource === 'personnel']]) {
+    const b = document.getElementById(id);
+    if (b) b.classList.toggle('active', on);
+  }
+}
+
+function netWriteUrl() {
+  const q = new URLSearchParams(window.location.search || '');
+  q.delete('nresource'); q.delete('nstate');
+  if (netResource !== 'medicine') q.set('nresource', netResource);
+  if (netState) q.set('nstate', netState);
+  const qs = q.toString();
+  history.replaceState(null, '',
+    `${window.location.pathname}${qs ? '?' + qs : ''}${window.location.hash}`);
+}
+
 function netSetResource(kind) {
   netResource = kind;
   for (const [id, on] of [['net-res-med', kind === 'medicine'],
@@ -49,12 +75,14 @@ function netSetResource(kind) {
     const b = document.getElementById(id);
     if (b) b.classList.toggle('active', on);
   }
+  netWriteUrl();
   loadNetwork();
 }
 
 function netOnState() {
   const sel = document.getElementById('net-state');
   netState = sel ? sel.value : '';
+  netWriteUrl();
   loadNetwork();
 }
 
@@ -87,7 +115,10 @@ function netRow(r, rank, labels, grain) {
           grain === 'district' && r.state ? netEsc(r.state) + ' · ' : ''
         }${netN(r.centres)} centre${r.centres === 1 ? '' : 's'}</span></td>
       <td class="net-num"><strong>${netPct(r.score)}</strong></td>
-      <td class="net-num">${netPct(r.secondary)}</td>
+      <td class="net-num">${r.secondary === null || r.secondary === undefined
+        ? '—'
+        : labels.secondary_is_pct === false ? netN(r.secondary)
+        : netPct(r.secondary)}</td>
       <td class="net-num">${r.failure === null || r.failure === undefined
         ? '—'
         : labels.failure_is_pct ? netPct(r.failure) : netN(r.failure)}</td>
@@ -96,7 +127,8 @@ function netRow(r, rank, labels, grain) {
 
 function netTable(rows, labels, grain, startRank, countUp) {
   if (!rows.length) return panelEmpty('Nothing to rank at this scope.');
-  const head = grain === 'state' ? 'State' : 'District';
+  const head = grain === 'state' ? 'State'
+             : grain === 'cadre' ? 'Role' : 'District';
   return `<div class="table-scroll">
     <table class="scenario-table net-table">
       <thead><tr>
@@ -129,7 +161,8 @@ async function netFetch() {
 
     const labels = d.labels || {};
     const grain = d.grain || 'district';
-    const unit = grain === 'state' ? 'states' : 'districts';
+    const unit = grain === 'state' ? 'states'
+               : grain === 'cadre' ? 'roles' : 'districts';
 
     const scope = document.getElementById('net-scope');
     if (scope) {
@@ -151,11 +184,12 @@ async function netFetch() {
     }
     const wn = document.getElementById('net-worst-note');
     if (wn) {
-      wn.textContent = grain === 'state'
-        ? 'States ranked by the measure below. Red is under 60%.'
-        : 'Districts ranked by the measure below. Red is under 60%. Districts '
+      wn.textContent = grain === 'district'
+        ? 'Districts ranked by the measure below. Red is under 60%. Districts '
           + 'with fewer than eight tracked lines are left out, so nothing '
-          + 'tops the table on a single bad reading.';
+          + 'tops the table on a single bad reading.'
+        : `${unit.charAt(0).toUpperCase()}${unit.slice(1)} ranked by the `
+          + 'measure below. Red is under 60%.';
     }
 
     if (d.empty) {
@@ -244,6 +278,11 @@ function netDistribution(d) {
 }
 
 // A gap stated as two real places lands harder than a distribution.
+function unitFor(d) {
+  const g = d.grain || 'district';
+  return g === 'state' ? 'states' : g === 'cadre' ? 'roles' : 'districts';
+}
+
 function netExtremes(d) {
   const host = document.getElementById('net-extremes');
   const lab = (d.labels || {}).extremes || {};
@@ -267,8 +306,11 @@ function netExtremes(d) {
       <div class="net-extreme-name">${netEsc(r.district)}</div>
       <div class="net-extreme-sub">${sub(r)}</div>
       <div class="net-extreme-meta">
-        ${netEsc(labels.secondary)} ${netPct(r.secondary)}
-        &middot; ${netN(r.centres)} centre${r.centres === 1 ? '' : 's'}
+        ${r.secondary === null || r.secondary === undefined
+          ? ''
+          : `${netEsc(labels.secondary)} ${labels.secondary_is_pct === false
+                ? netN(r.secondary) : netPct(r.secondary)} &middot; `}
+        ${netN(r.centres)} centre${r.centres === 1 ? '' : 's'}
         ${r.lead_days ? `&middot; ${r.lead_days}d to resupply` : ''}
       </div>
     </div>`;
@@ -276,7 +318,7 @@ function netExtremes(d) {
   // The middle of the pack, named. Two extremes cannot say whether the worst
   // is an outlier or whether the typical place is struggling too — and those
   // are different problems: one district to rescue, or a system to fix.
-  const typ = e.typical;
+  const typ = (d.summary || {}).districts >= 3 ? e.typical : null;
   const typicalCard = typ ? `
     <div class="net-extreme typical">
       <div class="net-extreme-role">Typical</div>
@@ -291,9 +333,19 @@ function netExtremes(d) {
         ${netN(e.above_typical)} above it, ${netN(e.below_typical)} below —
         so the worst ${e.below_typical > e.above_typical
           ? 'sits in a crowded bottom half, not on its own'
-          : 'is the tail of a mostly healthier network'}.
+          : `is the tail of a mostly healthier ${
+              (d.grain || 'district') === 'cadre' ? 'establishment' : 'network'}`}.
       </div>
     </div>` : '';
+
+  // One row is not a comparison. Showing it as best AND worst AND typical
+  // reads as three findings about the same place.
+  if ((d.summary || {}).districts < 2) {
+    host.innerHTML = `${card(e.best, '', 'Only one in scope')}
+      <p class="panel-verdict warn">Nothing to compare this against at the
+      current scope. Widen it to rank ${netEsc(unitFor(d))} side by side.</p>`;
+    return;
+  }
 
   host.innerHTML = `
     <div class="net-extremes-row">
@@ -302,8 +354,13 @@ function netExtremes(d) {
     </div>
     ${typicalCard}
     <p class="panel-verdict ${e.gap >= 40 ? 'bad' : 'warn'}">
-      <strong>${netPct(e.gap)}</strong> apart on the same measure, under the
-      same rules. Whatever ${netEsc(e.best.district)} is doing is possible.
+      ${(d.grain || 'district') === 'cadre'
+        ? `<strong>${netPct(e.gap)}</strong> apart inside one sanctioned
+           establishment. The gap here is between roles, not places — every
+           district in this state carries the same figures.`
+        : `<strong>${netPct(e.gap)}</strong> apart on the same measure, under
+           the same rules. Whatever ${netEsc(e.best.district)} is doing is
+           possible.`}
     </p>`;
 }
 
@@ -384,6 +441,7 @@ let netReady = false;
 async function initNetwork() {
   if (!netReady) {
     netReady = true;
+    netReadUrl();
     loadNetwork();
     await netFillStates();
   } else {

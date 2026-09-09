@@ -723,3 +723,52 @@ class TestTheTypicalDistrict:
         d = self._net.comparison(resource)
         e = d["extremes"]
         assert e["above_typical"] + e["below_typical"] <= d["summary"]["districts"]
+
+
+class TestStaffScopedToOneStateIsStillAComparison:
+    """Narrowing a state-grain ranking to one state left one row.
+
+    Best, worst and typical all read "Assam 96.3%" — one place ranked against
+    itself, presented as three findings. The filter was doing what it was told
+    and the result was meaningless.
+
+    Cadre is the grain that varies inside a state, and it varies a lot:
+    Rajasthan runs from 28.6% of male health assistant posts filled to 89.4% of
+    doctor posts. It is also the more useful question at that zoom — "which
+    roles can we not fill here" is a recruitment decision, where "how does
+    Rajasthan compare with Rajasthan" is nothing.
+    """
+
+    from app import network as _net
+
+    def test_unscoped_staff_compares_states(self):
+        d = self._net.comparison("personnel")
+        assert d["grain"] == "state"
+        assert d["summary"]["districts"] > 1
+
+    @pytest.mark.parametrize("state", ["Assam", "Rajasthan", "Maharashtra"])
+    def test_scoped_staff_compares_roles(self, state):
+        d = self._net.comparison("personnel", state)
+        assert d["grain"] == "cadre"
+        assert d["summary"]["districts"] > 1, (
+            f"{state} scoped to one row again — not a comparison")
+
+    def test_the_roles_actually_differ(self):
+        """The whole justification for the cadre grain."""
+        d = self._net.comparison("personnel", "Rajasthan")
+        scores = {r["score"] for r in d["worst"]}
+        assert len(scores) > 1
+        assert d["extremes"]["gap"] > 10, (
+            "roles barely differ, so this grain buys nothing")
+
+    def test_the_scoped_view_names_roles_not_places(self):
+        d = self._net.comparison("personnel", "Rajasthan")
+        names = {r["district"] for r in d["worst"]}
+        assert any("assistant" in n.lower() or "Doctor" in n for n in names), names
+        assert "Rajasthan" not in names
+
+    def test_posts_are_a_count_not_a_percentage(self):
+        """"264 posts" must not render as "264%"."""
+        assert self._net.STAFF_CADRE_LABELS["secondary_is_pct"] is False
+        d = self._net.comparison("personnel", "Rajasthan")
+        assert max(r["secondary"] for r in d["worst"]) > 100

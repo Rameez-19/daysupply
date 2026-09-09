@@ -344,7 +344,17 @@ ranks **across** them, which nothing else does.
 | Beds | district (116) | Tinsukia, Assam **0%** free | Thane, Maharashtra **100%** | 100 pts |
 | Staff | **state (5)** | Rajasthan **59.3%** filled | Delhi **101.1%** | 41.8 pts |
 
-**Staffing is compared by STATE, and that is forced by the data.** Vacancy comes
+**Staffing changes grain with the scope, and both are forced by the data.**
+Unscoped it compares **states**. Scoped to one state it compares **roles**,
+because narrowing a state-grain ranking to one state leaves a single row ranked
+against itself — best, worst and typical all reading "Assam 96.3%", presented
+as three findings about one place. Cadre is what varies inside a state, and it
+varies sharply: Rajasthan runs from **28.6%** of male health assistant posts
+filled to **89.4%** of doctor posts, with female health assistants typical at
+53.4%. It is also the better question at that zoom — "which roles can we not
+fill here" is a recruitment decision.
+
+**Staffing is compared by STATE when unscoped, and that is forced by the data.** Vacancy comes
 from Rural Health Statistics 2017, which publishes at state level. Measured:
 **exactly one distinct value per state** — all 33 Rajasthan districts read
 59.3%, all 27 Assam districts read 96.3%. A district table built on it would

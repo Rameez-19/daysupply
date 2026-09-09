@@ -80,6 +80,7 @@ MEDICINE_LABELS = {
     "score_short": "Available",
     "secondary": "Life-saving available",
     "secondary_short": "Life-saving",
+    "secondary_is_pct": True,
     "failure": "Completely out",
     "failure_short": "Out",
     "failure_is_pct": True,
@@ -110,6 +111,7 @@ BED_LABELS = {
     "score_short": "Free",
     "secondary": "Centres at capacity",
     "secondary_short": "At capacity",
+    "secondary_is_pct": True,
     "failure": "Patients turned away",
     "failure_short": "Turned away",
     # A headcount, not a share — the one failure column that is not a rate.
@@ -137,6 +139,7 @@ STAFF_LABELS = {
     "score_short": "Filled",
     "secondary": "Doctors in post",
     "secondary_short": "Doctors",
+    "secondary_is_pct": True,
     "failure": "Roles with a gap",
     "failure_short": "Gaps",
     "failure_is_pct": True,
@@ -150,6 +153,35 @@ STAFF_LABELS = {
     "extremes": {
         "title": "The two ends of the same network",
         "note": "Same sanctioned establishment, same measure.",
+    },
+}
+
+
+# Same measure, one zoom level in: roles within a state rather than states.
+STAFF_CADRE_LABELS = {
+    "title": "Which roles are hardest to fill here?",
+    "grain_note": "Compared by role, not by district. Vacancy is published at "
+                  "state level, so it is identical in every district of this "
+                  "state — but it differs sharply between roles, which is the "
+                  "comparison that can actually be acted on.",
+    "score": "Posts filled",
+    "score_short": "Filled",
+    "secondary": "Sanctioned posts",
+    "secondary_short": "Posts",
+    "secondary_is_pct": False,
+    "failure": "Centres with a gap",
+    "failure_short": "Gaps",
+    "failure_is_pct": True,
+    "unit": "%",
+    "distribution": {
+        "title": "Is the shortage shared or concentrated?",
+        "note": "Roles grouped by how many of their sanctioned posts are "
+                "filled.",
+    },
+    "structure": {},
+    "extremes": {
+        "title": "The two ends of the same establishment",
+        "note": "Same state, same sanctioned list — different roles.",
     },
 }
 
@@ -294,52 +326,71 @@ def bed_comparison(state: str = "") -> dict:
 
 
 def staff_comparison(state: str = "") -> dict:
-    """Staffing compared by STATE, not by district — and this is not a choice.
+    """Staffing, compared at the grain the data actually has.
 
-    Vacancy comes from Rural Health Statistics 2017, which publishes it at
-    **state** level. Applied down to facilities it is the same number
-    everywhere within a state: all 33 Rajasthan districts read 59.3%, all 27
-    Assam districts read 96.3%. Exactly one distinct value per state, measured.
+    **No state chosen — compare states.** Vacancy comes from Rural Health
+    Statistics 2017, which publishes it at state level. Applied down to
+    facilities it is the same number everywhere within a state: all 33
+    Rajasthan districts read 59.3%, all 27 Assam districts read 96.3% —
+    measured, exactly one distinct value per state. A district league table
+    built on that would rank 33 districts as jointly worst and invite a reader
+    to blame Jaisalmer for a Rajasthan statistic.
 
-    A district league table built on that would rank 33 districts as jointly
-    worst and invite a reader to conclude Jaisalmer is badly run, when the
-    figure says nothing whatever about Jaisalmer — it is a Rajasthan statistic
-    wearing a district's name. It would also be the easiest thing in the
-    product for a knowledgeable judge to catch.
+    **A state chosen — compare the roles inside it.** Narrowing a
+    state-grain comparison to one state leaves one row ranked against itself:
+    best, worst and typical all read "Assam 96.3%", which is not a comparison
+    at all. Cadre is the grain that does vary inside a state, and it varies a
+    lot — Rajasthan runs from 28.6% of male health assistant posts filled to
+    89.4% of doctor posts. It is also the more useful question at that zoom:
+    "which roles can we not fill here" is a recruitment decision, where "how
+    does Rajasthan compare with Rajasthan" is nothing.
 
-    So staffing is compared at the grain the data actually has. Attendance does
-    vary per facility, but it is modelled rather than counted, and ranking
-    districts on a generated number would be a worse answer than ranking states
-    on a real one.
+    Attendance is deliberately not used at either grain. It is modelled and the
+    model is broken for whole states — all 55 of Delhi's rows read zero staff
+    present across 30 reported days.
     """
-    where = "t.state = @state" if state else "TRUE"
+    if not state:
+        rows = run_query(f"""
+        SELECT t.state AS district, t.state AS state,
+               COUNT(*) AS tracked,
+               COUNT(DISTINCT t.facility_id) AS centres,
+               ROUND(100 - 100 * AVG(t.vacancy_rate), 1) AS score,
+               ROUND(100 - 100 * AVG(IF(t.cadre = 'Doctor (allopathic)',
+                                        t.vacancy_rate, NULL)), 1) AS secondary,
+               ROUND(100 * SAFE_DIVIDE(COUNTIF(t.days_none_present > 0),
+                                       COUNT(*)), 1) AS failure,
+               CAST(NULL AS FLOAT64) AS lead_days,
+               CAST(NULL AS FLOAT64) AS km
+        FROM `{D}.staff_status` t
+        GROUP BY t.state
+        ORDER BY score
+        """, [], cache_key="net:staff:all", ttl=300)
+        out = _finish([dict(r) for r in rows], STAFF_LABELS, [], state)
+        out["resource"] = "personnel"
+        out["grain"] = "state"
+        return out
+
     rows = run_query(f"""
-    SELECT t.state AS district, t.state AS state,
+    SELECT t.cadre AS district, CAST(NULL AS STRING) AS state,
            COUNT(*) AS tracked,
            COUNT(DISTINCT t.facility_id) AS centres,
            ROUND(100 - 100 * AVG(t.vacancy_rate), 1) AS score,
-           -- Doctors specifically, and NOT day-to-day attendance.
-           -- `attendance_vs_sanctioned` is modelled and the model is broken
-           -- for whole states: every one of Delhi's 55 rows reads zero staff
-           -- present across 30 reported days, which cannot be true. Ranking
-           -- states on it would publish a generator fault as a finding.
-           -- Doctor vacancy is real RHS data and is the cadre a reader cares
-           -- about most; it is NULL for a state with no doctor rows, which the
-           -- table shows as a dash rather than as a zero.
-           ROUND(100 - 100 * AVG(IF(t.cadre = 'Doctor (allopathic)',
-                                    t.vacancy_rate, NULL)), 1) AS secondary,
-           ROUND(100 * SAFE_DIVIDE(COUNTIF(t.days_none_present > 0), COUNT(*)), 1) AS failure,
+           -- A headcount, not a share: how big the role is here, so a 28%
+           -- fill rate on 66 posts is not read like one on 4.
+           SUM(t.sanctioned_posts) AS secondary,
+           ROUND(100 * SAFE_DIVIDE(COUNTIF(t.days_none_present > 0),
+                                   COUNT(*)), 1) AS failure,
            CAST(NULL AS FLOAT64) AS lead_days,
            CAST(NULL AS FLOAT64) AS km
     FROM `{D}.staff_status` t
-    WHERE {where}
-    GROUP BY t.state
+    WHERE t.state = @state
+    GROUP BY t.cadre
     ORDER BY score
-    """, _params(state), cache_key=f"net:staff:{state}", ttl=300)
+    """, _params(state), cache_key=f"net:staffcadre:{state}", ttl=300)
 
-    out = _finish([dict(r) for r in rows], STAFF_LABELS, [], state)
+    out = _finish([dict(r) for r in rows], STAFF_CADRE_LABELS, [], state)
     out["resource"] = "personnel"
-    out["grain"] = "state"
+    out["grain"] = "cadre"
     return out
 
 
