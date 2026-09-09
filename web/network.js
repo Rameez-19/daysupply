@@ -256,24 +256,51 @@ function netExtremes(d) {
   const e = d.extremes;
   if (!e) { host.innerHTML = panelEmpty('Nothing to compare.'); return; }
   const labels = d.labels || {};
+  // At state grain the place IS the state, so printing it twice reads as a
+  // rendering fault: "Maharashtra / Maharashtra".
+  const sub = r => (r.state && r.state !== r.district) ? netEsc(r.state) : '';
+
   const card = (r, tone, role) => `
     <div class="net-extreme ${tone}">
       <div class="net-extreme-role">${role}</div>
       <div class="net-extreme-value">${netPct(r.score)}</div>
       <div class="net-extreme-name">${netEsc(r.district)}</div>
-      <div class="net-extreme-sub">${netEsc(r.state || '')}</div>
+      <div class="net-extreme-sub">${sub(r)}</div>
       <div class="net-extreme-meta">
         ${netEsc(labels.secondary)} ${netPct(r.secondary)}
-        &middot; ${netN(r.centres)} centres
+        &middot; ${netN(r.centres)} centre${r.centres === 1 ? '' : 's'}
         ${r.lead_days ? `&middot; ${r.lead_days}d to resupply` : ''}
       </div>
     </div>`;
+
+  // The middle of the pack, named. Two extremes cannot say whether the worst
+  // is an outlier or whether the typical place is struggling too — and those
+  // are different problems: one district to rescue, or a system to fix.
+  const typ = e.typical;
+  const typicalCard = typ ? `
+    <div class="net-extreme typical">
+      <div class="net-extreme-role">Typical</div>
+      <div class="net-typical-line">
+        <span class="net-extreme-value">${netPct(typ.score)}</span>
+        <span class="net-typical-place">
+          <strong>${netEsc(typ.district)}</strong>
+          ${sub(typ) ? `<span class="net-extreme-sub">${sub(typ)}</span>` : ''}
+        </span>
+      </div>
+      <div class="net-extreme-meta">
+        ${netN(e.above_typical)} above it, ${netN(e.below_typical)} below —
+        so the worst ${e.below_typical > e.above_typical
+          ? 'sits in a crowded bottom half, not on its own'
+          : 'is the tail of a mostly healthier network'}.
+      </div>
+    </div>` : '';
 
   host.innerHTML = `
     <div class="net-extremes-row">
       ${card(e.best, 'ok', 'Best')}
       ${card(e.worst, 'bad', 'Worst')}
     </div>
+    ${typicalCard}
     <p class="panel-verdict ${e.gap >= 40 ? 'bad' : 'warn'}">
       <strong>${netPct(e.gap)}</strong> apart on the same measure, under the
       same rules. Whatever ${netEsc(e.best.district)} is doing is possible.

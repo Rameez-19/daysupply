@@ -176,6 +176,11 @@ def _finish(rows: list, labels: dict, structure: list, state: str) -> dict:
 
     worst, best = rows[0], rows[-1]
     median = (sorted(scores)[len(scores) // 2] if scores else None)
+    # The median as a PLACE, not just a value. Two extremes alone cannot say
+    # whether the worst is an outlier or whether the middle of the pack is
+    # struggling too, and those need different responses: one district to
+    # rescue, or a system to fix.
+    typical = rows[len(rows) // 2]
 
     return {
         "empty": False,
@@ -190,6 +195,13 @@ def _finish(rows: list, labels: dict, structure: list, state: str) -> dict:
         "structure": structure,
         "extremes": {
             "best": best, "worst": worst,
+            "typical": typical,
+            "above_typical": sum(1 for x in scores
+                                 if typical["score"] is not None
+                                 and x > typical["score"]),
+            "below_typical": sum(1 for x in scores
+                                 if typical["score"] is not None
+                                 and x < typical["score"]),
             "gap": (round(best["score"] - worst["score"], 1)
                     if best["score"] is not None
                     and worst["score"] is not None else None),

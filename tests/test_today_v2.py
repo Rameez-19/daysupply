@@ -686,3 +686,40 @@ class TestTheNetworkComparison:
         one = self._net.comparison("medicine", "Assam")
         assert one["summary"]["districts"] < national["summary"]["districts"]
         assert all(r["state"] == "Assam" for r in one["worst"])
+
+
+class TestTheTypicalDistrict:
+    """Two extremes cannot say whether the worst is an outlier.
+
+    Best and worst alone leave the reader unable to tell a single failing
+    district from a network where the middle is also struggling — and those
+    need different responses: one place to rescue, or a system to fix. The
+    median is reported as a named place for that reason, not to fill space.
+    """
+
+    from app import network as _net
+
+    @pytest.mark.parametrize("resource", ["medicine", "bed", "personnel"])
+    def test_the_typical_place_is_between_the_two_ends(self, resource):
+        e = self._net.comparison(resource)["extremes"]
+        assert e["worst"]["score"] <= e["typical"]["score"] <= e["best"]["score"]
+
+    @pytest.mark.parametrize("resource", ["medicine", "bed", "personnel"])
+    def test_it_is_a_named_place_not_only_a_number(self, resource):
+        """A bare median is a statistic; a named district is somewhere a reader
+        can picture and go and look at."""
+        typ = self._net.comparison(resource)["extremes"]["typical"]
+        assert typ["district"], resource
+        assert typ["score"] is not None
+
+    def test_it_matches_the_median_reported_in_the_summary(self):
+        """Two paths to the same figure on the same panel."""
+        d = self._net.comparison("medicine")
+        assert d["extremes"]["typical"]["score"] == d["summary"]["median"]
+
+    @pytest.mark.parametrize("resource", ["medicine", "bed"])
+    def test_the_counts_either_side_are_consistent(self, resource):
+        """Above + below + the ties must not exceed the population."""
+        d = self._net.comparison(resource)
+        e = d["extremes"]
+        assert e["above_typical"] + e["below_typical"] <= d["summary"]["districts"]

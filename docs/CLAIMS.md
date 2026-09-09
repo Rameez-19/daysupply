@@ -362,6 +362,14 @@ never the whole reason. The furthest band holds **2 districts** and the count
 travels with every band. Presenting distance as the explanation would be a
 more comfortable story and would hand every badly run district an excuse.
 
+**Best, typical, worst — three points, not two.** Two extremes cannot tell a
+reader whether the worst is an outlier or whether the middle of the pack is
+struggling too, and those need different responses: one district to rescue, or
+a system to fix. The median is reported as a **named place**: medicines
+**Medak, Telangana at 83.3%** with 53 districts above it and 55 below, so
+Lakhimpur's 8.3% sits in a crowded bottom half rather than alone. A bare median
+is a statistic; a named district is somewhere a reader can go and look at.
+
 **Three guards against an unfair ranking.** Both ends are shown, because a
 table of failures teaches nobody what good looks like. Districts under
 **8 tracked lines** are excluded, so nothing tops or tails the table on one bad

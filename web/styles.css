@@ -1096,3 +1096,21 @@ button { font-family: inherit; cursor: pointer; }
 #network-view .dashboard-row .dashboard-section { display: flex; flex-direction: column; }
 #net-extremes { flex: 1 1 auto; display: flex; flex-direction: column; }
 #net-extremes .net-extremes-row { flex: 1 1 auto; }
+
+/* The middle of the pack, laid out along one line so it reads as context for
+   the pair above rather than as a third competitor to them. */
+.net-extreme.typical {
+  border-top-color: #94a3b8;
+  margin-top: 12px;
+}
+.net-typical-line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.net-typical-line .net-extreme-value { font-size: 26px; margin: 0; }
+.net-typical-place { display: flex; align-items: baseline; gap: 8px; }
+.net-typical-place strong { font-size: 14px; }
+.net-typical-place .net-extreme-sub { font-size: 12px; }
