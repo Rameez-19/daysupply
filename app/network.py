@@ -75,6 +75,8 @@ def _params(state: str) -> list:
 
 
 MEDICINE_LABELS = {
+    "column_note":
+        "'Available' is the share of tracked medicines at or above their reorder point. 'Life-saving' is the same for Vital medicines only. 'Out' is the share with nothing on the shelf at all.",
     "title": "Which districts are best and worst supplied?",
     "score": "Medicines available",
     "score_short": "Available",
@@ -106,6 +108,8 @@ MEDICINE_LABELS = {
 }
 
 BED_LABELS = {
+    "column_note":
+        "'Free' is the share of bed capacity unoccupied on average. 'At capacity' is the share of centres with more patients than beds. 'Turned away' is a count of people over the year, not a percentage.",
     "title": "Which districts have the most bed pressure?",
     "score": "Beds free",
     "score_short": "Free",
@@ -130,6 +134,8 @@ BED_LABELS = {
 }
 
 STAFF_LABELS = {
+    "column_note":
+        "'Filled' is the share of sanctioned posts in position. 'Doctors' is the same for allopathic doctors only, and is blank where a state reports no doctor posts. 'Posts' is the size of the sanctioned establishment.",
     "title": "Which states are best and worst staffed?",
     "grain_note": "Compared by state, not by district. Vacancy is published by "
                   "Rural Health Statistics at state level, so every district "
@@ -140,9 +146,9 @@ STAFF_LABELS = {
     "secondary": "Doctors in post",
     "secondary_short": "Doctors",
     "secondary_is_pct": True,
-    "failure": "Roles with a gap",
-    "failure_short": "Gaps",
-    "failure_is_pct": True,
+    "failure": "Sanctioned posts",
+    "failure_short": "Posts",
+    "failure_is_pct": False,
     "unit": "%",
     "distribution": {
         "title": "Is the shortage shared or concentrated?",
@@ -159,6 +165,8 @@ STAFF_LABELS = {
 
 # Same measure, one zoom level in: roles within a state rather than states.
 STAFF_CADRE_LABELS = {
+    "column_note":
+        "'Filled' is the share of that role's sanctioned posts in position. 'Posts' is how many are sanctioned, so a low fill rate on a large role is not read like one on a small one.",
     "title": "Which roles are hardest to fill here?",
     "grain_note": "Compared by role, not by district. Vacancy is published at "
                   "state level, so it is identical in every district of this "
@@ -169,9 +177,9 @@ STAFF_CADRE_LABELS = {
     "secondary": "Sanctioned posts",
     "secondary_short": "Posts",
     "secondary_is_pct": False,
-    "failure": "Centres with a gap",
-    "failure_short": "Gaps",
-    "failure_is_pct": True,
+    "failure": None,
+    "failure_short": None,
+    "failure_is_pct": False,
     "unit": "%",
     "distribution": {
         "title": "Is the shortage shared or concentrated?",
@@ -219,8 +227,12 @@ def _finish(rows: list, labels: dict, structure: list, state: str) -> dict:
         "labels": labels,
         "scope": state or "All India",
         # Both ends, because a league table that only shows failures teaches
-        # nobody what good looks like.
-        "rows": rows[:TOP_N] + rows[-TOP_N:] if len(rows) > TOP_N * 2 else rows,
+        # nobody what good looks like — but only when there are two ends to
+        # show. With five states, "worst 10" and "best 10" are the same five
+        # rows printed twice in opposite orders, which looks like a bug and
+        # wastes half the page.
+        "split": len(rows) > TOP_N,
+        "rows": rows,
         "worst": rows[:TOP_N],
         "best": list(reversed(rows[-TOP_N:])),
         "distribution": distribution,
@@ -357,8 +369,14 @@ def staff_comparison(state: str = "") -> dict:
                ROUND(100 - 100 * AVG(t.vacancy_rate), 1) AS score,
                ROUND(100 - 100 * AVG(IF(t.cadre = 'Doctor (allopathic)',
                                         t.vacancy_rate, NULL)), 1) AS secondary,
-               ROUND(100 * SAFE_DIVIDE(COUNTIF(t.days_none_present > 0),
-                                       COUNT(*)), 1) AS failure,
+               -- Sanctioned posts, NOT days-with-nobody-present. That
+               -- column came from the modelled attendance, which reads zero
+               -- staff present for all 30 days at every Delhi centre, and it
+               -- landed every state between 84% and 100% — no discriminating
+               -- power and a generator fault underneath it. Establishment size
+               -- is real, and it stops a 59% fill rate on 330 posts reading
+               -- like one on 55.
+               SUM(t.sanctioned_posts) AS failure,
                CAST(NULL AS FLOAT64) AS lead_days,
                CAST(NULL AS FLOAT64) AS km
         FROM `{D}.staff_status` t
@@ -378,8 +396,11 @@ def staff_comparison(state: str = "") -> dict:
            -- A headcount, not a share: how big the role is here, so a 28%
            -- fill rate on 66 posts is not read like one on 4.
            SUM(t.sanctioned_posts) AS secondary,
-           ROUND(100 * SAFE_DIVIDE(COUNTIF(t.days_none_present > 0),
-                                   COUNT(*)), 1) AS failure,
+           -- Nothing real left for a third column at this grain: posts is
+           -- already the second, and days-with-nobody is modelled. Left null
+           -- so the table drops the column rather than filling it with
+           -- something that cannot be defended.
+           CAST(NULL AS FLOAT64) AS failure,
            CAST(NULL AS FLOAT64) AS lead_days,
            CAST(NULL AS FLOAT64) AS km
     FROM `{D}.staff_status` t

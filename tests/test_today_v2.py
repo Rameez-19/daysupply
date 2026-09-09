@@ -674,12 +674,17 @@ class TestTheNetworkComparison:
             assert self._net.comparison(resource)["structure"] == []
 
     def test_the_failure_column_declares_whether_it_is_a_percentage(self):
-        """Medicines and staff report a share; beds report a headcount of
-        patients turned away. Rendered identically, "8.3" reads as 8.3
-        medicines rather than 8.3%."""
+        """The same column position is a share for one resource and a headcount
+        for another. Rendered identically, "8.3" reads as 8.3 medicines rather
+        than 8.3%, and "528" as 528%.
+
+        Staff moved from a share to a headcount when its old percentage —
+        roles with a day nobody present — turned out to come from the modelled
+        attendance that reads zero staff present for all of Delhi.
+        """
         assert self._net.MEDICINE_LABELS["failure_is_pct"] is True
-        assert self._net.STAFF_LABELS["failure_is_pct"] is True
         assert self._net.BED_LABELS["failure_is_pct"] is False
+        assert self._net.STAFF_LABELS["failure_is_pct"] is False
 
     def test_a_state_scope_narrows_the_comparison(self):
         national = self._net.comparison("medicine")
@@ -772,3 +777,67 @@ class TestStaffScopedToOneStateIsStillAComparison:
         assert self._net.STAFF_CADRE_LABELS["secondary_is_pct"] is False
         d = self._net.comparison("personnel", "Rajasthan")
         assert max(r["secondary"] for r in d["worst"]) > 100
+
+
+class TestTheColumnsCanBeUnderstood:
+    """"GAPS 89.7%" told a reader nothing — not what it was a share of, nor of
+    what population. A header carries a name; it cannot carry a definition."""
+
+    from app import network as _net
+
+    @pytest.mark.parametrize("resource,state", [
+        ("medicine", ""), ("bed", ""), ("personnel", ""), ("personnel", "Rajasthan"),
+    ])
+    def test_every_view_defines_its_columns(self, resource, state):
+        labels = self._net.comparison(resource, state)["labels"]
+        note = labels.get("column_note")
+        assert note and len(note) > 40, f"{resource}/{state} has no column note"
+        # The note must actually name the columns it explains.
+        for key in ("score_short", "secondary_short"):
+            short = labels.get(key)
+            if short:
+                assert short.lower() in note.lower(), (
+                    f"{resource}/{state}: column '{short}' is never explained")
+
+    def test_staff_no_longer_reports_the_modelled_attendance(self):
+        """`days_none_present` comes from the attendance model, which reads
+        zero staff present for all 30 days at every Delhi centre. It put every
+        state between 84% and 100% — no discriminating power, and a generator
+        fault underneath. Replaced with the sanctioned establishment, which is
+        real."""
+        d = self._net.comparison("personnel")
+        assert d["labels"]["failure"] == "Sanctioned posts"
+        assert d["labels"]["failure_is_pct"] is False
+        assert all(r["failure"] > 0 for r in d["worst"])
+
+    def test_a_column_with_nothing_real_is_dropped_not_dashed(self):
+        """At cadre grain posts is already the second column and there is no
+        defensible third, so it is null and the table drops it."""
+        d = self._net.comparison("personnel", "Rajasthan")
+        assert d["labels"]["failure"] is None
+        assert all(r["failure"] is None for r in d["worst"])
+
+
+class TestOneTableWhenThereAreNotTwoEnds:
+    """With five states, "worst 10" and "best 10" are the same five rows
+    printed twice in opposite orders — which looks like a bug and wastes half
+    the page."""
+
+    from app import network as _net
+
+    def test_small_populations_are_not_split(self):
+        d = self._net.comparison("personnel")
+        assert d["summary"]["districts"] <= self._net.TOP_N
+        assert d["split"] is False
+        assert len(d["rows"]) == d["summary"]["districts"]
+
+    def test_large_populations_are_split(self):
+        d = self._net.comparison("medicine")
+        assert d["summary"]["districts"] > self._net.TOP_N
+        assert d["split"] is True
+
+    def test_the_two_ends_do_not_overlap_when_split(self):
+        d = self._net.comparison("medicine")
+        worst = {r["district"] for r in d["worst"]}
+        best = {r["district"] for r in d["best"]}
+        assert not (worst & best), f"a place appears in both tables: {worst & best}"

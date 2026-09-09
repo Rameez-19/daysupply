@@ -105,7 +105,14 @@ async function netFillStates() {
   }
 }
 
-function netRow(r, rank, labels, grain) {
+// A value formatted in its own unit. The same column position is a share for
+// one resource and a headcount for another, and "264%" is not a number.
+function netCell(v, isPct) {
+  if (v === null || v === undefined) return '—';
+  return isPct === false ? netN(v) : netPct(v);
+}
+
+function netRow(r, rank, labels, grain, showFailure) {
   const flag = r.score !== null && r.score < 60;
   return `
     <tr class="${flag ? 'row-critical' : ''}">
@@ -115,13 +122,10 @@ function netRow(r, rank, labels, grain) {
           grain === 'district' && r.state ? netEsc(r.state) + ' · ' : ''
         }${netN(r.centres)} centre${r.centres === 1 ? '' : 's'}</span></td>
       <td class="net-num"><strong>${netPct(r.score)}</strong></td>
-      <td class="net-num">${r.secondary === null || r.secondary === undefined
-        ? '—'
-        : labels.secondary_is_pct === false ? netN(r.secondary)
-        : netPct(r.secondary)}</td>
-      <td class="net-num">${r.failure === null || r.failure === undefined
-        ? '—'
-        : labels.failure_is_pct ? netPct(r.failure) : netN(r.failure)}</td>
+      <td class="net-num">${netCell(r.secondary, labels.secondary_is_pct)}</td>
+      ${showFailure
+        ? `<td class="net-num">${netCell(r.failure, labels.failure_is_pct)}</td>`
+        : ''}
     </tr>`;
 }
 
@@ -129,18 +133,28 @@ function netTable(rows, labels, grain, startRank, countUp) {
   if (!rows.length) return panelEmpty('Nothing to rank at this scope.');
   const head = grain === 'state' ? 'State'
              : grain === 'cadre' ? 'Role' : 'District';
+  // A column with nothing real to put in it is dropped rather than filled with
+  // a row of dashes — which is how the old "Gaps" column looked once the
+  // figure behind it turned out to be unusable.
+  const showFailure = !!labels.failure
+    && rows.some(r => r.failure !== null && r.failure !== undefined);
+
   return `<div class="table-scroll">
     <table class="scenario-table net-table">
       <thead><tr>
         <th></th><th>${head}</th>
         <th class="net-num" title="${netEsc(labels.score)}">${netEsc(labels.score_short || labels.score)}</th>
         <th class="net-num" title="${netEsc(labels.secondary)}">${netEsc(labels.secondary_short || labels.secondary)}</th>
-        <th class="net-num" title="${netEsc(labels.failure)}">${netEsc(labels.failure_short || labels.failure)}</th>
+        ${showFailure
+          ? `<th class="net-num" title="${netEsc(labels.failure)}">${netEsc(labels.failure_short || labels.failure)}</th>`
+          : ''}
       </tr></thead>
       <tbody>${rows.map((r, i) =>
-        netRow(r, countUp ? startRank + i : startRank - i, labels, grain)
+        netRow(r, countUp ? startRank + i : startRank - i, labels, grain, showFailure)
       ).join('')}</tbody>
-    </table></div>`;
+    </table></div>
+    ${labels.column_note
+      ? `<p class="net-column-note">${netEsc(labels.column_note)}</p>` : ''}`;
 }
 
 function loadNetwork() {
@@ -177,14 +191,19 @@ async function netFetch() {
               : '');
     }
 
-    for (const [id, text] of [['net-worst-title', `Needs help first`],
-                              ['net-best-title', `Doing best`]]) {
-      const el = document.getElementById(id);
-      if (el) el.textContent = text;
+    const wt = document.getElementById('net-worst-title');
+    if (wt) {
+      wt.textContent = d.split
+        ? 'Needs help first'
+        : `All ${netN(d.summary.districts)} ${unit}, worst first`;
     }
+    const bt = document.getElementById('net-best-title');
+    if (bt) bt.textContent = 'Doing best';
     const wn = document.getElementById('net-worst-note');
     if (wn) {
-      wn.textContent = grain === 'district'
+      wn.textContent = !d.split
+        ? `Ranked by the measure below, worst first. Red is under 60%.`
+        : grain === 'district'
         ? 'Districts ranked by the measure below. Red is under 60%. Districts '
           + 'with fewer than eight tracked lines are left out, so nothing '
           + 'tops the table on a single bad reading.'
@@ -198,10 +217,21 @@ async function netFetch() {
       document.getElementById('net-best').innerHTML = '';
       netClear();
     } else {
-      document.getElementById('net-worst').innerHTML =
-        netTable(d.worst, labels, grain, 1, true);
-      document.getElementById('net-best').innerHTML =
-        netTable(d.best, labels, grain, d.summary.districts, false);
+      // Below the cut, one table holds everything: two would be the same
+      // rows printed twice in opposite orders.
+      const bestPanel = document.getElementById('net-best-panel');
+      if (d.split) {
+        if (bestPanel) bestPanel.hidden = false;
+        document.getElementById('net-worst').innerHTML =
+          netTable(d.worst, labels, grain, 1, true);
+        document.getElementById('net-best').innerHTML =
+          netTable(d.best, labels, grain, d.summary.districts, false);
+      } else {
+        if (bestPanel) bestPanel.hidden = true;
+        document.getElementById('net-worst').innerHTML =
+          netTable(d.rows, labels, grain, 1, true);
+        document.getElementById('net-best').innerHTML = '';
+      }
       netDistribution(d);
       netExtremes(d);
       netStructure(d);
