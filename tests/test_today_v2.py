@@ -596,3 +596,93 @@ class TestTheViewIsWarmedAtStartup:
         for module in ("executive.national_picture", "mapview.supply_map",
                        "today_v2.scorecard"):
             assert module in warm, f"{module} backs a view and is not warmed"
+
+
+class TestTheNetworkComparison:
+    """A ranking is the most quotable surface in the product and the easiest to
+    be unfair with, so its guards are worth pinning."""
+
+    from app import network as _net
+
+    @pytest.mark.parametrize("resource,grain", [
+        ("medicine", "district"), ("bed", "district"), ("personnel", "state"),
+    ])
+    def test_each_resource_is_compared_at_the_grain_its_data_has(
+            self, resource, grain):
+        """Staffing is compared by STATE and this is not a style choice.
+
+        Vacancy comes from Rural Health Statistics at state level, so every
+        district in a state carries the identical figure — measured: exactly
+        one distinct value per state. A district table built on it would rank
+        33 Rajasthan districts as jointly worst and invite a reader to blame
+        Jaisalmer for a Rajasthan statistic.
+        """
+        d = self._net.comparison(resource)
+        assert d["grain"] == grain, resource
+        assert not d["empty"]
+
+    def test_staff_vacancy_really_is_constant_within_a_state(self):
+        """The measurement the grain decision rests on. If this ever stops
+        being true, staffing should go back to a district ranking."""
+        from app.bq import run_query
+        rows = run_query("""
+            SELECT state, COUNT(DISTINCT ROUND(v, 6)) AS distinct_values
+            FROM (SELECT state, district, AVG(vacancy_rate) AS v
+                  FROM `daysupply.daysupply.staff_status`
+                  GROUP BY state, district)
+            GROUP BY state
+        """)
+        offenders = [r["state"] for r in rows if r["distinct_values"] > 1]
+        assert not offenders, (
+            "vacancy now varies within these states, so a district-level "
+            f"staffing comparison would be meaningful again: {offenders}")
+
+    def test_small_districts_are_excluded_from_the_ranking(self):
+        """A district with three tracked lines reads 0% or 100% on one bad
+        reading, and a league table sorted on that puts noise at both ends —
+        the one thing a ranking must never do."""
+        d = self._net.comparison("medicine")
+        for r in d["worst"] + d["best"]:
+            assert r["tracked"] >= self._net.MIN_FOR_RATE, r
+
+    def test_both_ends_are_returned(self):
+        """A table of failures alone teaches nobody what good looks like."""
+        d = self._net.comparison("medicine")
+        assert d["worst"] and d["best"]
+        assert d["worst"][0]["score"] <= d["best"][0]["score"]
+
+    def test_the_ranking_is_actually_ordered(self):
+        d = self._net.comparison("medicine")
+        assert [r["score"] for r in d["worst"]] == sorted(
+            r["score"] for r in d["worst"])
+
+    def test_the_distance_finding_is_monotonic(self):
+        """The panel claims availability falls as resupply distance rises. If
+        that stops being true the panel must stop saying it."""
+        d = self._net.comparison("medicine")
+        bands = d["structure"]
+        assert bands, "no lead-time bands at all"
+        scores = [b["mean_score"] for b in bands]
+        assert scores == sorted(scores, reverse=True), (
+            f"availability no longer falls with distance: "
+            f"{[(b['band'], b['mean_score']) for b in bands]}")
+
+    def test_beds_and_staff_carry_no_distance_panel(self):
+        """Neither has a lead time. Inventing one would be worse than omitting
+        the panel."""
+        for resource in ("bed", "personnel"):
+            assert self._net.comparison(resource)["structure"] == []
+
+    def test_the_failure_column_declares_whether_it_is_a_percentage(self):
+        """Medicines and staff report a share; beds report a headcount of
+        patients turned away. Rendered identically, "8.3" reads as 8.3
+        medicines rather than 8.3%."""
+        assert self._net.MEDICINE_LABELS["failure_is_pct"] is True
+        assert self._net.STAFF_LABELS["failure_is_pct"] is True
+        assert self._net.BED_LABELS["failure_is_pct"] is False
+
+    def test_a_state_scope_narrows_the_comparison(self):
+        national = self._net.comparison("medicine")
+        one = self._net.comparison("medicine", "Assam")
+        assert one["summary"]["districts"] < national["summary"]["districts"]
+        assert all(r["state"] == "Assam" for r in one["worst"])

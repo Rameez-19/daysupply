@@ -346,35 +346,82 @@
       </section>
 
       <section id="network-view" class="view hidden-view">
-        <div class="view-header">
-          <h2>Network</h2>
-          <p class="view-subtitle">Three resources, one model &mdash; medicines, beds and personnel across the facilities in scope</p>
-        </div>
-
-        <!-- A segmented control, not a filter dropdown. Beds and personnel are
-             a dimension of one system; burying them in a filter made them look
-             like an afterthought. -->
-        <div class="segmented" id="resource-segmented">
-          <button class="segment active" data-resource="medicine" onclick="onResourceSegment('medicine')">Medicines</button>
-          <button class="segment" data-resource="bed" onclick="onResourceSegment('bed')">Beds</button>
-          <button class="segment" data-resource="personnel" onclick="onResourceSegment('personnel')">Personnel</button>
-        </div>
-
-        <div class="dashboard-section" id="resource-panel">
-          <div class="chart-header"><h3 id="resource-panel-title"></h3></div>
-          <div id="resource-panel-body"></div>
-        </div>
-
-        <div class="charts-grid">
-          <div class="dashboard-section chart-section">
-            <div class="chart-header"><h3>Network stock health</h3></div>
-            <div class="chart-container"><canvas id="healthDoughnutChart"></canvas></div>
-            <p id="health-note" class="chart-note"></p>
+        <div class="view-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h2>Who is doing well, and who needs help?</h2>
+            <p class="view-subtitle">
+              Today grades one place. This ranks them against each other &mdash;
+              and separates the districts that are struggling from the ones that
+              are simply far from their supply
+            </p>
           </div>
-          <div class="dashboard-section chart-section">
-            <div class="chart-header"><h3>Critical shortages</h3></div>
-            <div class="chart-container"><canvas id="shortagesBarChart"></canvas></div>
+          <div class="last-synced" id="net-synced">Loading&hellip;</div>
+        </div>
+
+        <div class="v2-filters">
+          <div class="v2-filter-row">
+            <div class="filter-group" id="net-view-group">
+              <label class="filter-label">Compare</label>
+              <div class="segmented" role="group" aria-label="Resource">
+                <button class="segment active" id="net-res-med"
+                        onclick="netSetResource('medicine')">Medicines</button>
+                <button class="segment" id="net-res-bed"
+                        onclick="netSetResource('bed')">Beds</button>
+                <button class="segment" id="net-res-staff"
+                        onclick="netSetResource('personnel')">Staff</button>
+              </div>
+            </div>
+            <div class="filter-group" id="net-state-group">
+              <label class="filter-label">Within</label>
+              <select id="net-state" onchange="netOnState()">
+                <option value="">All India</option>
+              </select>
+            </div>
           </div>
+          <div class="v2-filter-foot">
+            <div class="v2-scope" id="net-scope"></div>
+          </div>
+        </div>
+
+        <!-- 1. The spine: the ranking itself. -->
+        <div class="dashboard-row">
+          <div class="dashboard-section flex-1">
+            <h3 id="net-worst-title">Needs help first</h3>
+            <p class="section-note" id="net-worst-note"></p>
+            <div id="net-worst"></div>
+          </div>
+          <div class="dashboard-section flex-1">
+            <h3 id="net-best-title">Doing best</h3>
+            <p class="section-note">
+              A league table that only shows failures teaches nobody what good
+              looks like.
+            </p>
+            <div id="net-best"></div>
+          </div>
+        </div>
+
+        <!-- 2 and 3: is it shared or concentrated, and how far apart are the
+             two ends. -->
+        <div class="dashboard-row">
+          <div class="dashboard-section flex-1">
+            <h3 id="net-dist-title">Is it the same everywhere?</h3>
+            <p class="section-note" id="net-dist-note"></p>
+            <div class="chart-box"><canvas id="net-distribution"></canvas></div>
+            <div id="net-dist-caption" class="chart-caption"></div>
+          </div>
+          <div class="dashboard-section flex-1">
+            <h3 id="net-extremes-title">The two ends of the same network</h3>
+            <p class="section-note" id="net-extremes-note"></p>
+            <div id="net-extremes"></div>
+          </div>
+        </div>
+
+        <!-- 4. The part that stops the ranking being unfair. -->
+        <div class="dashboard-section" id="net-structure-section">
+          <h3 id="net-structure-title">How much of the gap is distance?</h3>
+          <p class="section-note" id="net-structure-note"></p>
+          <div class="chart-box"><canvas id="net-structure"></canvas></div>
+          <div id="net-structure-caption" class="chart-caption"></div>
         </div>
       </section>
 
@@ -665,6 +712,7 @@
   <script src="surge.js"></script>
   <script src="map.js"></script>
   <script src="today2.js"></script>
+  <script src="network.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(reg => {

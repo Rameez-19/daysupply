@@ -258,3 +258,39 @@ class TestButtonClassesExist:
         undefined = sorted(c for c in used if f".{c}" not in css)
         assert not undefined, (
             f"these button classes are used but never styled: {undefined}")
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_every_script_executes_not_just_parses():
+    """`node --check` validates syntax. It cannot find a missing identifier.
+
+    Deleting the old Network markup made `onResourceSegment` unreachable, so
+    it was removed — leaving `window.onResourceSegment = onResourceSegment`
+    behind it, twice. That is valid syntax and a ReferenceError at load, and
+    app.js runs first, so nothing after the throw would have executed: every
+    page in the product, blank.
+
+    It is the same shape as the two front-end outages before it. The file
+    parsed; the app was dead. So this runs each script against a permissive DOM
+    stub, which is the cheapest thing that would have caught all three.
+
+    A stub is not a browser and this is not a substitute for opening the page —
+    but a reference error needs no browser to find.
+    """
+    import re
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    # Only what the PAGE loads. sw.js is a service worker: it runs in a worker
+    # context and legitimately uses `self`, so executing it here would fail for
+    # a reason that has nothing to do with the page.
+    page_scripts = [WEB / src for src in
+                    re.findall(r'<script src="([^"]+)"', html)
+                    if not src.startswith("http")]
+    assert page_scripts, "index.html loads no local scripts"
+
+    script = Path(__file__).parent / "exec_check.js"
+    result = subprocess.run(
+        [NODE, str(script), *[str(p) for p in page_scripts]],
+        capture_output=True, text=True)
+    assert result.returncode == 0, (
+        "a shipped script throws at load, which takes down every page:\n"
+        f"{result.stdout}{result.stderr}")

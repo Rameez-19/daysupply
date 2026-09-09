@@ -327,6 +327,53 @@ Action queue promised "the whole queue" and showed 50 of 597, and Today's
 hand-off read "Showing 5 of 50". It now requests more rows than exist, so the
 returned count is the true total and the hand-off states it.
 
+## 7b. Network — comparison, and who is judged unfairly
+
+*Last verified against the live deployment: **2026-09-09**.*
+
+Served by `/api/v1/network` (`app/network.py`), drawn by `web/network.js`.
+
+The page it replaced was a resource switcher, a stock-health doughnut and a
+critical-shortages bar — all three of which Today v2 now does better. It changed
+job rather than being kept for the nav slot: Today v2 grades **one** scope, this
+ranks **across** them, which nothing else does.
+
+| Resource | Grain | Worst | Best | Gap |
+|---|---|---|---|---|
+| Medicines | district (110) | Lakhimpur, Assam **8.3%** | Warangal Urban, Telangana **100%** | 91.7 pts |
+| Beds | district (116) | Tinsukia, Assam **0%** free | Thane, Maharashtra **100%** | 100 pts |
+| Staff | **state (5)** | Rajasthan **59.3%** filled | Delhi **101.1%** | 41.8 pts |
+
+**Staffing is compared by STATE, and that is forced by the data.** Vacancy comes
+from Rural Health Statistics 2017, which publishes at state level. Measured:
+**exactly one distinct value per state** — all 33 Rajasthan districts read
+59.3%, all 27 Assam districts read 96.3%. A district table built on it would
+rank 33 districts as jointly worst and invite a reader to blame Jaisalmer for a
+Rajasthan statistic. `test_staff_vacancy_really_is_constant_within_a_state`
+pins the measurement the decision rests on, so if it ever stops being true the
+ranking can go back to districts.
+
+**The distance finding, stated with its limit.** Mean availability falls
+monotonically as resupply distance rises: **83.5%** under 9 days, **75.5%** at
+9-12, **64.7%** at 12-15, **56.4%** past 15 — a 27-point spread across 110
+districts. The correlation is **-0.296**, which explains under a tenth of the
+variance, so the page says distance is *one* reason a district is behind and
+never the whole reason. The furthest band holds **2 districts** and the count
+travels with every band. Presenting distance as the explanation would be a
+more comfortable story and would hand every badly run district an excuse.
+
+**Three guards against an unfair ranking.** Both ends are shown, because a
+table of failures teaches nobody what good looks like. Districts under
+**8 tracked lines** are excluded, so nothing tops or tails the table on one bad
+reading. The distance panel sits under the ranking rather than after it.
+
+**Two numbers deliberately not used.** `attendance_vs_sanctioned` is modelled
+and the model is broken for whole states — **all 55 of Delhi's rows read zero
+staff present across 30 reported days**, and 198 of Rajasthan's 330 are zero.
+Ranking on it would publish a generator fault as a finding, so the staff
+comparison uses **doctor vacancy** (real RHS data) instead. Assam has no doctor
+rows and shows a dash rather than a zero.
+
 ## 7c. Today v2 — the supply chain as a scorecard
 
 *Last verified against the live deployment: **2026-09-07**.*

@@ -253,8 +253,10 @@ function refreshAll() {
     loadTransfers();
     if (typeof loadSurgeBanner === 'function') loadSurgeBanner();
   } else if (view === 'network-view') {
-    loadResourcePanel();
-    loadChart(currentChartDays);   // also draws the two network charts
+    // Network changed job: it used to repeat the resource panel and the two
+    // stock-health charts that Today v2 now does better. It ranks and compares
+    // instead, which is the one thing no other page does.
+    if (typeof initNetwork === 'function') initNetwork();
   } else if (view === 'plan-view') {
     loadChart(currentChartDays);
     if (typeof loadSurge === 'function') loadSurge();
@@ -897,50 +899,13 @@ async function loadChart(days) {
     setChartNote('forecast-note', `Forecast unavailable: ${e.message}`);
   }
 
-  // 2 & 3. Network stock health and critical shortages — both derived from the
-  // model and the dispensing ledger.
-  try {
-    const res = await fetch(`/api/v1/stock-health?${getFilterParams()}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const h = await res.json();
-
-    const ctxD = document.getElementById('healthDoughnutChart');
-    if(ctxD) {
-      if(doughnutChart) doughnutChart.destroy();
-      doughnutChart = new Chart(ctxD, {
-        type: 'doughnut',
-        data: {
-          labels: ['Healthy (14+ days)', 'Low (7-14 days)', 'Critical (<7 days)'],
-          datasets: [{ data: [h.healthy, h.low, h.critical], backgroundColor: ['#16a34a','#f97316','#ef4444'], borderWidth:0 }]
-        },
-        options: { responsive:true, maintainAspectRatio:false, cutout:'72%', plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11, weight:'600' } } } } }
-      });
-    }
-
-    const ctxB = document.getElementById('shortagesBarChart');
-    if(ctxB) {
-      if(barChart) barChart.destroy();
-      barChart = new Chart(ctxB, {
-        type: 'bar',
-        data: {
-          labels: h.shortages.map(s => `${s.item_name} (${s.ven_class[0]})`),
-          datasets: [{ label: 'Deficit', data: h.shortages.map(s => s.deficit_units), backgroundColor: '#1e3a8a', borderRadius:4 }]
-        },
-        options: {
-          responsive:true, maintainAspectRatio:false,
-          plugins:{
-            legend:{ display:false },
-            tooltip:{ callbacks:{ afterLabel: c => `${h.shortages[c.dataIndex].facilities_affected} facilities · ${h.shortages[c.dataIndex].ven_class}` } }
-          },
-          scales:{ y:{ beginAtZero:true, title:{ display:true, text:'Units short of 14-day cover', font:{ size:10 } } } }
-        }
-      });
-    }
-    setChartNote('health-note', `${h.total_series.toLocaleString('en-IN')} facility-item series · mean cover ${h.mean_days_of_cover} days · ${h.on_hand_basis}`);
-  } catch(e) {
-    console.error('Stock health failed', e);
-    setChartNote('health-note', 'Stock health unavailable');
-  }
+  // The stock-health doughnut and the critical-shortages bar used to be drawn
+  // here for the old Network page. That page now ranks and compares instead,
+  // and Today v2 covers stock health better, so both canvases were deleted.
+  // The `/api/v1/stock-health` request that fed them went with them: guarded
+  // against the missing elements it was harmless, but it was still a round
+  // trip on every Plan ahead load, fetching data for three elements that no
+  // longer exist.
 }
 
 // The single clearest illustration of the lead-time rule: two real PHCs,
@@ -1042,9 +1007,6 @@ async function loadReporting() {
 
 // The resource selector is a segmented control on Network now, not a filter
 // dropdown on the dashboard. Three resources, one model, visibly.
-function onResourceSegment(resource) {
-  setResource(resource);
-}
 
 // The resource selector is back on the national picture. Removing it was the
 // wrong call: it looked dead only because the panel it drove had moved to
@@ -1067,93 +1029,19 @@ function onResourceChange() {
   if (sel) setResource(sel.value);
 }
 window.onResourceChange = onResourceChange;
-window.onResourceSegment = onResourceSegment;
 
-// The resource dropdown that used to live in the Today filter bar is gone.
-// It set `currentResource`, which drives the resource panel — and that panel
-// moved to Network in the restructure. So changing it on Today updated a panel
-// on a hidden view and appeared to do nothing at all. Resource is a Network
-// concern, and the segmented control there is the only control for it.
-window.onResourceSegment = onResourceSegment;
+// `window.onResourceSegment = onResourceSegment` stood here twice, and both
+// lines referenced a function deleted with the old Network markup. Assigning
+// an identifier that no longer exists throws a ReferenceError at load, which
+// would have taken down every page — app.js runs first and nothing after the
+// throw would have executed.
+//
+// `node --check` passes it, because it is valid syntax. Only running the file
+// finds it. Same failure mode as the last two front-end outages: the file
+// parsed and the app was dead.
 
 function pct(v) { return v === null || v === undefined ? '—' : `${Math.round(v)}%`; }
 
-async function loadResourcePanel() {
-  const panel = document.getElementById('resource-panel');
-  const title = document.getElementById('resource-panel-title');
-  const body  = document.getElementById('resource-panel-body');
-  if (!panel || !body) return;
-
-  if (currentResource === 'medicine') {
-    panel.hidden = true;
-    return;
-  }
-  panel.hidden = false;
-  body.innerHTML = '<p class="chart-note">Loading…</p>';
-
-  try {
-    if (currentResource === 'bed') {
-      title.textContent = '🛏️ Bed capacity and pressure';
-      const res = await fetch(`/api/v1/beds?${getFilterParams()}&limit=8`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const { summary, facilities } = await res.json();
-      const ref = await (await fetch(`/api/v1/beds/referrals?${getFilterParams()}&limit=4`)).json();
-
-      body.innerHTML = `
-        <div class="resource-tiles">
-          <div class="resource-tile"><span class="rt-value">${(summary.total_beds ?? 0).toLocaleString('en-IN')}</span><span class="rt-label">beds (IPHS norm)</span></div>
-          <div class="resource-tile"><span class="rt-value">${pct(summary.mean_occupancy_pct)}</span><span class="rt-label">mean occupancy</span></div>
-          <div class="resource-tile"><span class="rt-value">${(summary.free_beds ?? 0).toLocaleString('en-IN')}</span><span class="rt-label">free beds</span></div>
-          <div class="resource-tile ${summary.turned_away_30d > 0 ? 'rt-alert' : ''}"><span class="rt-value">${(summary.turned_away_30d ?? 0).toLocaleString('en-IN')}</span><span class="rt-label">turned away, 30d</span></div>
-        </div>
-        <p class="chart-note">${summary.capacity_basis || ''}</p>
-        ${(ref.referrals || []).length ? `
-        <p class="resource-note"><strong>Beds cannot be transferred.</strong>
-          Where a facility is full, the answer is a referral route:</p>
-        <div class="reporting-list">${ref.referrals.map(r => `
-          <div class="reporting-row">
-            <span>${r.from_facility_name} <span class="contrast-sub">${r.from_turned_away} turned away</span></span>
-            <span class="reporting-pct">→ ${r.to_facility_name}, ${r.to_free_beds} free, ${r.distance_km} km</span>
-          </div>`).join('')}</div>` : ''}
-        <div class="reporting-list">${(facilities || []).slice(0, 6).map(f => `
-          <div class="reporting-row">
-            <span>${f.facility_name} <span class="contrast-sub">${f.district}${f.beds_are_day_care ? ' · day-care' : ''}</span></span>
-            <span class="reporting-pct ${f.status === 'over_capacity' ? 'silent' : f.status === 'under_pressure' ? 'partial' : ''}">${f.mean_occupied}/${f.bed_capacity} beds · ${pct((f.occupancy_rate || 0) * 100)}</span>
-          </div>`).join('')}</div>`;
-    } else {
-      title.textContent = '👥 Personnel establishment and attendance';
-      const res = await fetch(`/api/v1/personnel?${getFilterParams()}&limit=8`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const { summary, facilities } = await res.json();
-      const alloc = await (await fetch(`/api/v1/personnel/reallocation?${getFilterParams()}&limit=4`)).json();
-
-      body.innerHTML = `
-        <div class="resource-tiles">
-          <div class="resource-tile"><span class="rt-value">${(summary.sanctioned_posts ?? 0).toLocaleString('en-IN')}</span><span class="rt-label">sanctioned posts</span></div>
-          <div class="resource-tile"><span class="rt-value">${pct(summary.attendance_pct)}</span><span class="rt-label">attendance</span></div>
-          <div class="resource-tile ${summary.unstaffed > 0 ? 'rt-alert' : ''}"><span class="rt-value">${summary.unstaffed ?? 0}</span><span class="rt-label">unstaffed posts</span></div>
-          <div class="resource-tile"><span class="rt-value">${summary.critically_short ?? 0}</span><span class="rt-label">critically short</span></div>
-        </div>
-        <p class="chart-note">${summary.basis || ''}</p>
-        <div class="reporting-list">${(summary.by_cadre || []).map(c => `
-          <div class="reporting-row">
-            <span>${c.cadre} <span class="contrast-sub">${c.sanctioned_posts} posts · ${pct(c.vacancy_pct)} vacant (RHS 2017)</span></span>
-            <span class="reporting-pct ${c.attendance_pct < 50 ? 'silent' : c.attendance_pct < 80 ? 'partial' : ''}">${pct(c.attendance_pct)} attending</span>
-          </div>`).join('')}</div>
-        ${alloc.constraint ? `
-        <p class="resource-note"><strong>No reallocation is possible here.</strong>
-          ${alloc.constraint.why}</p>` : `
-        <div class="reporting-list">${(alloc.reallocations || []).map(r => `
-          <div class="reporting-row">
-            <span>${r.to_facility_name} needs a ${r.cadre}</span>
-            <span class="reporting-pct">← ${r.from_facility_name}, ${r.distance_km} km</span>
-          </div>`).join('')}</div>`}`;
-    }
-  } catch (e) {
-    console.error('Resource panel failed', e);
-    body.innerHTML = '<p class="chart-note">Resource data unavailable.</p>';
-  }
-}
 
 function setChartNote(id, text) {
   const el = document.getElementById(id);

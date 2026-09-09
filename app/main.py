@@ -44,7 +44,7 @@ from app import quality
 from app import resources
 from app import surge
 from app import transfers
-from app import executive, mapview, today_v2
+from app import executive, mapview, today_v2, network as network_view
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
 from app.capture import handle_capture, handle_chat
@@ -215,6 +215,19 @@ async def executive_summary(state: str = ""):
     Defaults to All India, because the question this answers is national.
     """
     return _facility_query(executive.national_picture, state)
+
+
+@app.get("/api/v1/network")
+async def network_comparison(resource: str = "medicine", state: str = "",
+                             vital_only: bool = False):
+    """Who is doing well, who needs help, and who is disadvantaged by distance.
+
+    Today v2 grades one scope; this ranks and compares across them, which is
+    the job nothing else does. Note the grain differs by resource and the
+    response says which: medicines and beds vary by district, staffing does
+    not — vacancy is published at state level, so it is compared by state.
+    """
+    return _facility_query(network_view.comparison, resource, state, vital_only)
 
 
 @app.get("/api/v1/today2/geography")
