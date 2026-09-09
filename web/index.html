@@ -359,7 +359,7 @@
         </div>
 
         <div class="v2-filters">
-          <div class="v2-filter-row">
+          <div class="v2-filter-row net-filter-row">
             <div class="filter-group" id="net-view-group">
               <label class="filter-label">Compare</label>
               <div class="segmented" role="group" aria-label="Resource">
@@ -383,6 +383,39 @@
           </div>
         </div>
 
+        <!-- Dashboarding order: the headline numbers first, the shape of
+             the network beside them, the detail underneath, and the table
+             last — a table is where you go to look something up, not where
+             you start reading. -->
+        <div class="dashboard-row">
+          <div class="dashboard-section flex-1">
+            <h3>How does the network look overall?</h3>
+            <p class="section-note" id="net-kpi-note"></p>
+            <div id="net-kpis" class="net-kpi-grid"></div>
+          </div>
+<div class="dashboard-section flex-1">
+            <h3 id="net-dist-title">Is it the same everywhere?</h3>
+            <p class="section-note" id="net-dist-note"></p>
+            <div class="chart-box"><canvas id="net-distribution"></canvas></div>
+            <div id="net-dist-caption" class="chart-caption"></div>
+          </div>
+        </div>
+
+        <div class="dashboard-row">
+<div class="dashboard-section flex-1">
+            <h3 id="net-extremes-title">The two ends of the same network</h3>
+            <p class="section-note" id="net-extremes-note"></p>
+            <div id="net-extremes"></div>
+          </div>
+        <!-- 4. The part that stops the ranking being unfair. -->
+        <div class="dashboard-section flex-1" id="net-structure-section">
+          <h3 id="net-structure-title">How much of the gap is distance?</h3>
+          <p class="section-note" id="net-structure-note"></p>
+          <div class="chart-box"><canvas id="net-structure"></canvas></div>
+          <div id="net-structure-caption" class="chart-caption"></div>
+        </div>
+        </div>
+
         <!-- 1. The spine: the ranking itself. -->
         <div class="dashboard-row">
           <div class="dashboard-section flex-1">
@@ -400,29 +433,6 @@
           </div>
         </div>
 
-        <!-- 2 and 3: is it shared or concentrated, and how far apart are the
-             two ends. -->
-        <div class="dashboard-row">
-          <div class="dashboard-section flex-1">
-            <h3 id="net-dist-title">Is it the same everywhere?</h3>
-            <p class="section-note" id="net-dist-note"></p>
-            <div class="chart-box"><canvas id="net-distribution"></canvas></div>
-            <div id="net-dist-caption" class="chart-caption"></div>
-          </div>
-          <div class="dashboard-section flex-1">
-            <h3 id="net-extremes-title">The two ends of the same network</h3>
-            <p class="section-note" id="net-extremes-note"></p>
-            <div id="net-extremes"></div>
-          </div>
-        </div>
-
-        <!-- 4. The part that stops the ranking being unfair. -->
-        <div class="dashboard-section" id="net-structure-section">
-          <h3 id="net-structure-title">How much of the gap is distance?</h3>
-          <p class="section-note" id="net-structure-note"></p>
-          <div class="chart-box"><canvas id="net-structure"></canvas></div>
-          <div id="net-structure-caption" class="chart-caption"></div>
-        </div>
       </section>
 
       <!-- Plan ahead -->
