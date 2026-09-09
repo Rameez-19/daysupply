@@ -852,8 +852,19 @@ button { font-family: inherit; cursor: pointer; }
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px 20px;
-  align-items: end;
+  /* Align the LABELS, not the bottoms of the controls. With `end` the taller
+     control pushed its own label up, so "COMPARE" and "WITHIN" sat at
+     different heights — the row read as misaligned even though the grid was
+     doing exactly what it was told. */
+  align-items: start;
 }
+
+/* `.segmented` carries a 16px bottom margin for use in a page body. Inside a
+   filter row that margin lifted it clear of the select beside it, which was
+   the other half of the misalignment. */
+.v2-filter-row .segmented { margin-bottom: 0; }
+/* Same height as the segmented control, so the two line up top and bottom. */
+.v2-filter-row select { min-height: 38px; }
 
 /* Row one is what you are looking at, row two is where. */
 #v2-view-group  { grid-column: 1 / span 2; }
