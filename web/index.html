@@ -383,15 +383,15 @@
           </div>
         </div>
 
-        <!-- Dashboarding order: the headline numbers first, the shape of
-             the network beside them, the detail underneath, and the table
-             last — a table is where you go to look something up, not where
-             you start reading. -->
+        <!-- The two ends are the headline numbers: a gap stated as two
+             named places is what a reader repeats afterwards. The shape of
+             the network sits beside it, the reason underneath, and the
+             tables last. -->
         <div class="dashboard-row">
-          <div class="dashboard-section flex-1">
-            <h3>How does the network look overall?</h3>
-            <p class="section-note" id="net-kpi-note"></p>
-            <div id="net-kpis" class="net-kpi-grid"></div>
+<div class="dashboard-section flex-1">
+            <h3 id="net-extremes-title">The two ends of the same network</h3>
+            <p class="section-note" id="net-extremes-note"></p>
+            <div id="net-extremes"></div>
           </div>
 <div class="dashboard-section flex-1">
             <h3 id="net-dist-title">Is it the same everywhere?</h3>
@@ -401,19 +401,12 @@
           </div>
         </div>
 
-        <div class="dashboard-row">
-<div class="dashboard-section flex-1">
-            <h3 id="net-extremes-title">The two ends of the same network</h3>
-            <p class="section-note" id="net-extremes-note"></p>
-            <div id="net-extremes"></div>
-          </div>
         <!-- 4. The part that stops the ranking being unfair. -->
-        <div class="dashboard-section flex-1" id="net-structure-section">
+        <div class="dashboard-section" id="net-structure-section">
           <h3 id="net-structure-title">How much of the gap is distance?</h3>
           <p class="section-note" id="net-structure-note"></p>
           <div class="chart-box"><canvas id="net-structure"></canvas></div>
           <div id="net-structure-caption" class="chart-caption"></div>
-        </div>
         </div>
 
         <!-- 1. The spine: the ranking itself. -->
@@ -432,9 +425,7 @@
             <div id="net-best"></div>
           </div>
         </div>
-
       </section>
-
       <!-- Plan ahead -->
       <section id="plan-view" class="view hidden-view">
         <div class="view-header">

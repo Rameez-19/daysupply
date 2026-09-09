@@ -1073,25 +1073,15 @@ button { font-family: inherit; cursor: pointer; }
 #net-view-group  { grid-column: 1; grid-row: 1; }
 #net-state-group { grid-column: 2; grid-row: 1; }
 
-/* Two by two, so the tiles sit beside a chart of the same height rather than
-   stretching into a row of four thin ones. */
-.net-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
 
 @media (max-width: 760px) {
   .net-filter-row { grid-template-columns: 1fr; }
   #net-view-group, #net-state-group { grid-column: 1; grid-row: auto; }
-  .net-kpi-grid { grid-template-columns: 1fr; }
 }
 
 /* The tiles fill the panel rather than sitting in the top third of it: the
    chart beside them sets the row height, and a quarter-page of white space
    under four numbers reads as something failing to load. */
 #network-view .dashboard-row .dashboard-section { display: flex; flex-direction: column; }
-.net-kpi-grid { flex: 1 1 auto; grid-auto-rows: 1fr; }
-.net-kpi-grid .v2-kpi { justify-content: center; }
 #net-extremes { flex: 1 1 auto; display: flex; flex-direction: column; }
 #net-extremes .net-extremes-row { flex: 1 1 auto; }

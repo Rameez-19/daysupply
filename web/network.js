@@ -135,8 +135,10 @@ async function netFetch() {
     if (scope) {
       scope.innerHTML = d.empty
         ? 'Nothing to compare at this scope.'
-        : `Comparing <strong>${netN(d.summary.districts)}</strong> ${unit} `
-          + `in <strong>${netEsc(d.scope)}</strong>.`
+        : `Comparing <strong>${netN(d.summary.districts)}</strong> ${unit} in `
+          + `<strong>${netEsc(d.scope)}</strong>. Median `
+          + `<strong>${netPct(d.summary.median)}</strong>, ranging from `
+          + `${netPct(d.summary.lowest)} to ${netPct(d.summary.highest)}.`
           + (labels.grain_note
               ? `<div class="v2-scope-caveat">${netEsc(labels.grain_note)}</div>`
               : '');
@@ -157,8 +159,6 @@ async function netFetch() {
     }
 
     if (d.empty) {
-      const k = document.getElementById('net-kpis');
-      if (k) k.innerHTML = '';
       document.getElementById('net-worst').innerHTML =
         panelEmpty('Nothing to compare at this scope.');
       document.getElementById('net-best').innerHTML = '';
@@ -168,7 +168,6 @@ async function netFetch() {
         netTable(d.worst, labels, grain, 1, true);
       document.getElementById('net-best').innerHTML =
         netTable(d.best, labels, grain, d.summary.districts, false);
-      netKpis(d);
       netDistribution(d);
       netExtremes(d);
       netStructure(d);
@@ -186,52 +185,6 @@ async function netFetch() {
       synced.textContent = `Not synced — ${e.message}`;
     }
   }
-}
-
-// The headline numbers, computed from what the server already sent — a
-// ranking needs its own summary or the reader has to derive "how bad is this
-// overall" by scanning a table, which is the job a KPI row exists to save.
-function netKpis(d) {
-  const host = document.getElementById('net-kpis');
-  const note = document.getElementById('net-kpi-note');
-  if (!host) return;
-
-  const labels = d.labels || {};
-  const grain = d.grain || 'district';
-  const unit = grain === 'state' ? 'states' : 'districts';
-  const s = d.summary || {};
-  const below = (d.distribution || []).find(r => r.sort_order === 1);
-  const good = (d.distribution || []).find(r => r.sort_order === 4);
-  const gap = d.extremes ? d.extremes.gap : null;
-
-  if (note) {
-    note.textContent = grain === 'state'
-      ? `Across the ${netN(s.districts)} reporting states.`
-      : `Across the ${netN(s.districts)} districts with enough tracked lines `
-        + `to rate fairly.`;
-  }
-
-  const tile = (value, unitStr, label, sub, tone) => `
-    <div class="v2-kpi ${tone || ''}">
-      <div class="v2-kpi-value">${value}<span class="v2-kpi-unit">${unitStr || ''}</span></div>
-      <div class="v2-kpi-label">${label}</div>
-      <div class="v2-kpi-sub">${sub || ''}</div>
-    </div>`;
-
-  host.innerHTML =
-      tile(netN(s.districts), '', `${grain === 'state' ? 'States' : 'Districts'} compared`,
-           `Ranked on ${netEsc((labels.score || '').toLowerCase())}`, '')
-    + tile(s.median === null || s.median === undefined ? '—' : s.median, '%',
-           'Median', `Half are above this, half below`,
-           s.median >= 90 ? 'ok' : s.median >= 75 ? 'warn' : 'bad')
-    + tile(below ? netN(below.n) : '0', '',
-           `${grain === 'state' ? 'States' : 'Districts'} under 60%`,
-           `${good ? netN(good.n) : 0} are at 90% or better`,
-           below && below.n > 0 ? 'bad' : 'ok')
-    + tile(gap === null || gap === undefined ? '—' : gap, ' pts',
-           'Best to worst',
-           `${netPct(s.lowest)} up to ${netPct(s.highest)}`,
-           gap >= 40 ? 'bad' : 'warn');
 }
 
 function netClear() {
