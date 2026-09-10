@@ -631,9 +631,11 @@
         </div>
 
         <div id="supply-map" class="supply-map"></div>
+        <button class="btn btn-secondary map-clear" id="map-clear-focus"
+                onclick="clearFocus()" hidden>Show everything again</button>
         <div id="map-legend" class="map-legend"></div>
 
-        <p class="section-note">
+        <p class="section-note" id="map-provenance">
           District position is the mean coordinate of its geocoded facilities
           &mdash; the centre of care, not the centre of the polygon. All
           reporting districts resolve from the facility register; none is

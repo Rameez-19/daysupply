@@ -150,3 +150,42 @@ class TestScoping:
         d = access.nearest_help("Assam")
         assert d["all_cases"], "no cases to check"
         assert all(c["source_name"] for c in d["all_cases"])
+
+
+class TestClickingARowReachesTheMap:
+    """A table beside a map that do not talk to each other are two things to
+    read. Selecting a row is supposed to fly to it, lift it out of the other
+    125 and open its detail — and the way that breaks silently is a table key
+    with no matching feature on the map, which looks like a dead click.
+
+    So the focus path is executed against the real payloads with a stubbed
+    Leaflet: every key the tables render must resolve, the map must actually be
+    moved, and the rest must FADE rather than disappear — hiding them would
+    remove the context that makes the selected one mean anything. 353 km is
+    only striking next to the ones that are 20.
+    """
+
+    def test_the_focus_path_works_end_to_end(self, tmp_path):
+        import json
+        import shutil
+        import subprocess
+        from pathlib import Path
+
+        node = shutil.which("node")
+        if node is None:
+            pytest.skip("node is not installed")
+
+        from app import mapview
+
+        root = Path(__file__).resolve().parent.parent
+        acc = tmp_path / "access.json"
+        mp = tmp_path / "map.json"
+        acc.write_text(json.dumps(access.nearest_help()), encoding="utf-8")
+        mp.write_text(json.dumps(mapview.supply_map("")), encoding="utf-8")
+
+        result = subprocess.run(
+            [node, str(root / "tests" / "focus_check.js"), str(acc), str(mp)],
+            capture_output=True, text=True, cwd=str(root))
+        assert result.returncode == 0, (
+            "clicking a table row does not reach the map:\n"
+            f"{result.stdout}{result.stderr}")

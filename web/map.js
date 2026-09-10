@@ -17,6 +17,11 @@ let districtLayer = null;
 let flowLayer = null;
 let mapData = null;
 let accessLayer = null;
+// Drawn features, keyed by the identity their table row carries, so a
+// click on a row can find the thing it refers to on the map.
+let flowFeatures = {};
+let accessFeatures = {};
+let selectedKey = null;
 let currentLayer = 'risk';
 let flowsVisible = true;
 
@@ -191,14 +196,17 @@ function drawFlows() {
   if (!flowsVisible) { flowLayer = null; return; }
 
   flowLayer = L.layerGroup();
+  flowFeatures = {};
   const maxUnits = Math.max(1, ...(mapData.flows || []).map(f => f.units || 0));
 
   for (const f of mapData.flows || []) {
     if (!f.from_lat || !f.to_lat) continue;
     const weight = 1 + 5 * Math.sqrt((f.units || 0) / maxUnits);
-    L.polyline([[f.from_lat, f.from_lon], [f.to_lat, f.to_lon]], {
+    const line = L.polyline([[f.from_lat, f.from_lon], [f.to_lat, f.to_lon]], {
       color: flowColour(f.severity), weight, opacity: 0.65
-    }).bindPopup(`
+    });
+    flowFeatures[flowKey(f)] = { line, f, baseWeight: weight };
+    line.bindPopup(`
       <div class="map-popup">
         <strong>${esc(f.from_district)} &rarr; ${esc(f.to_district)}</strong>
         <div class="map-popup-sub">${esc(f.from_state)} &rarr; ${esc(f.to_state)}</div>
@@ -273,7 +281,9 @@ function drawFlowTable() {
         <th>Vital</th><th>Distance</th>
       </tr></thead>
       <tbody>${rows.slice(0, 25).map(f => `
-        <tr class="${f.severity === 1 ? 'row-critical' : ''}">
+        <tr class="map-row ${f.severity === 1 ? 'row-critical' : ''}"
+            data-key="${esc(flowKey(f))}" data-focus="flow"
+            title="Show this move on the map">
           <td><strong>${esc(f.from_district)}</strong><br><span class="muted">${esc(f.from_state)}</span></td>
           <td><strong>${esc(f.to_district)}</strong><br><span class="muted">${esc(f.to_state)}</span></td>
           <td>${(f.units || 0).toLocaleString('en-IN')}</td>
@@ -306,7 +316,12 @@ async function setMapLayer(layer) {
   const isAccess = layer === 'access';
   // The standing note describes district centroids and arc thickness. The
   // access layer draws neither, so leaving it up would explain the wrong map.
-  const prov = document.querySelector('#map-view .section-note');
+  //
+  // Targeted by id, not by class. `.section-note` matches four elements in
+  // this view, and the first of them is inside `#map-summary` — which
+  // accessSummaryCards() replaces a few lines below, throwing the hide away
+  // while the note this was meant to hide sat untouched the whole time.
+  const prov = document.getElementById('map-provenance');
   if (prov) prov.hidden = isAccess;
   for (const [id, show] of [['access-section', isAccess],
                             ['flow-section', !isAccess]]) {
@@ -397,17 +412,25 @@ function drawAccess() {
   if (!mapInstance || !accessData) return;
   if (accessLayer) mapInstance.removeLayer(accessLayer);
   accessLayer = L.layerGroup();
+  accessFeatures = {};
+  selectedKey = null;
 
   for (const c of accessData.all_cases || []) {
     if (!c.lat || !c.lon) continue;
     const tone = accessTone(c.km);
 
+    const key = accessKey(c);
+    const feature = { c };
+    accessFeatures[key] = feature;
+
     // The line to help is drawn first so the clinic marker sits on top of it.
     if (c.source_lat && c.source_lon) {
-      L.polyline([[c.lat, c.lon], [c.source_lat, c.source_lon]], {
+      feature.line = L.polyline([[c.lat, c.lon], [c.source_lat, c.source_lon]], {
         color: tone.c, weight: c.km > ACCESS_FAR ? 2.5 : 1.5,
         opacity: 0.55, dashArray: '4 4'
-      }).addTo(accessLayer);
+      });
+      feature.baseWeight = c.km > ACCESS_FAR ? 2.5 : 1.5;
+      feature.line.addTo(accessLayer);
       L.circleMarker([c.source_lat, c.source_lon], {
         radius: 3, color: '#0369a1', fillColor: '#0369a1',
         fillOpacity: 0.9, weight: 0
@@ -420,10 +443,12 @@ function drawAccess() {
     // Size by the population behind the clinic: a shortage at a centre serving
     // 80,000 people is not the same event as one serving 2,000.
     const pop = c.population || 0;
-    L.circleMarker([c.lat, c.lon], {
-      radius: 5 + Math.min(9, Math.sqrt(pop) / 90),
+    feature.baseRadius = 5 + Math.min(9, Math.sqrt(pop) / 90);
+    feature.marker = L.circleMarker([c.lat, c.lon], {
+      radius: feature.baseRadius,
       color: tone.c, weight: 1.5, fillColor: tone.c, fillOpacity: 0.6
-    }).bindPopup(`
+    });
+    feature.marker.bindPopup(`
       <div class="map-popup">
         <strong>${esc(c.facility_name)}</strong>
         <div class="map-popup-sub">${esc(c.district)}, ${esc(c.state)}
@@ -435,7 +460,8 @@ function drawAccess() {
           <tr><td>Nearest supply</td><td>${esc(c.source_name || 'none found')}</td></tr>
           <tr><td>Distance</td><td>${c.km === null ? '—' : c.km + ' km'}</td></tr>
         </table>
-      </div>`).addTo(accessLayer);
+      </div>`);
+    feature.marker.addTo(accessLayer);
   }
   accessLayer.addTo(mapInstance);
 }
@@ -468,7 +494,9 @@ function drawAccessTable() {
         <th class="net-num">People served</th>
       </tr></thead>
       <tbody>${rows.map(c => `
-        <tr class="${c.km > ACCESS_FAR ? 'row-critical' : ''}">
+        <tr class="map-row ${c.km > ACCESS_FAR ? 'row-critical' : ''}"
+            data-key="${esc(accessKey(c))}" data-focus="access"
+            title="Show this centre and its nearest supply on the map">
           <td><strong>${esc(c.facility_name)}</strong><br>
             <span class="muted">${esc(c.district)}, ${esc(c.state)}</span></td>
           <td>${esc(c.item_name)}</td>
@@ -510,3 +538,134 @@ function accessSummaryCards() {
         ? 'Not one of them is unsolvable — every shortage has stock somewhere in the network.'
         : ''}</p>`;
 }
+
+// ===== Click a row, go to it on the map =====
+//
+// A table beside a map that do not talk to each other are two things to read.
+// The table names the case; the map is where you understand it — so selecting a
+// row flies to it, lifts it out of the other 125, and opens its detail.
+//
+// Everything else fades rather than disappearing. Hiding the rest would remove
+// the context that makes the selected one mean something: 353 km is only
+// striking next to the ones that are 20.
+//
+// The identity is the row's own — facility plus medicine for a shortage, the
+// two districts for a move — so the table and the map cannot drift apart the
+// way index-based selection does the moment either list is re-sorted.
+
+function accessKey(c) { return `${c.facility_id}|${c.item_id}`; }
+function flowKey(f) { return `${f.from_district}|${f.to_district}`; }
+
+const FADED = 0.15;
+
+function clearFocus() {
+  selectedKey = null;
+  for (const f of Object.values(accessFeatures)) {
+    if (f.marker) f.marker.setStyle({ opacity: 1, fillOpacity: 0.6 })
+      .setRadius(f.baseRadius);
+    if (f.line) f.line.setStyle({ opacity: 0.55, weight: f.baseWeight });
+  }
+  for (const f of Object.values(flowFeatures)) {
+    if (f.line) f.line.setStyle({ opacity: 0.65, weight: f.baseWeight });
+  }
+  document.querySelectorAll('#map-view tr.row-selected')
+    .forEach(tr => tr.classList.remove('row-selected'));
+  const btn = document.getElementById('map-clear-focus');
+  if (btn) btn.hidden = true;
+}
+
+function markSelectedRow(key) {
+  document.querySelectorAll('#map-view tr[data-key]').forEach(tr => {
+    tr.classList.toggle('row-selected', tr.dataset.key === key);
+  });
+  const btn = document.getElementById('map-clear-focus');
+  if (btn) btn.hidden = false;
+}
+
+// The map sits above the table, so a click at the bottom of a long list would
+// otherwise change something the reader cannot see.
+function scrollMapIntoView() {
+  const el = document.getElementById('supply-map');
+  if (el && el.scrollIntoView) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function focusAccess(key) {
+  if (selectedKey === key) { clearFocus(); return; }
+  const target = accessFeatures[key];
+  if (!target || !mapInstance) return;
+
+  for (const [k, f] of Object.entries(accessFeatures)) {
+    const on = k === key;
+    if (f.marker) {
+      f.marker.setStyle({ opacity: on ? 1 : FADED, fillOpacity: on ? 0.85 : FADED })
+        .setRadius(on ? f.baseRadius + 4 : f.baseRadius);
+    }
+    if (f.line) {
+      f.line.setStyle({ opacity: on ? 0.95 : FADED,
+                        weight: on ? f.baseWeight + 2 : f.baseWeight });
+    }
+  }
+  if (target.marker && target.marker.bringToFront) target.marker.bringToFront();
+
+  const c = target.c;
+  const pts = [[c.lat, c.lon]];
+  if (c.source_lat && c.source_lon) pts.push([c.source_lat, c.source_lon]);
+  // A single point has no bounds to fit, so it gets a sensible zoom instead.
+  if (pts.length > 1) {
+    mapInstance.fitBounds(L.latLngBounds(pts).pad(0.35));
+  } else {
+    mapInstance.setView(pts[0], 9);
+  }
+  if (target.marker) target.marker.openPopup();
+
+  selectedKey = key;
+  markSelectedRow(key);
+  scrollMapIntoView();
+}
+
+function focusFlow(key) {
+  if (selectedKey === key) { clearFocus(); return; }
+  const target = flowFeatures[key];
+  if (!target || !mapInstance) return;
+
+  for (const [k, f] of Object.entries(flowFeatures)) {
+    const on = k === key;
+    if (f.line) {
+      f.line.setStyle({ opacity: on ? 0.95 : FADED,
+                        weight: on ? f.baseWeight + 2.5 : f.baseWeight });
+    }
+  }
+  if (target.line && target.line.bringToFront) target.line.bringToFront();
+
+  const f = target.f;
+  mapInstance.fitBounds(L.latLngBounds([
+    [f.from_lat, f.from_lon], [f.to_lat, f.to_lon]
+  ]).pad(0.35));
+  if (target.line) target.line.openPopup();
+
+  selectedKey = key;
+  markSelectedRow(key);
+  scrollMapIntoView();
+}
+
+
+// One delegated listener rather than an inline handler per row.
+//
+// The inline version interpolated the row's key — a facility name and a
+// district name — into a JavaScript string inside an HTML attribute. India has
+// plenty of place names with an apostrophe in them, and one of those would have
+// closed the string early and broken the row silently. Delegation carries the
+// key as data rather than as code, so the question never arises.
+//
+// Bound once at load; the tables are re-rendered constantly and per-row
+// listeners would leak with them.
+document.addEventListener('click', event => {
+  const row = event.target.closest && event.target.closest('tr[data-focus]');
+  if (!row) return;
+  const key = row.dataset.key;
+  if (!key) return;
+  if (row.dataset.focus === 'flow') focusFlow(key);
+  else focusAccess(key);
+});

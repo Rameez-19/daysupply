@@ -367,6 +367,22 @@ the stock is, not where a patient should be sent.
 wherever it is; confining it to the scope would invent a longer journey than
 the real one, and a state border does not stop a van.
 
+**Selecting a row flies the map to it.** Both tables — the recommended moves
+and the shortages — drive the map: clicking a row lifts that one case out of
+the other 125, zooms to it and its source, and opens its detail. The rest
+**fade rather than hide**, because removing them would remove the context that
+makes the selected one mean something: 353 km is only striking next to the ones
+that are 20.
+
+The identity carried is the row's own — facility plus medicine for a shortage,
+the two districts for a move — so the table and the map cannot drift apart the
+way index-based selection does the moment either list is re-sorted. Pinned by
+`TestClickingARowReachesTheMap`, which executes the focus path against the real
+payloads: every key the tables render must resolve to a drawn feature, the map
+must actually move, and the unselected features must be faded rather than
+removed. A table key with no matching feature is the way this breaks silently —
+it simply looks like a dead click.
+
 **The table is ordered by urgency, not distance.** The map already colours by
 distance, so the table answers who runs out first — ordering it by distance
 buried a centre with half a day of stock left at row eight. Population is
