@@ -264,6 +264,7 @@ function refreshAll() {
     // Self-contained: its own filters and its own fetch, so v1 is untouched.
     if (typeof initToday2 === 'function') initToday2();
   } else if (view === 'action-view') {
+    loadTriage();
     // Same two loaders as Today; they render the preview and the full queue
     // from one fetch each, so opening the queue costs nothing extra.
     loadAlerts();
@@ -1711,4 +1712,139 @@ function renderNextSteps(d) {
     ? steps.join('')
     : panelEmpty('Nothing needs a decision right now. No medicine in this area '
                  + 'is below the level where it should be reordered.');
+}
+
+// ===== The action queue, triaged =====
+//
+// The page used to open with all 597 shortages above a queue of 527 transfers.
+// 525 of those rows already appeared in the queue below with an Approve button
+// on them, so the first list was 88% a restatement of the second — which is
+// exactly why it read as a log with nothing to do.
+//
+// What the duplication hid was the 39 that no routine action fixes: nothing
+// within reach to move, and an order that would arrive after the shelf is
+// empty. Those sat in row three hundred of a list nobody could work through.
+//
+// Three panels now, mutually exclusive and exhaustive. The escalation list
+// goes first because it is the only one where delay is irreversible; the
+// transfer queue keeps the buttons because it is the only one the product can
+// act on by itself.
+
+let triageData = null;
+
+function triageRow(r, showDeadline) {
+  const out = (r.on_hand || 0) <= 0;
+  const days = r.days_of_cover;
+  return `
+    <tr class="${out ? 'row-critical' : ''}">
+      <td>
+        <strong>${esc2(r.facility_name)}</strong><br>
+        <span class="muted">${esc2(r.district)}, ${esc2(r.state)}</span>
+      </td>
+      <td>
+        ${venBadge(r.ven_class)} ${esc2(r.item_name)}
+      </td>
+      <td class="net-num">
+        ${out ? '<strong class="danger">none</strong>'
+              : `${(r.on_hand || 0).toLocaleString('en-IN')} ${esc2(r.unit || '')}`}
+      </td>
+      <td class="net-num">${days === null || days === undefined ? '—' : days}</td>
+      ${showDeadline ? `<td class="net-num">${r.lead_time_days}d</td>` : ''}
+      <td class="net-num">${(r.shortfall || 0).toLocaleString('en-IN')} ${esc2(r.unit || '')}</td>
+    </tr>`;
+}
+
+function triageTable(rows, showDeadline, emptyMsg) {
+  if (!rows.length) return panelEmpty(emptyMsg);
+  return `<div class="table-scroll">
+    <table class="scenario-table net-table">
+      <thead><tr>
+        <th>Health centre</th><th>Medicine</th>
+        <th class="net-num">On hand</th>
+        <th class="net-num">Days left</th>
+        ${showDeadline ? '<th class="net-num">Delivery</th>' : ''}
+        <th class="net-num">Short by</th>
+      </tr></thead>
+      <tbody>${rows.map(r => triageRow(r, showDeadline)).join('')}</tbody>
+    </table></div>`;
+}
+
+function esc2(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function loadTriage() {
+  const host = document.getElementById('escalate-list');
+  if (!host) return;
+  host.innerHTML = panelLoading('Working out what can be done about each…');
+
+  try {
+    const res = await fetch(`/api/v1/action-queue?${getFilterParams()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    triageData = await res.json();
+    const s = triageData.summary || {};
+
+    // The split first, so the three panels read as one whole rather than as
+    // three lists that happen to share a page.
+    const sum = document.getElementById('triage-summary');
+    if (sum) {
+      const bar = (n, cls, label) => {
+        const pct = s.total ? (100 * n / s.total) : 0;
+        return `<div class="triage-seg ${cls}" style="width:${pct}%"
+                     title="${label}: ${n}"></div>`;
+      };
+      sum.innerHTML = `
+        <p class="triage-headline">${esc2(s.headline || '')}</p>
+        <div class="triage-bar">
+          ${bar(s.escalate, 'bad', 'Nothing routine will fix these')}
+          ${bar(s.transfer, 'move', 'Can be moved')}
+          ${bar(s.order, 'order', 'Can be ordered in time')}
+        </div>
+        <div class="triage-key">
+          <span class="legend-key"><i class="bad"></i>${(s.escalate || 0).toLocaleString('en-IN')} need escalation</span>
+          <span class="legend-key"><i class="move"></i>${(s.transfer || 0).toLocaleString('en-IN')} can be moved</span>
+          <span class="legend-key"><i class="order"></i>${(s.order || 0).toLocaleString('en-IN')} can be ordered in time</span>
+        </div>`;
+    }
+
+    setCount('escalate-count', s.escalate);
+    setCount('order-count', s.order);
+
+    const en = document.getElementById('escalate-note');
+    if (en) {
+      en.innerHTML = `${esc2(s.escalate_note || '')}
+        ${s.worst ? `<strong>${esc2(s.worst)}</strong>` : ''}`;
+    }
+    host.innerHTML = triageTable(
+      triageData.escalate, true,
+      'Nothing here is beyond a transfer or an order — which is the result you '
+      + 'want.');
+
+    const on = document.getElementById('order-note');
+    if (on) {
+      on.textContent = 'Nothing within reach to move, but a delivery would '
+        + 'arrive before the stock runs out. The delivery column is how long '
+        + 'that takes, so it is also the deadline.';
+    }
+    const ol = document.getElementById('order-list');
+    if (ol) {
+      ol.innerHTML = triageTable(
+        triageData.order, true,
+        'Nothing needs ordering: every shortage here is covered by a transfer.');
+    }
+  } catch (e) {
+    host.innerHTML = panelError(e.message, 'loadTriage');
+  }
+}
+
+// The full list is a reference, so it stays closed until asked for. Rendering
+// 597 cards on arrival is what made this page feel like a log.
+function toggleAllShortages() {
+  const list = document.getElementById('alerts-full');
+  const btn = document.getElementById('all-shortages-toggle');
+  if (!list || !btn) return;
+  const show = list.hidden;
+  list.hidden = !show;
+  btn.textContent = show ? 'Hide the full list' : 'Show all shortages';
 }

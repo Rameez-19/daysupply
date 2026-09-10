@@ -1165,3 +1165,37 @@ button { font-family: inherit; cursor: pointer; }
 .table-more .section-note { margin: 0; }
 .table-more-actions { display: flex; gap: 8px; }
 .table-more .btn { cursor: pointer; white-space: nowrap; }
+
+/* ===== The action queue, triaged =====
+   One bar showing how the shortages divide, so three panels read as one whole
+   rather than as three lists that happen to share a page. */
+.triage-summary {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 12px);
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.triage-headline { margin: 0 0 12px; font-size: 14px; color: var(--text, #1e293b); }
+.triage-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--gray-100, #f1f5f9);
+}
+/* 2px of surface between segments, so adjacent fills stay distinguishable. */
+.triage-seg + .triage-seg { box-shadow: -2px 0 0 var(--surface, #fff); }
+.triage-seg.bad   { background: #b91c1c; }
+.triage-seg.move  { background: #0369a1; }
+.triage-seg.order { background: #94a3b8; }
+
+.triage-key { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 10px; font-size: 12px; }
+.triage-key i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.triage-key i.bad { background: #b91c1c; }
+.triage-key i.move { background: #0369a1; }
+.triage-key i.order { background: #94a3b8; }
+
+/* The one panel where delay cannot be undone. */
+.escalate-section { border-left: 4px solid #b91c1c; }
+.net-table td .danger { color: #b91c1c; }

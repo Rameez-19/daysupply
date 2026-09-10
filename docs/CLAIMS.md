@@ -388,6 +388,47 @@ distance, so the table answers who runs out first — ordering it by distance
 buried a centre with half a day of stock left at row eight. Population is
 counted once per centre, not once per shortage.
 
+## 7e. The action queue, triaged
+
+*Last verified against the live deployment: **2026-09-10**.*
+
+Served by `/api/v1/action-queue` (`app/action_queue.py`).
+
+The page opened with "Everything that is failing" — all **597** shortages —
+above a queue of 527 transfers. **525 of those 597 rows already appeared in the
+queue below with an Approve button on them**, so the first list was **88% a
+restatement of the second**, which is exactly why it read as a log with nothing
+to do. What the duplication hid was the shortages no routine action fixes.
+
+| Group | Count | The action |
+|---|---|---|
+| A transfer is waiting | **525** | Approve it — the stock exists nearby |
+| Nothing to move, order arrives in time | **33** | Procure, with a deadline |
+| **Nothing to move AND order arrives too late** | **39** | Escalate; nothing routine works |
+
+**5 of the 39 are life-saving and 13 are already at zero.** The worst is
+**Salchapra MPHC: 0 days of Vitamin A left, 8 days to deliver.** Thirty-nine of
+those existed the whole time, in row three hundred of a list nobody could work
+through.
+
+**"Too late" means `days_of_cover < lead_time_days`** — the stock runs out
+before a delivery could physically arrive. Lead time comes from real road
+distance to the district headquarters with a documented days-per-km conversion:
+the distance is real, the conversion is a stated proxy.
+
+**Unknown cover is never called an emergency.** An unmeasured line is
+unmeasured, and putting a guess at the top of the one panel that most needs to
+be trusted would be the worst place in the product to do it.
+
+**The split is mutually exclusive and exhaustive**, and tests assert all three:
+the counts sum to the total, no row is in two groups, and no row is in none.
+The failure mode of a triage is a shortage falling through the gap between two
+panels and being seen by nobody.
+
+**The full 597 is kept** behind a "Show all shortages" toggle — useful for
+looking something up, useless as something to work through, and not the page's
+opening content.
+
 ## 7b. Network — comparison, and who is judged unfairly
 
 *Last verified against the live deployment: **2026-09-09**.*

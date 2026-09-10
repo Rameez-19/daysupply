@@ -572,28 +572,33 @@
       <!-- Evidence: the methodology a judge wants and an officer does not. -->
       <section id="action-view" class="view hidden-view">
         <div class="view-header">
-          <h2>Action queue</h2>
+          <h2>What needs a decision</h2>
           <p class="view-subtitle">
-            Every open shortage and every transfer waiting on a decision &mdash;
-            the whole queue, not the top of it
+            Every shortage, sorted by what can actually be done about it &mdash;
+            moved, ordered, or neither
           </p>
         </div>
 
-        <div class="dashboard-section">
+        <!-- The split itself, so the three panels below read as one whole
+             rather than as three lists that happen to share a page. -->
+        <div id="triage-summary" class="triage-summary"></div>
+
+        <!-- FIRST, because it is the only one where delay is irreversible.
+             Nothing within reach to move and an order that arrives after the
+             shelf is empty: no routine action fixes these. -->
+        <div class="dashboard-section escalate-section">
           <div class="section-head-row">
-            <h3>Everything that is failing</h3>
-            <span class="section-count" id="alerts-count"></span>
+            <h3>Nothing routine will fix these</h3>
+            <span class="section-count" id="escalate-count"></span>
           </div>
-          <p class="section-note">
-            Vital first, then by how little cover is left. Each row names the
-            reorder point it fell below and how that point was computed.
-          </p>
-          <div id="alerts-full" class="card-list"></div>
+          <p class="section-note" id="escalate-note"></p>
+          <div id="escalate-list"></div>
         </div>
 
+        <!-- The bulk of the work, and the only panel with buttons. -->
         <div class="dashboard-section">
           <div class="section-head-row">
-            <h3>Every transfer awaiting a decision</h3>
+            <h3>Transfers awaiting a decision</h3>
             <span class="section-count" id="transfers-count"></span>
           </div>
           <p class="section-note">
@@ -601,6 +606,33 @@
             is FEFO, and the donor is only asked for what it can spare.
           </p>
           <div id="transfers-full" class="card-list"></div>
+        </div>
+
+        <!-- Routine procurement, but with a deadline attached. -->
+        <div class="dashboard-section">
+          <div class="section-head-row">
+            <h3>Order these, and by when</h3>
+            <span class="section-count" id="order-count"></span>
+          </div>
+          <p class="section-note" id="order-note"></p>
+          <div id="order-list"></div>
+        </div>
+
+        <!-- The old list, kept as a reference rather than as the page's
+             opening content: useful for "is X short anywhere", useless as
+             something to work through. -->
+        <div class="dashboard-section">
+          <div class="section-head-row">
+            <h3>Every shortage, for reference</h3>
+            <span class="section-count" id="alerts-count"></span>
+          </div>
+          <p class="section-note">
+            The full list, including the ones already covered by a transfer
+            above. Kept for looking something up, not for working through.
+          </p>
+          <button class="btn btn-secondary" id="all-shortages-toggle"
+                  onclick="toggleAllShortages()">Show all shortages</button>
+          <div id="alerts-full" class="card-list" hidden></div>
         </div>
       </section>
 

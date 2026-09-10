@@ -44,7 +44,7 @@ from app import quality
 from app import resources
 from app import surge
 from app import transfers
-from app import executive, mapview, today_v2, access
+from app import executive, mapview, today_v2, access, action_queue
 from app import network as network_view
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
@@ -92,6 +92,7 @@ async def lifespan(_app: FastAPI):
             ("executive (All India)", lambda: executive.national_picture("")),
             ("map (All India)", lambda: mapview.supply_map("")),
             ("nearest help", lambda: access.nearest_help()),
+            ("action queue", lambda: action_queue.triage()),
             # Today v2. These were added as endpoints and never added here,
             # so every deploy left the first visitor to that page watching
             # "Loading…" while three uncached BigQuery jobs ran. The geography
@@ -264,6 +265,22 @@ async def today_v2_scorecard(state: str = "", district: str = "",
     if resource == "personnel":
         return _facility_query(today_v2.staff_scorecard, state, district, phc)
     return _facility_query(today_v2.scorecard, state, district, phc, vital_only)
+
+
+@app.get("/api/v1/action-queue")
+async def action_queue_triage(state: str = "", district: str = "",
+                              phc: str = ""):
+    """Every shortage, split by what can actually be done about it.
+
+    The page used to open with all 597 shortages above a queue of transfers —
+    but 525 of those rows already appeared in the queue below with an Approve
+    button, so the list was 88% a restatement of the next panel down. What the
+    duplication hid was the 39 that no routine action fixes: nothing within
+    reach to move, and an order that arrives after the shelf is empty.
+
+    Three groups, mutually exclusive and exhaustive.
+    """
+    return _facility_query(action_queue.triage, state, district, phc)
 
 
 @app.get("/api/v1/access")
