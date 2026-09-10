@@ -1198,4 +1198,19 @@ button { font-family: inherit; cursor: pointer; }
 
 /* The one panel where delay cannot be undone. */
 .escalate-section { border-left: 4px solid #b91c1c; }
-.net-table td .danger { color: #b91c1c; }
+/* The class sits ON the cell, not on a child of it — a descendant selector
+   matched nothing, so "already at zero" lost its only visual cue. */
+.net-table td.danger, .net-table td .danger { color: #b91c1c; font-weight: 700; }
+
+/* The two no-transfer tables sit side by side and are read against each other,
+   so they share a scroll height: 39 rows beside 33 would otherwise leave one
+   column trailing a long way below the other. */
+.triage-row .dashboard-section { display: flex; flex-direction: column; }
+.triage-row .table-scroll { max-height: 460px; overflow-y: auto; }
+.triage-row .net-column-note { margin-top: auto; }
+.triage-row .net-table td { padding: 9px 6px; }
+.triage-row .net-table th { font-size: 10px; }
+
+@media (max-width: 900px) {
+  .triage-row .table-scroll { max-height: none; overflow-y: visible; }
+}

@@ -1744,11 +1744,9 @@ function triageRow(r, showDeadline) {
       <td>
         ${venBadge(r.ven_class)} ${esc2(r.item_name)}
       </td>
-      <td class="net-num">
-        ${out ? '<strong class="danger">none</strong>'
-              : `${(r.on_hand || 0).toLocaleString('en-IN')} ${esc2(r.unit || '')}`}
+      <td class="net-num ${out ? 'danger' : ''}">
+        ${days === null || days === undefined ? '—' : days}
       </td>
-      <td class="net-num">${days === null || days === undefined ? '—' : days}</td>
       ${showDeadline ? `<td class="net-num">${r.lead_time_days}d</td>` : ''}
       <td class="net-num">${(r.shortfall || 0).toLocaleString('en-IN')} ${esc2(r.unit || '')}</td>
     </tr>`;
@@ -1760,13 +1758,18 @@ function triageTable(rows, showDeadline, emptyMsg) {
     <table class="scenario-table net-table">
       <thead><tr>
         <th>Health centre</th><th>Medicine</th>
-        <th class="net-num">On hand</th>
-        <th class="net-num">Days left</th>
+        <th class="net-num" title="Days of stock left at the current rate of use">Days left</th>
         ${showDeadline ? '<th class="net-num">Delivery</th>' : ''}
         <th class="net-num">Short by</th>
       </tr></thead>
       <tbody>${rows.map(r => triageRow(r, showDeadline)).join('')}</tbody>
-    </table></div>`;
+    </table></div>
+    <p class="net-column-note">
+      &lsquo;Days left&rsquo; is stock at the current rate of use; red is
+      already at zero. &lsquo;Delivery&rsquo; is how long resupply takes to
+      reach that centre, so it is also the deadline. &lsquo;Short by&rsquo; is
+      how far below its reorder point the stock has fallen.
+    </p>`;
 }
 
 function esc2(s) {

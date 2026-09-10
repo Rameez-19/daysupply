@@ -583,10 +583,12 @@
              rather than as three lists that happen to share a page. -->
         <div id="triage-summary" class="triage-summary"></div>
 
-        <!-- FIRST, because it is the only one where delay is irreversible.
-             Nothing within reach to move and an order that arrives after the
-             shelf is empty: no routine action fixes these. -->
-        <div class="dashboard-section escalate-section">
+        <!-- The two halves of the same set: these are the 72 shortages with
+             no transfer available, split by whether an order arrives in time.
+             Side by side because the comparison between them IS the decision —
+             one column can be scheduled, the other cannot. -->
+        <div class="dashboard-row triage-row">
+        <div class="dashboard-section flex-1 escalate-section">
           <div class="section-head-row">
             <h3>Nothing routine will fix these</h3>
             <span class="section-count" id="escalate-count"></span>
@@ -594,8 +596,16 @@
           <p class="section-note" id="escalate-note"></p>
           <div id="escalate-list"></div>
         </div>
+        <div class="dashboard-section flex-1">
+          <div class="section-head-row">
+            <h3>Order these, and by when</h3>
+            <span class="section-count" id="order-count"></span>
+          </div>
+          <p class="section-note" id="order-note"></p>
+          <div id="order-list"></div>
+        </div>
+        </div>
 
-        <!-- The bulk of the work, and the only panel with buttons. -->
         <div class="dashboard-section">
           <div class="section-head-row">
             <h3>Transfers awaiting a decision</h3>
@@ -606,16 +616,6 @@
             is FEFO, and the donor is only asked for what it can spare.
           </p>
           <div id="transfers-full" class="card-list"></div>
-        </div>
-
-        <!-- Routine procurement, but with a deadline attached. -->
-        <div class="dashboard-section">
-          <div class="section-head-row">
-            <h3>Order these, and by when</h3>
-            <span class="section-count" id="order-count"></span>
-          </div>
-          <p class="section-note" id="order-note"></p>
-          <div id="order-list"></div>
         </div>
 
         <!-- The old list, kept as a reference rather than as the page's
