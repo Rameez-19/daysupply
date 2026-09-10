@@ -189,3 +189,53 @@ class TestClickingARowReachesTheMap:
         assert result.returncode == 0, (
             "clicking a table row does not reach the map:\n"
             f"{result.stdout}{result.stderr}")
+
+
+class TestTheTablesShowEverythingEventually:
+    """A table that shows a quarter of its subject with no way to reach the
+    rest is hiding data, not summarising it.
+
+    The moves table showed 25 of 144 and the shortages table 12 of 126, each
+    with a footnote and no control. Both page now, and the count is stated
+    either way — a reader who cannot tell whether they are looking at all of it
+    cannot trust any of it.
+
+    The check that matters is the last one: rows paged in later must still
+    resolve to a feature on the map. Paging is pointless if only the first page
+    is clickable, and that would fail silently.
+    """
+
+    def test_paging_reaches_every_row_and_they_all_still_resolve(self, tmp_path):
+        import json
+        import shutil
+        import subprocess
+        from pathlib import Path
+
+        node = shutil.which("node")
+        if node is None:
+            pytest.skip("node is not installed")
+
+        from app import mapview
+
+        root = Path(__file__).resolve().parent.parent
+        acc = tmp_path / "access.json"
+        mp = tmp_path / "map.json"
+        acc.write_text(json.dumps(access.nearest_help()), encoding="utf-8")
+        mp.write_text(json.dumps(mapview.supply_map("")), encoding="utf-8")
+
+        result = subprocess.run(
+            [node, str(root / "tests" / "paging_check.js"), str(acc), str(mp)],
+            capture_output=True, text=True, cwd=str(root))
+        assert result.returncode == 0, (
+            "paging does not reach every row, or paged-in rows do not resolve "
+            f"on the map:\n{result.stdout}{result.stderr}")
+
+    def test_the_full_list_shares_the_table_ordering(self, national):
+        """Paging must continue the ranking, not restart it in a different
+        order. `all_cases` used to be distance-ordered while the table was
+        urgency-ordered, so page two would have contradicted page one."""
+        cover = [c["days_of_cover"] for c in national["all_cases"]
+                 if c["days_of_cover"] is not None]
+        assert cover == sorted(cover)
+        assert ([c["facility_id"] for c in national["all_cases"][:len(national["cases"])]]
+                == [c["facility_id"] for c in national["cases"]])

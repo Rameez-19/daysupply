@@ -22,6 +22,14 @@ let accessLayer = null;
 let flowFeatures = {};
 let accessFeatures = {};
 let selectedKey = null;
+
+// How many rows each table is currently showing. Both lists are far longer
+// than their first page — 144 moves and 126 shortages — and a table that shows
+// a quarter of its subject with no way to see the rest is hiding data rather
+// than summarising it.
+const PAGE = 25;
+let flowShown = PAGE;
+let accessShown = PAGE;
 let currentLayer = 'risk';
 let flowsVisible = true;
 
@@ -91,6 +99,8 @@ async function loadMap() {
     mapData = await res.json();
     // Scope changed, so the nearest-help answer is stale too.
     accessData = null;
+    accessShown = PAGE;
+    flowShown = PAGE;
 
     const s = mapData.summary || {};
     if (summary) {
@@ -267,7 +277,8 @@ function drawLegend() {
 function drawFlowTable() {
   const host = document.getElementById('flow-table');
   if (!host) return;
-  const rows = (mapData && mapData.flows) || [];
+  const all = (mapData && mapData.flows) || [];
+  const rows = all.slice(0, flowShown);
   if (!rows.length) {
     host.innerHTML = panelEmpty(
       'No cross-district move is recommended in this scope. Where a shortage '
@@ -280,7 +291,7 @@ function drawFlowTable() {
         <th>From</th><th>To</th><th>Units</th><th>Moves</th>
         <th>Vital</th><th>Distance</th>
       </tr></thead>
-      <tbody>${rows.slice(0, 25).map(f => `
+      <tbody>${rows.map(f => `
         <tr class="map-row ${f.severity === 1 ? 'row-critical' : ''}"
             data-key="${esc(flowKey(f))}" data-focus="flow"
             title="Show this move on the map">
@@ -292,7 +303,7 @@ function drawFlowTable() {
           <td>${f.km} km</td>
         </tr>`).join('')}
       </tbody></table></div>
-    ${rows.length > 25 ? `<p class="section-note">Showing the 25 largest of ${rows.length} moves.</p>` : ''}`;
+    ${moreControl(rows.length, all.length, 'move', 'showMoreFlows')}`;
 }
 
 async function setMapLayer(layer) {
@@ -479,7 +490,8 @@ function drawAccessTable() {
       a floor — the road journey is longer.`;
   }
 
-  const rows = accessData.cases || [];
+  const all = accessData.all_cases || [];
+  const rows = all.slice(0, accessShown);
   if (!rows.length) {
     host.innerHTML = panelEmpty('Nothing is short in this area.');
     return;
@@ -506,7 +518,44 @@ function drawAccessTable() {
           <td class="net-num"><strong>${c.km === null ? '—' : c.km + ' km'}</strong></td>
           <td class="net-num muted">${(c.population || 0).toLocaleString('en-IN')}</td>
         </tr>`).join('')}
-      </tbody></table></div>`;
+      </tbody></table></div>
+    ${moreControl(rows.length, all.length, 'shortage', 'showMoreAccess')}`;
+}
+
+// "Showing 25 of 144" with a way to see the rest. The count is stated either
+// way, because a table that quietly truncates is worse than one that says so:
+// a reader who cannot tell whether they are looking at all of it cannot trust
+// any of it.
+function moreControl(shown, total, noun, fn) {
+  if (total <= shown) {
+    return total > PAGE
+      ? `<p class="section-note">Showing all ${total.toLocaleString('en-IN')} ${noun}s.</p>`
+      : '';
+  }
+  const next = Math.min(PAGE, total - shown);
+  return `<div class="table-more">
+      <span class="section-note">Showing ${shown.toLocaleString('en-IN')} of
+        ${total.toLocaleString('en-IN')} ${noun}s</span>
+      <span class="table-more-actions">
+        <button class="btn btn-secondary" onclick="${fn}()">Show ${next} more</button>
+        <button class="btn btn-secondary" onclick="${fn}(true)">Show all</button>
+      </span>
+    </div>`;
+}
+
+function showMoreFlows(all) {
+  const total = ((mapData && mapData.flows) || []).length;
+  flowShown = all ? total : Math.min(total, flowShown + PAGE);
+  drawFlowTable();
+  if (selectedKey) markSelectedRow(selectedKey);
+}
+
+function showMoreAccess(all) {
+  const total = ((accessData && accessData.all_cases) || []).length;
+  accessShown = all ? total : Math.min(total, accessShown + PAGE);
+  drawAccessTable();
+  // A selection survives the redraw of the rows around it.
+  if (selectedKey) markSelectedRow(selectedKey);
 }
 
 function accessSummaryCards() {

@@ -1150,3 +1150,18 @@ button { font-family: inherit; cursor: pointer; }
 }
 .map-row.row-selected.row-critical { background: #fef2f2; box-shadow: inset 3px 0 0 #b91c1c; }
 .map-clear { margin-top: 10px; cursor: pointer; }
+
+/* The "showing N of M" line and its controls, on one row. */
+.table-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border, #e2e8f0);
+}
+.table-more .section-note { margin: 0; }
+.table-more-actions { display: flex; gap: 8px; }
+.table-more .btn { cursor: pointer; white-space: nowrap; }

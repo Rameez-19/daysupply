@@ -150,7 +150,11 @@ def nearest_help(state: str = "", district: str = "",
                        -(c.get("km") or 0)))
     return {
         "cases": urgent[:TOP_N],
-        "all_cases": cases,
+        # The full list in the SAME order the table shows, so paging through it
+        # continues the ranking rather than restarting it in a different one.
+        # It used to be the raw distance-ordered list, which would have made
+        # "show 25 more" produce a second page that contradicted the first.
+        "all_cases": urgent,
         "summary": _summary(cases, vital_only),
         "scope": {"state": state or "All India", "district": district,
                   "vital_only": vital_only},
