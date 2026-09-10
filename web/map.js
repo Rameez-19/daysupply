@@ -16,6 +16,7 @@ let mapInstance = null;
 let districtLayer = null;
 let flowLayer = null;
 let mapData = null;
+let accessLayer = null;
 let currentLayer = 'risk';
 let flowsVisible = true;
 
@@ -83,10 +84,55 @@ async function loadMap() {
     const res = await fetch(`/api/v1/map${scope}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     mapData = await res.json();
+    // Scope changed, so the nearest-help answer is stale too.
+    accessData = null;
 
     const s = mapData.summary || {};
     if (summary) {
-      summary.innerHTML = `
+      summary.innerHTML = mapSummaryCards();
+    }
+
+    if (!mapInstance) {
+      mapInstance = L.map('supply-map', { scrollWheelZoom: false })
+        .setView(INDIA_CENTRE, INDIA_ZOOM);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 12, minZoom: 4,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(mapInstance);
+    }
+
+    drawDistricts();
+    drawFlows();
+    drawLegend();
+    drawFlowTable();
+
+    // A layer named in the URL is a shareable view — "look at nearest help" —
+    // and the only way this can be checked without a click.
+    const wanted = new URLSearchParams(window.location.search || '').get('layer');
+    if (wanted === 'access' || wanted === 'headroom') {
+      setMapLayer(wanted);
+    }
+
+    // Frame what is actually in scope, so picking one state does not leave the
+    // reader looking at an empty ocean.
+    const pts = (mapData.districts || [])
+      .filter(d => d.lat && d.lon).map(d => [d.lat, d.lon]);
+    if (pts.length) {
+      mapInstance.fitBounds(L.latLngBounds(pts).pad(0.15));
+    }
+    // The container is sized by CSS after the view becomes visible, so Leaflet
+    // has to be told to re-measure or it renders into a zero-height box.
+    setTimeout(() => mapInstance && mapInstance.invalidateSize(), 80);
+  } catch (e) {
+    if (summary) summary.innerHTML = panelError(e.message, 'loadMap');
+  }
+}
+
+// Written once and used twice: on first load, and again when returning from
+// the Nearest help layer, which replaces the summary with its own.
+function mapSummaryCards() {
+  const s = (mapData && mapData.summary) || {};
+  return `
         <div class="map-summary-row">
           <div class="map-stat">
             <div class="map-stat-value">${(s.districts || 0).toLocaleString('en-IN')}</div>
@@ -106,35 +152,6 @@ async function loadMap() {
           </div>
         </div>
         <p class="section-note">${esc(s.headline || '')} ${esc(s.flow_headline || '')}</p>`;
-    }
-
-    if (!mapInstance) {
-      mapInstance = L.map('supply-map', { scrollWheelZoom: false })
-        .setView(INDIA_CENTRE, INDIA_ZOOM);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 12, minZoom: 4,
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(mapInstance);
-    }
-
-    drawDistricts();
-    drawFlows();
-    drawLegend();
-    drawFlowTable();
-
-    // Frame what is actually in scope, so picking one state does not leave the
-    // reader looking at an empty ocean.
-    const pts = (mapData.districts || [])
-      .filter(d => d.lat && d.lon).map(d => [d.lat, d.lon]);
-    if (pts.length) {
-      mapInstance.fitBounds(L.latLngBounds(pts).pad(0.15));
-    }
-    // The container is sized by CSS after the view becomes visible, so Leaflet
-    // has to be told to re-measure or it renders into a zero-height box.
-    setTimeout(() => mapInstance && mapInstance.invalidateSize(), 80);
-  } catch (e) {
-    if (summary) summary.innerHTML = panelError(e.message, 'loadMap');
-  }
 }
 
 function drawDistricts() {
@@ -199,6 +216,25 @@ function drawFlows() {
 function drawLegend() {
   const host = document.getElementById('map-legend');
   if (!host) return;
+  // The access layer answers a different question, so it gets its own legend
+  // rather than a recolouring of the district one.
+  if (currentLayer === 'access') {
+    host.innerHTML = `
+      <div class="legend-block">
+        <span class="legend-title">Distance to the nearest supply</span>
+        <span class="legend-key"><i style="background:#15803d"></i>Within ${ACCESS_NEAR} km</span>
+        <span class="legend-key"><i style="background:#ea580c"></i>${ACCESS_NEAR} to ${ACCESS_FAR} km</span>
+        <span class="legend-key"><i style="background:#b91c1c"></i>Over ${ACCESS_FAR} km</span>
+        <span class="legend-note">Circle size is the population the centre serves.</span>
+      </div>
+      <div class="legend-block">
+        <span class="legend-title">Points</span>
+        <span class="legend-key"><i style="background:#0369a1"></i>Centre that has the medicine</span>
+        <span class="legend-note">Straight-line distance, so every figure is a floor.</span>
+      </div>`;
+    return;
+  }
+
   const keys = currentLayer === 'risk'
     ? [['#b91c1c', 'Stocked out'], ['#ea580c', 'Vital short'],
        ['#d97706', 'Below reorder'], ['#15803d', 'Holding']]
@@ -249,14 +285,66 @@ function drawFlowTable() {
     ${rows.length > 25 ? `<p class="section-note">Showing the 25 largest of ${rows.length} moves.</p>` : ''}`;
 }
 
-function setMapLayer(layer) {
+async function setMapLayer(layer) {
   currentLayer = layer;
+  const q = new URLSearchParams(window.location.search || '');
+  if (layer === 'risk') q.delete('layer'); else q.set('layer', layer);
+  const qs = q.toString();
+  history.replaceState(null, '',
+    `${window.location.pathname}${qs ? '?' + qs : ''}${window.location.hash}`);
   for (const [id, on] of [['layer-risk', layer === 'risk'],
-                          ['layer-headroom', layer === 'headroom']]) {
+                          ['layer-headroom', layer === 'headroom'],
+                          ['layer-access', layer === 'access']]) {
     const b = document.getElementById(id);
     if (b) b.classList.toggle('active', on);
   }
-  drawDistricts();
+
+  // Risk and headroom recolour the same district nodes. Nearest help replaces
+  // them with facility-level points and lines, because "where can a patient be
+  // treated" is not a district-level question — a district average cannot tell
+  // anyone which clinic to drive to.
+  const isAccess = layer === 'access';
+  // The standing note describes district centroids and arc thickness. The
+  // access layer draws neither, so leaving it up would explain the wrong map.
+  const prov = document.querySelector('#map-view .section-note');
+  if (prov) prov.hidden = isAccess;
+  for (const [id, show] of [['access-section', isAccess],
+                            ['flow-section', !isAccess]]) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = !show;
+  }
+  const flowToggle = document.getElementById('show-flows');
+  if (flowToggle && flowToggle.parentElement) {
+    flowToggle.parentElement.style.display = isAccess ? 'none' : '';
+  }
+
+  if (isAccess) {
+    const summary = document.getElementById('map-summary');
+    if (districtLayer) { mapInstance.removeLayer(districtLayer); districtLayer = null; }
+    if (flowLayer) { mapInstance.removeLayer(flowLayer); flowLayer = null; }
+    try {
+      if (summary && !accessData) summary.innerHTML = panelLoading('Finding the nearest supply for each shortage…');
+      await loadAccess();
+      if (summary) summary.innerHTML = accessSummaryCards();
+      drawAccess();
+      drawAccessTable();
+      drawLegend();
+      const pts = (accessData.all_cases || [])
+        .filter(c => c.lat && c.lon).map(c => [c.lat, c.lon]);
+      if (pts.length && mapInstance) mapInstance.fitBounds(L.latLngBounds(pts).pad(0.15));
+    } catch (e) {
+      if (summary) summary.innerHTML = panelError(e.message, "setMapLayer('access')");
+    }
+    return;
+  }
+
+  if (accessLayer) { mapInstance.removeLayer(accessLayer); accessLayer = null; }
+  if (mapData) {
+    const summary = document.getElementById('map-summary');
+    if (summary) summary.innerHTML = mapSummaryCards();
+    drawDistricts();
+    drawFlows();
+  }
   drawLegend();
 }
 
@@ -264,4 +352,161 @@ function toggleFlows() {
   const box = document.getElementById('show-flows');
   flowsVisible = box ? box.checked : true;
   drawFlows();
+}
+
+// ===== Nearest help =====
+//
+// The layer that answers the question a person at the counter has, rather than
+// the one a manager has: this centre does not have the medicine, so where is
+// the nearest one that does, and how far?
+//
+// It is also the sharpest form of alert in the product. "126 Vital lines below
+// reorder" is a statistic. "Koni is out of Oxytocin and the nearest supply is
+// 353 km away" is an emergency with an address, and Oxytocin is what stops a
+// postpartum haemorrhage.
+//
+// A source has to be above its OWN reorder point to count. Pulling from a
+// facility that is already short just moves the shortage somewhere else.
+//
+// Distances are straight-line. Every number here is therefore a floor — the
+// real journey is longer — and the page says that rather than implying a
+// travel time we cannot compute without a road network.
+
+let accessData = null;
+
+const ACCESS_NEAR = 25;
+const ACCESS_FAR = 100;
+
+function accessTone(km) {
+  if (km === null || km === undefined) return { c: '#7f1d1d', label: 'No source' };
+  if (km > ACCESS_FAR) return { c: '#b91c1c', label: `Over ${ACCESS_FAR} km` };
+  if (km > ACCESS_NEAR) return { c: '#ea580c', label: `${ACCESS_NEAR}–${ACCESS_FAR} km` };
+  return { c: '#15803d', label: `Within ${ACCESS_NEAR} km` };
+}
+
+async function loadAccess() {
+  if (accessData) return accessData;
+  const scope = currentState ? `?state=${encodeURIComponent(currentState)}` : '';
+  const res = await fetch(`/api/v1/access${scope}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  accessData = await res.json();
+  return accessData;
+}
+
+function drawAccess() {
+  if (!mapInstance || !accessData) return;
+  if (accessLayer) mapInstance.removeLayer(accessLayer);
+  accessLayer = L.layerGroup();
+
+  for (const c of accessData.all_cases || []) {
+    if (!c.lat || !c.lon) continue;
+    const tone = accessTone(c.km);
+
+    // The line to help is drawn first so the clinic marker sits on top of it.
+    if (c.source_lat && c.source_lon) {
+      L.polyline([[c.lat, c.lon], [c.source_lat, c.source_lon]], {
+        color: tone.c, weight: c.km > ACCESS_FAR ? 2.5 : 1.5,
+        opacity: 0.55, dashArray: '4 4'
+      }).addTo(accessLayer);
+      L.circleMarker([c.source_lat, c.source_lon], {
+        radius: 3, color: '#0369a1', fillColor: '#0369a1',
+        fillOpacity: 0.9, weight: 0
+      }).bindPopup(`<div class="map-popup">
+          <strong>${esc(c.source_name)}</strong>
+          <div class="map-popup-sub">Has ${esc(c.item_name)} &middot; ${(c.source_on_hand || 0).toLocaleString('en-IN')} ${esc(c.unit || '')}</div>
+        </div>`).addTo(accessLayer);
+    }
+
+    // Size by the population behind the clinic: a shortage at a centre serving
+    // 80,000 people is not the same event as one serving 2,000.
+    const pop = c.population || 0;
+    L.circleMarker([c.lat, c.lon], {
+      radius: 5 + Math.min(9, Math.sqrt(pop) / 90),
+      color: tone.c, weight: 1.5, fillColor: tone.c, fillOpacity: 0.6
+    }).bindPopup(`
+      <div class="map-popup">
+        <strong>${esc(c.facility_name)}</strong>
+        <div class="map-popup-sub">${esc(c.district)}, ${esc(c.state)}
+          ${pop ? ` &middot; serves ${pop.toLocaleString('en-IN')} people` : ''}</div>
+        <table>
+          <tr><td>Out of</td><td>${esc(c.item_name)}</td></tr>
+          <tr><td>On hand</td><td>${(c.on_hand || 0).toLocaleString('en-IN')} ${esc(c.unit || '')}</td></tr>
+          <tr><td>Days left</td><td>${c.days_of_cover === null ? '—' : c.days_of_cover}</td></tr>
+          <tr><td>Nearest supply</td><td>${esc(c.source_name || 'none found')}</td></tr>
+          <tr><td>Distance</td><td>${c.km === null ? '—' : c.km + ' km'}</td></tr>
+        </table>
+      </div>`).addTo(accessLayer);
+  }
+  accessLayer.addTo(mapInstance);
+}
+
+function drawAccessTable() {
+  const host = document.getElementById('access-table');
+  const note = document.getElementById('access-note');
+  if (!host || !accessData) return;
+  const s = accessData.summary || {};
+
+  if (note) {
+    note.innerHTML = `${esc(s.headline || '')} ${esc(s.detail || '')}
+      <strong>${esc(s.alert || '')}</strong>
+      Distances are straight-line between two real coordinates, so each one is
+      a floor — the road journey is longer.`;
+  }
+
+  const rows = accessData.cases || [];
+  if (!rows.length) {
+    host.innerHTML = panelEmpty('Nothing is short in this area.');
+    return;
+  }
+  host.innerHTML = `<div class="table-scroll">
+    <table class="scenario-table">
+      <thead><tr>
+        <th>Health centre</th><th>Out of</th>
+        <th class="net-num">Days left</th>
+        <th>Nearest supply</th>
+        <th class="net-num">Distance</th>
+        <th class="net-num">People served</th>
+      </tr></thead>
+      <tbody>${rows.map(c => `
+        <tr class="${c.km > ACCESS_FAR ? 'row-critical' : ''}">
+          <td><strong>${esc(c.facility_name)}</strong><br>
+            <span class="muted">${esc(c.district)}, ${esc(c.state)}</span></td>
+          <td>${esc(c.item_name)}</td>
+          <td class="net-num">${c.days_of_cover === null ? '—' : c.days_of_cover}</td>
+          <td>${esc(c.source_name || 'none')}<br>
+            <span class="muted">${esc(c.source_district || '')}</span></td>
+          <td class="net-num"><strong>${c.km === null ? '—' : c.km + ' km'}</strong></td>
+          <td class="net-num muted">${(c.population || 0).toLocaleString('en-IN')}</td>
+        </tr>`).join('')}
+      </tbody></table></div>`;
+}
+
+function accessSummaryCards() {
+  const s = (accessData && accessData.summary) || {};
+  const bands = (accessData && accessData.bands) || [];
+  const far = bands.find(b => b.sort_order === 3);
+  const none = bands.find(b => b.sort_order === 4);
+  return `
+    <div class="map-summary-row">
+      <div class="map-stat">
+        <div class="map-stat-value danger">${(s.cases || 0).toLocaleString('en-IN')}</div>
+        <div class="map-stat-label">life-saving shortages</div>
+      </div>
+      <div class="map-stat">
+        <div class="map-stat-value danger">${(s.people || 0).toLocaleString('en-IN')}</div>
+        <div class="map-stat-label">people behind them</div>
+      </div>
+      <div class="map-stat">
+        <div class="map-stat-value">${s.median_km === null || s.median_km === undefined ? '—' : s.median_km + ' km'}</div>
+        <div class="map-stat-label">to the nearest supply, typically</div>
+      </div>
+      <div class="map-stat">
+        <div class="map-stat-value danger">${far ? far.n : 0}</div>
+        <div class="map-stat-label">further than ${ACCESS_FAR} km from help</div>
+      </div>
+    </div>
+    <p class="section-note">${esc(s.detail || '')}
+      ${none && none.n === 0
+        ? 'Not one of them is unsolvable — every shortage has stock somewhere in the network.'
+        : ''}</p>`;
 }

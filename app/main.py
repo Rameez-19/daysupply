@@ -44,7 +44,8 @@ from app import quality
 from app import resources
 from app import surge
 from app import transfers
-from app import executive, mapview, today_v2, network as network_view
+from app import executive, mapview, today_v2, access
+from app import network as network_view
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
 from app.capture import handle_capture, handle_chat
@@ -90,6 +91,7 @@ async def lifespan(_app: FastAPI):
             # visitor waits on.
             ("executive (All India)", lambda: executive.national_picture("")),
             ("map (All India)", lambda: mapview.supply_map("")),
+            ("nearest help", lambda: access.nearest_help()),
             # Today v2. These were added as endpoints and never added here,
             # so every deploy left the first visitor to that page watching
             # "Loading…" while three uncached BigQuery jobs ran. The geography
@@ -262,6 +264,23 @@ async def today_v2_scorecard(state: str = "", district: str = "",
     if resource == "personnel":
         return _facility_query(today_v2.staff_scorecard, state, district, phc)
     return _facility_query(today_v2.scorecard, state, district, phc, vital_only)
+
+
+@app.get("/api/v1/access")
+async def nearest_help(state: str = "", district: str = "",
+                       vital_only: bool = True):
+    """Where can a patient actually be treated?
+
+    For every facility short of a medicine, the nearest facility that holds the
+    same medicine above its own reorder point. This is the alert in its
+    sharpest form: "126 Vital lines below reorder" is a statistic, and "Koni is
+    out of Oxytocin, nearest supply 353 km" is an emergency with an address.
+
+    Distances are straight-line, so every figure is a floor — the real journey
+    is longer. The page says so rather than implying a travel time we cannot
+    compute without a road network.
+    """
+    return _facility_query(access.nearest_help, state, district, vital_only)
 
 
 @app.get("/api/v1/map")

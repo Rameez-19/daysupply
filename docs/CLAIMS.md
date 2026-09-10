@@ -327,6 +327,51 @@ Action queue promised "the whole queue" and showed 50 of 597, and Today's
 hand-off read "Showing 5 of 50". It now requests more rows than exist, so the
 returned count is the true total and the hand-off states it.
 
+## 7d. Nearest help — where can a patient actually be treated?
+
+*Last verified against the live deployment: **2026-09-10**.*
+
+Served by `/api/v1/access` (`app/access.py`), drawn as a third layer on the map.
+One BigQuery round trip, 0.166 GB.
+
+Every other view answers a manager's question. This answers the one the person
+at the counter has: **this centre does not have the medicine, so where is the
+nearest one that does?** It is also the sharpest alert the product makes —
+*"126 Vital lines below reorder"* is a statistic; *"Salchapra is at zero days of
+Oxytocin and the nearest supply is 46.7 km away"* is an emergency with an
+address.
+
+| Figure | Value |
+|---|---|
+| Life-saving shortages | **126**, across **83** health centres |
+| People behind those centres | **2,648,060** |
+| Nearest supply, median | **45.9 km** |
+| Within 25 km / 25–100 km / over 100 km | **29 / 86 / 11** |
+| **With no source anywhere** | **0** |
+
+**The zero is the finding.** Every one of the 126 life-saving shortages is
+solvable by moving stock that already exists somewhere in the network — the
+question is only how far. That is the case for redistribution stated as a
+measurement rather than an argument.
+
+**A source must be above its own reorder point**, not merely non-zero. Pulling
+from a facility that is itself short just moves the shortage.
+
+**Distances are straight-line** between two real geocoded points
+(`ST_DISTANCE`), so every figure is a **floor** — the road journey is longer.
+The page says so rather than implying a travel time that cannot be computed
+without a road network. It is also not a referral recommendation: it says where
+the stock is, not where a patient should be sent.
+
+**Sources are not restricted to the filtered state.** The nearest supply is
+wherever it is; confining it to the scope would invent a longer journey than
+the real one, and a state border does not stop a van.
+
+**The table is ordered by urgency, not distance.** The map already colours by
+distance, so the table answers who runs out first — ordering it by distance
+buried a centre with half a day of stock left at row eight. Population is
+counted once per centre, not once per shortage.
+
 ## 7b. Network — comparison, and who is judged unfairly
 
 *Last verified against the live deployment: **2026-09-09**.*

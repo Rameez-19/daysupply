@@ -621,6 +621,8 @@
                     onclick="setMapLayer('risk')">Risk now</button>
             <button class="segment" id="layer-headroom"
                     onclick="setMapLayer('headroom')">Absorption headroom</button>
+            <button class="segment" id="layer-access"
+                    onclick="setMapLayer('access')">Nearest help</button>
           </div>
           <label class="map-toggle">
             <input type="checkbox" id="show-flows" checked onchange="toggleFlows()">
@@ -638,7 +640,16 @@
           placed by hand. Arc thickness is units moved, not distance.
         </p>
 
-        <div class="dashboard-section">
+        <!-- Furthest from help. The alert nobody else on the page can make:
+             a named clinic, a named medicine, and the distance to the nearest
+             place that has it. -->
+        <div class="dashboard-section" id="access-section" hidden>
+          <div class="chart-header"><h3>Running out first, and how far help is</h3></div>
+          <p class="section-note" id="access-note"></p>
+          <div id="access-table"></div>
+        </div>
+
+        <div class="dashboard-section" id="flow-section">
           <div class="chart-header"><h3>The moves, in order of size</h3></div>
           <div id="flow-table"></div>
         </div>
