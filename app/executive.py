@@ -110,8 +110,8 @@ def national_picture(state: str = "") -> dict:
        FROM `{D}.bed_status` WHERE {where}) AS beds,
 
       -- Personnel. Only vacancy is real here, and only at state-and-cadre
-      -- grain: `vacancy_rate` takes 23 distinct values across all 928 rows,
-      -- one per state and cadre from RHS 2017. `days_none_present` and
+      -- grain: `vacancy_rate` takes 20 distinct values across all 800 rows,
+      -- one per state and cadre from RHS 2021-22 (23 across 928 in 2017). `days_none_present` and
       -- `mean_present` come from a fixed-seed random propensity in
       -- generate_bed_personnel.py, so the sentence this used to build --
       -- "in 875 cases a role had a day with nobody on duty" -- was a random
@@ -284,8 +284,8 @@ def _headline(r: dict) -> dict:
             "of those are life-saving."
             if tracked else "No medicines are being tracked here yet."),
         "beds": (
-            f"{beds.get('turned_away', 0):,} patients were turned away over "
-            f"the year at {beds.get('over_capacity', 0)} health centres. Beds "
+            f"{beds.get('turned_away', 0):,} patients were turned away in the "
+            f"last 30 days of reporting at {beds.get('over_capacity', 0)} health centres. Beds "
             f"are {100 * (beds.get('mean_occupancy') or 0):.0f}% full on "
             "average."
             if beds.get("facilities") else "No bed data here yet."),

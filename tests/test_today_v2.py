@@ -470,7 +470,7 @@ class TestBedsAndStaffAreGraded:
         no per-facility list adds up to that sentence."""
         rows = today_v2.staff_scorecard()["ranking"]
         names = {r["name"] for r in rows}
-        assert "Health assistant (male)" in names or "Doctor (allopathic)" in names
+        assert "Health assistant" in names or "Doctor (allopathic)" in names
         assert all(0 <= r["value"] <= 100 for r in rows)
 
 

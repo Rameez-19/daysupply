@@ -16,10 +16,16 @@ with posts filled reported nobody present across all 30 days, and
 `days_none_present > 0` covered 875 of 928 rows — 94% of everything, which
 cannot separate a struggling centre from a healthy one.
 
-What is real is narrower than the old page implied: `vacancy_rate` takes **23
-distinct values** across all 928 rows, one per state and cadre from Rural
-Health Statistics 2017. It does not vary by district or by facility, so no
-per-district personnel comparison means anything.
+What is real is narrower than the old page implied: `vacancy_rate` takes one
+distinct value per state and cadre — 23 under Rural Health Statistics 2017,
+20 under 2021-22, where health assistants became one cadre. It does not vary
+by district or by facility, so no per-district personnel comparison means
+anything.
+
+Since the 2021-22 refresh the generated columns are gone from the data layer
+too, not just from the pages: `staff_status` is built from the establishment,
+the reallocation table is dropped, and the generator no longer produces
+personnel at all.
 """
 
 import pytest
@@ -44,29 +50,53 @@ def _leaves(obj, path=""):
         yield path, obj
 
 
-class TestTheGeneratedColumnsStillLookLikeThis:
-    """If the generator is ever fixed or replaced, these fail and the panels
-    above can be reconsidered. Until then they are the reason for the removal.
+class TestGeneratedPresenceIsGoneFromTheDataLayer:
+    """The first pass stripped generated attendance at the API. That left
+    `staff_status` *driven by* generated events, with real vacancy only LEFT
+    JOINed on — so renaming a cadre would have silently NULLed the one real
+    figure. It is now built from `facility_staffing`, and these pin that.
     """
 
-    def test_presence_is_zero_where_posts_are_filled(self):
-        r = run_query("""
-            SELECT COUNTIF(vacancy_rate >= 0.999) AS fully_vacant,
-                   COUNTIF(mean_present = 0 AND vacancy_rate < 0.999)
-                     AS zero_but_staffed
-            FROM `daysupply.daysupply.staff_status`
-        """)[0]
-        assert r["fully_vacant"] == 0
-        assert r["zero_but_staffed"] > 200, (
-            "if this has dropped, re-check whether presence became real")
+    def test_staff_status_carries_no_generated_column(self):
+        cols = {r["column_name"] for r in run_query("""
+            SELECT column_name
+            FROM `daysupply.daysupply.INFORMATION_SCHEMA.COLUMNS`
+            WHERE table_name = 'staff_status'
+        """)}
+        assert cols, "staff_status is missing"
+        leaked = cols & (set(GENERATED) | {"status"})
+        assert not leaked, sorted(leaked)
 
-    def test_the_nobody_came_flag_covers_almost_everything(self):
+    def test_the_reallocation_table_is_gone(self):
+        """Every row in it was a move between two generated figures."""
+        n = run_query("""
+            SELECT COUNT(*) AS n
+            FROM `daysupply.daysupply.INFORMATION_SCHEMA.TABLES`
+            WHERE table_name = 'staff_reallocation'
+        """)[0]["n"]
+        assert n == 0
+
+    def test_the_generator_no_longer_produces_personnel(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "ingestion"
+               / "generate_bed_personnel.py").read_text(encoding="utf-8")
+        assert "GENERATE_PERSONNEL = False" in src
+
+    def test_the_date_is_the_survey_date_not_the_ledger(self):
+        """It used to stamp MAX(event_ts) from the generated ledger, which
+        dated a 2022 survey to last week."""
         r = run_query("""
-            SELECT COUNTIF(days_none_present > 0) AS with_gap, COUNT(*) AS n
+            SELECT MIN(as_of_date) AS lo, MAX(as_of_date) AS hi
             FROM `daysupply.daysupply.staff_status`
         """)[0]
-        assert r["with_gap"] / r["n"] > 0.9, (
-            "a flag on 94% of rows distinguishes nothing")
+        assert str(r["lo"]) == str(r["hi"]) == "2022-03-31", r
+
+    def test_every_forecast_centre_is_covered(self):
+        r = run_query("""
+            SELECT COUNT(DISTINCT facility_id) AS facs, COUNT(*) AS rows_
+            FROM `daysupply.daysupply.staff_status`
+        """)[0]
+        assert r["facs"] == 200, r
 
     def test_vacancy_exists_only_at_state_and_cadre_grain(self):
         """The reason no personnel figure may be reported per district."""
@@ -123,13 +153,19 @@ class TestWhatReplacedItIsReal:
             assert k.get("value") is not None, k
             assert k.get("label"), k
 
-    def test_the_worst_role_matches_the_ranking(self):
+    def test_the_worst_state_role_is_labelled_as_one(self):
+        """The tile is the single worst state-and-role; the ranking beside it
+        ranks roles nationally. Under 2021-22 those differ — Rajasthan's
+        pharmacists against health assistants nationally — and a tile labelled
+        "Hardest to fill" read as contradicting both the chart and Today v1."""
         d = today_v2.staff_scorecard()
-        worst_kpi = next(k for k in d["kpis"]
-                         if "Hardest" in k["label"] or "hardest" in k["label"])
+        tile = next(k for k in d["kpis"]
+                    if k["label"].startswith("Worst state and role"))
+        assert not any("Hardest" in k["label"] for k in d["kpis"])
         top = d["ranking"][0]
-        assert worst_kpi["label"].endswith(top["name"]) or \
-            worst_kpi["value"] >= top["value"], (worst_kpi, top)
+        # One state's worst role can never be less vacant than any role's
+        # national weighted average: an average cannot exceed its maximum.
+        assert tile["value"] >= top["value"], (tile, top)
 
     def test_vacancy_is_weighted_by_establishment(self):
         """A plain average gave Delhi's 11 posts the same say as
@@ -144,8 +180,11 @@ class TestWhatReplacedItIsReal:
         assert d["vacancy_pct"] == pytest.approx(expected)
 
     def test_posts_filled_is_never_over_a_hundred_percent(self):
-        """47 cadres are over establishment — negative vacancy, which is a
-        real RHS outcome. "103% of posts filled" reads as a bug."""
+        """Negative vacancy is a real RHS outcome — contractual NHM staff over
+        sanctioned strength. 2017 had 47 such centre-roles in our states;
+        2021-22 has none here but reports it elsewhere (Madhya Pradesh nursing,
+        1,812 in post against 1,266 sanctioned), so the cap stays.
+        "103% of posts filled" reads as a bug."""
         filled = next(k for k in today_v2.staff_scorecard()["kpis"]
                       if k["label"] == "Posts filled")
         assert 0 <= filled["value"] <= 100, filled

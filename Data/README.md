@@ -784,58 +784,79 @@ occupied — and demand above capacity becomes a `turned_away` event. That is th
 referral signal: **2,430 patients turned away across the year**, 392 in the last
 30 days, at 45 of 200 facilities. Mean occupancy is 30.5%.
 
-### 17.3 Personnel — establishment and vacancy REAL, attendance GENERATED
+### 17.3 Personnel — establishment and vacancy REAL; attendance NOT SHOWN
 
 | | |
 |---|---|
-| Source | Rural Health Statistics 2017, `Data/India/*_2017.csv` |
-| Loaded by | `ingestion/load_staffing.py` → `daysupply.staffing` |
-| Coverage | 5 cadres x 36 states = 180 rows |
+| Source | **Rural Health Statistics 2021-22** (MoHFW), manpower as on **31 March 2022** |
+| Obtained from | `https://archive.org/download/PARI.rural-health-statistics-2021-22/rural-health-statistics-2021-22.pdf` — the People's Archive of Rural India mirror. mohfw.gov.in (Akamai "Access Denied") and data.gov.in (HTTP 403) refuse automated download |
+| Extracted by | `ingestion/extract_rhs_2122.py` → `Data/India/*_2021-22.csv`, from PDF pages 150, 151, 164, 165, 168, 169 (the rural tables) |
+| Loaded by | `ingestion/load_staffing.py` → `daysupply.staffing` → `build_facility_staffing.py` → `build_resource_status.py` (`staff_status`) |
+| Coverage | 6 tables x 36 states = 216 rows; 4 cadres; `staff_status` = 800 rows (200 forecast PHCs x 4) |
 
-Every file carries Required, Sanctioned, In Position, Vacant and Shortfall.
-The vacancy rates are real, and they are the point — a vacant post cannot be
-attended, so vacancy sets the ceiling on attendance before any behaviour is
-modelled:
+National figures, summed from the extracted tables. Vacancy is the source's own
+definition — the sum of state-wise vacant posts, surplus states ignored —
+divided by sanctioned:
 
-| Cadre | Sanctioned | In position | Vacancy |
-|---|---|---|---|
-| Doctor (allopathic), PHC | 33,968 | 27,124 | **20.1%** |
-| Nursing staff, PHC+CHC | 77,956 | 70,738 | 9.3% |
-| Pharmacist, PHC+CHC | 29,315 | 25,193 | 14.1% |
-| Health assistant (male), PHC | 22,753 | 12,288 | **46.0%** |
-| Health assistant (female), PHC | 21,748 | 14,267 | **34.4%** |
+| Cadre | Rural table | Required | Sanctioned | In position | Vacant | Vacancy |
+|---|---|---|---|---|---|---|
+| Doctor (allopathic), PHC | 16 | 24,935 | 39,669 | 30,640 | 9,451 | **23.8%** |
+| Nursing staff, PHC | 33 | 24,935 | 45,310 | 36,079 | 10,776 | **23.8%** |
+| Nursing staff, CHC | 34 | 38,360 | 54,698 | 43,854 | 12,174 | **22.3%** |
+| Pharmacist, PHC | 29 | 24,935 | 24,906 | 19,359 | 5,766 | **23.2%** |
+| Pharmacist, CHC | 30 | 5,480 | 9,160 | 7,776 | 1,723 | **18.8%** |
+| Health assistant [M+F], PHC | 15 | 49,870 | 17,796 | 11,329 | 6,580 | **37.0%** |
 
-Pharmacists are the case the pitch already cites: sanctioned strength (29,315)
-is *below* required (31,274), so even a fully staffed network is short.
+`load_staffing.py` prints a second, lower rate — sanctioned minus in-position
+across all states — which nets surplus states against deficits. Quote the table
+above; it is the source's own figure.
 
-**The denominator differs by cadre.** `allo-doc-PHCS` and the two
-`assistant-*-PHCS` files count PHC posts and divide by PHCs;
-`nursing-staff-PHCS-CHCS` and `pharmacists-PHCS-CHCS` cover PHCs **and** CHCs
-and divide by both. Dividing the latter two by PHCs alone would overstate
-per-PHC nursing and pharmacist strength by roughly 18%.
+**How it was extracted, and why not the easy way.** The archive.org item also
+carries an OCR text file. It destroys these tables — state names vanish and the
+columns collapse into a bare digit stream — so the extractor reads the PDF's own
+embedded text layer instead, which is exact. Every table is checked against its
+own All India row for Required, Sanctioned and In Position; the one parsing bug
+it caught was a row wrapped across five lines (serial 31, Dadra & Nagar Haveli
+and Daman & Diu), found as a 24-post gap. Doctors' In Position total (30,640)
+also matches the document's prose ("increased from 20308 in 2005 to 30640 in
+2022").
 
-**Granularity is state-level, exactly like `population_served`.** Per-facility
-sanctioned strength is a state x cadre average and is an assumption, not a
-measurement.
+**What changed from 2017.** Nursing and Pharmacist are now published separately
+for PHC and CHC; 2017 combined them, which forced division by PHCs *plus* CHCs
+and would have overstated per-PHC staffing by about 18% if done wrong. Every
+forecast facility is a PHC, so the PHC tables are used directly and that hazard
+is gone. Health assistants are now published **combined [Male + Female]**; the
+2017 male/female split is not carried forward, because mixing vintages inside
+one table to keep a headline figure is worse than losing the figure. Three UT
+spellings changed and are aliased in `build_facility_staffing.py`.
 
-**36 state-cadre rows report more staff in post than sanctioned posts** —
-contractual NHM staff over and above sanctioned strength, across all five
-cadres. Those are kept as reported rather than clipped. A related defect was
-caught by a test: rounding the sanctioned and in-position ratios independently
-can invert their order (1.4 sanctioned rounds to 1 while 1.6 in position rounds
-to 2), which claimed staff for posts that do not exist. Attendance is now capped
-at the establishment except where the source itself reports over-establishment.
+**Granularity is state x cadre, not facility.** `vacancy_rate` takes
+20 distinct state-and-cadre values across 800 rows. No
+personnel figure may be reported per district or per facility.
 
-**Vintage.** This is the 2017 edition. MoHFW now publishes the same series as
-*Health Dynamics of India (Infrastructure and Human Resources)*. The 2017 data
-is internally consistent and adequate for a vacancy baseline; it should be
-refreshed before any real deployment, and `source_year` is carried on every row
-so nothing can quote it as current.
+**Telangana sanctions no health assistants at PHCs** — the source reads
+Required 1,156, Sanctioned 0, In Position 0 — so no vacancy rate can exist.
+Those 20 centre-roles are excluded from rates rather than counted as
+zero. 0 centre-roles in our five states are over establishment; the
+source reports it elsewhere (Madhya Pradesh nursing: 1,812 in post against
+1,266 sanctioned).
 
-**Attendance is generated:** a fixed-seed per-facility propensity, lower on
-Sundays, with occasional multi-day absences for leave, training and deputation.
-Network attendance runs at 56% of sanctioned posts — the product of real vacancy
-and generated presence.
+**Nurses against the bed norm** compare INC 1:6 with nurses in position — the
+state rate applied to a centre's sanctioned posts. Before 2026-09-11 this was
+computed against generated attendance.
+
+**Vintage.** One edition newer exists: *Health Dynamics of India
+(Infrastructure and Human Resources) 2022-23*, as on 31 March 2023. It needs a
+human with a browser; the extractor should take it with only its page map
+updated. `source_year = 2022` is carried on every row.
+
+**Attendance is not shown, and no longer generated.** It was a fixed-seed
+propensity and was removed from every page on 2026-09-11 (CLAIMS §8a);
+`generate_bed_personnel.py` now has `GENERATE_PERSONNEL = False`. 338,720
+historical generated personnel rows remain in `resource_events` and are read by
+nothing. No public facility-level attendance data exists in India to replace
+it: AEBAS, the one real biometric system, releases data only to each
+organisation's nodal officer.
 
 ### 17.4 One nurse per six beds — the cross-resource link
 

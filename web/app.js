@@ -1236,11 +1236,15 @@ async function loadExecutive() {
         ['beds', (b.capacity || 0).toLocaleString('en-IN')],
         ['turned away', (b.turned_away || 0).toLocaleString('en-IN')],
       ], b.turned_away > 0 ? 'warn' : 'ok', 'Bed numbers are the IPHS 2022 government norm. How full they are is modelled from real HMIS admissions.')
+      // 'roles with a gap' read cadres_with_a_gap, a count of random draws
+      // that left the payload with the generated attendance — so this card
+      // showed a confident 0. Sanctioned posts is real and says how large the
+      // establishment the vacancy rate is a share of.
       + postureCard('Staff', h.personnel, [
         ['health centres', (s.facilities || 0).toLocaleString('en-IN')],
+        ['sanctioned posts', (s.posts || 0).toLocaleString('en-IN')],
         ['posts unfilled', `${Math.round(100 * (s.mean_vacancy || 0))}%`],
-        ['roles with a gap', (s.cadres_with_a_gap || 0).toLocaleString('en-IN')],
-      ], (s.mean_vacancy || 0) > 0.15 ? 'bad' : 'warn', 'Vacancy is from Rural Health Statistics 2017. Day-to-day attendance is modelled.');
+      ], (s.mean_vacancy || 0) > 0.15 ? 'bad' : 'warn', 'Vacancy and sanctioned posts are from Rural Health Statistics 2021-22, by state and cadre. No facility-level attendance is published anywhere in India, so none is shown.');
 
     if (absorb) {
       const rows = d.absorption || [];

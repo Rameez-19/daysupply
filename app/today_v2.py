@@ -545,7 +545,8 @@ BED_LABELS = {
     },
     "ranking": {
         "title": "Where are patients being turned away?",
-        "note": "The centres turning away the most people over the year. Red "
+        "note": "The centres turning away the most people in the last 30 days "
+                "of reporting. Red "
                 "is a centre that is over capacity.",
         "unit": "patients turned away",
     },
@@ -578,7 +579,7 @@ STAFF_LABELS = {
     },
     # Was "which districts are worst staffed?", plotted against attendance.
     # Both axes were wrong. Vacancy in `staff_status` takes exactly 23 distinct
-    # values — one per state and cadre, from RHS 2017 — repeated across 928
+    # values — one per state and cadre, from RHS 2017 (20 under 2021-22) — repeated across 928
     # rows and 116 districts, so a district scatter drew 116 points from 23
     # numbers and invited the reader to compare districts that carry an
     # identical figure. Attendance was generated outright.
@@ -603,10 +604,10 @@ STAFF_LABELS = {
         "critical": "30% or worse",
         "other": "Other roles",
         "flagged": "roles at 30% vacant or worse",
-        "empty": "No role in scope carries an RHS 2017 vacancy figure.",
+        "empty": "No role in scope carries an RHS 2021-22 vacancy figure.",
     },
     "provenance": "Vacancy and sanctioned strength are from Rural Health "
-                  "Statistics 2017 at state-and-cadre grain, which is the "
+                  "Statistics 2021-22 at state-and-cadre grain, which is the "
                   "grain this panel reports. Nothing here is per-facility.",
 }
 
@@ -705,7 +706,8 @@ def bed_scorecard(state: str = "", district: str = "", phc: str = "") -> dict:
                  "More patients than beds, so somebody is being sent "
                  "elsewhere."),
             _kpi(s.get("turned_away") or 0, "", "Patients turned away",
-                 f"Over the year, at {s.get('turning_away') or 0:,} centres",
+                 f"In the last 30 days of reporting, at "
+                 f"{s.get('turning_away') or 0:,} centres",
                  "bad" if (s.get("turned_away") or 0) > 0 else "ok",
                  "Every one of these is a person who arrived and could not be "
                  "admitted."),
@@ -740,13 +742,14 @@ def staff_scorecard(state: str = "", district: str = "",
     cannot distinguish anything from anything.
 
     What survives is real and narrower than the old page implied. Vacancy takes
-    **23 distinct values** across all 928 rows — one per state and cadre, from
-    Rural Health Statistics 2017 — so it does not vary by district or by
+    one distinct value per state and cadre — 23 across 928 rows under Rural
+    Health Statistics 2017, 20 across 800 under 2021-22 — so it does not vary by district or by
     facility at all. Sanctioned posts are the IPHS norm. Nurses against the bed
     norm is the Indian Nursing Council ratio applied to real bed capacity.
 
-    Everything below therefore reports state-and-cadre, and says so. 47 cadres
-    are over establishment (negative vacancy) and 31 carry no RHS figure; both
+    Everything below therefore reports state-and-cadre, and says so. Under
+    2021-22 no centre-role here is over establishment, and 20 (Telangana's
+    health assistants, 0 sanctioned against 1,156 required) have no rate; both
     are handled rather than averaged into silence.
     """
     where = _geo_where(state, district, phc)
@@ -770,7 +773,7 @@ def staff_scorecard(state: str = "", district: str = "",
          COUNT(DISTINCT state) AS states
        FROM `{D}.staff_status` WHERE {where}) AS s,
 
-      -- Counted over state-and-cadre pairs, not over the 928 rows those 23
+      -- Counted over state-and-cadre pairs, not over the 800 rows those 20
       -- numbers are repeated across.
       (SELECT AS STRUCT
          COUNTIF(v >= 0.3) AS roles_badly_short,
@@ -845,7 +848,8 @@ def staff_scorecard(state: str = "", district: str = "",
     worst = dict(ra["worst"]) if ra.get("worst") else {}
     roles_scored = ra.get("roles_scored") or 0
 
-    # 47 cadres are over establishment — more in position than sanctioned —
+    # Over establishment — more in position than sanctioned — is 0 here under
+    # 2021-22 (47 under 2017) but reported elsewhere in the source,
     # which is a real RHS outcome and not an error. Capped for display, because
     # "103% of posts filled" invites the reader to think a post is missing.
     filled = min(100.0, round(100 - 100 * (s.get("mean_vacancy") or 0), 1))
@@ -866,14 +870,20 @@ def staff_scorecard(state: str = "", district: str = "",
                  f"{roles_scored:,} state-and-cadre roles, weighted by "
                  "establishment size",
                  _band(filled, 90, 75),
-                 "Rural Health Statistics 2017, weighted by sanctioned posts "
+                 "Rural Health Statistics 2021-22, weighted by sanctioned posts "
                  "so a small badly-vacant cadre does not outvote a large "
                  "one."),
+            # The single worst state-and-role, not the nationally hardest
+            # role. Today v1 and the ranking chart beside this tile rank roles
+            # nationally (health assistants, under 2021-22). Labelled "Hardest
+            # to fill", this tile read as contradicting both once Rajasthan's
+            # pharmacists became the worst single pair.
             _kpi(worst.get("pct"), "%",
-                 f"Hardest to fill: {worst.get('cadre') or 'n/a'}"
-                 if worst else "Hardest role to fill",
-                 f"{worst.get('state') or ''} — the worst-vacant cadre in scope"
-                 if worst else "No RHS figure in scope",
+                 f"Worst state and role: {worst.get('cadre') or 'n/a'}"
+                 if worst else "Worst state and role",
+                 f"{worst.get('state') or ''} — the most vacant single role "
+                 "in any state in scope"
+                 if worst else "No vacancy figure in scope",
                  _band(worst.get("pct"), 15, 30, higher_is_better=False),
                  "Recruitment happens by cadre and by state, which is also the "
                  "only grain this figure exists at."),
@@ -881,23 +891,27 @@ def staff_scorecard(state: str = "", district: str = "",
                  f"{ra.get('roles_badly_short') or 0:,} of {roles_scored:,} "
                  "state-and-cadre pairs",
                  _band(badly_short, 20, 40, higher_is_better=False),
-                 "Counted over the roles themselves. Counting the 928 rows "
-                 "they repeat across would report the same 23 figures as "
-                 "though they were 928 observations."),
+                 "Counted over the roles themselves. Counting the 800 rows "
+                 "they repeat across would report the same 20 figures as "
+                 "though they were 800 observations."),
             _kpi(s.get("nurses_short") or 0, "", "Nurses below the bed norm",
                  "Against the Indian Nursing Council ratio IPHS cites",
                  "bad" if (s.get("nurses_short") or 0) > 0 else "ok",
                  "Nursing need is set by how many beds a centre has, not by "
-                 "its sanctioned list. This one is per-facility and real."),
+                 "its sanctioned list. Nurses in position are the RHS state rate "
+                 "applied to this centre's posts — an estimate, not a "
+                 "headcount."),
             _kpi(s.get("posts") or 0, "", "Sanctioned posts",
                  f"across {s.get('centres') or 0:,} centres in "
                  f"{districts:,} districts",
                  "ok",
                  "The establishment these vacancy rates are shares of. "
-                 + (f"{s.get('no_rhs_figure') or 0:,} centre-roles carry no "
-                    "RHS 2017 figure and are excluded from the rates above."
+                 + (f"{s.get('no_rhs_figure') or 0:,} centre-roles have no vacancy "
+                    "rate and are excluded above: the source sanctions none "
+                    "of those posts (Telangana sanctions 0 health assistants "
+                    "at PHCs against 1,156 required)."
                     if (s.get("no_rhs_figure") or 0) else
-                    "Every centre-role in scope carries an RHS 2017 figure.")),
+                    "Every centre-role in scope carries an RHS 2021-22 figure.")),
         ],
         "distribution": [dict(x) for x in (r.get("distribution") or [])],
         "ranking": [dict(x) for x in (r.get("ranking") or [])],

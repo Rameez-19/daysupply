@@ -117,24 +117,31 @@ class TestBedCapacity:
 
 
 class TestPersonnel:
-    def test_attendance_never_exceeds_posts_actually_filled(self):
-        """The real ceiling is filled posts, not sanctioned posts.
+    def test_generated_attendance_is_frozen_history_that_feeds_nothing(self):
+        """This used to assert generated attendance never exceeded filled
+        posts. That invariant belonged to the generator, which no longer runs.
 
-        Attendance *can* exceed the sanctioned establishment, and the source
-        says so: 36 state-cadre rows in Rural Health Statistics report more
-        staff in post than sanctioned posts, because contractual NHM staff sit
-        over and above sanctioned strength. What is impossible is more people
-        attending than are employed.
+        After the RHS 2021-22 refresh, 28,397 of those old rows exceed the new
+        in-position figures — generated against 2017's establishment, compared
+        against 2022's. That is precisely why nothing may read them. What is
+        pinned now: no product table carries a column built from them, and no
+        new generated personnel row has appeared since the ledger was seeded.
+        Real personnel reports from the capture pipeline are not affected —
+        they carry a source other than 'seed'.
         """
-        rows = run_query("""
-            SELECT COUNTIF(e.quantity > fs.expected_in_position) AS impossible
-            FROM `daysupply.daysupply.resource_events` e
-            JOIN `daysupply.daysupply.facility_staffing` fs
-              ON fs.facility_id = e.facility_id
-             AND fs.cadre = e.resource_subtype
-            WHERE e.resource_type = 'personnel'
-        """)
-        assert rows[0]["impossible"] == 0
+        r = run_query("""
+            SELECT MAX(DATE(event_ts)) AS last_day, COUNT(*) AS n
+            FROM `daysupply.daysupply.resource_events`
+            WHERE resource_type = 'personnel' AND source = 'seed'
+        """)[0]
+        assert r["n"] == 0 or str(r["last_day"]) <= "2026-08-29", r
+        cols = {c["column_name"] for c in run_query("""
+            SELECT column_name
+            FROM `daysupply.daysupply.INFORMATION_SCHEMA.COLUMNS`
+            WHERE table_name = 'staff_status'
+        """)}
+        assert not cols & {"mean_present", "attendance_vs_sanctioned",
+                           "days_none_present", "status"}, cols
 
     def test_over_establishment_is_always_explained_by_the_source(self):
         """Rounding two ratios independently can invert their order.
@@ -148,9 +155,18 @@ class TestPersonnel:
             FROM `daysupply.daysupply.facility_staffing` fs
             JOIN `daysupply.daysupply.staffing` s
               ON s.cadre = fs.cadre
+             -- 2021-22 publishes Nursing and Pharmacist once per facility
+             -- type, so a cadre+state join alone matches two source rows and
+             -- a PHC over its PHC establishment could be "explained" by the
+             -- CHC row, or not, depending on which row the join kept.
+             AND fs.facility_type IN UNNEST(s.applies_to_facility_types)
              AND s.state = CASE fs.state
-                   WHEN 'A & N Islands' THEN 'A & N Island'
+                   WHEN 'A & N Islands' THEN 'Andaman & Nicobar Islands'
                    WHEN 'Andhra Pradesh Old' THEN 'Andhra Pradesh'
+                   WHEN 'Dadra & Nagar Haveli'
+                     THEN 'Dadra & Nagar Haveli and Daman & Diu'
+                   WHEN 'Daman & Diu'
+                     THEN 'Dadra & Nagar Haveli and Daman & Diu'
                    ELSE fs.state END
             WHERE fs.expected_in_position > fs.sanctioned_posts
               AND s.in_position <= s.sanctioned
@@ -189,12 +205,16 @@ class TestPersonnel:
         assert rows[0]["nursing_rows"] > 0
         assert rows[0]["missing"] == 0
 
-    def test_reallocation_never_strands_a_donor(self):
-        rows = run_query("""
-            SELECT COUNTIF(from_present_after < 1) AS strands
-            FROM `daysupply.daysupply.staff_reallocation`
-        """)
-        assert rows[0]["strands"] == 0
+    def test_reallocation_is_answered_by_structure_not_simulation(self):
+        """This asserted the reallocation table never stranded a donor. The
+        table is gone: every move in it differenced two generated attendance
+        figures. What replaced it is the structural answer — how many cadres
+        are sanctioned at most one post per centre — which is real."""
+        from app import resources
+        c = resources.staff_reallocation()["constraint"]
+        assert resources.staff_reallocation()["reallocations"] == []
+        assert 0 < c["single_post_cadres"] <= c["cadres"], c
+        assert "recruitment" in c["why"], c["why"]
 
 
 class TestOnePipeline:

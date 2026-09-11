@@ -1,38 +1,64 @@
 """Load sanctioned, in-position and vacant staffing into `daysupply.staffing`.
 
-Source: Rural Health Statistics 2017, `Data/India/*_2017.csv`. Every file shares
-one schema — State/UT, Required [R], Sanctioned [S], In Position [P],
-Vacant [S-P], Shortfall [R-P] — for 36 states plus an All India row.
+Source: **Rural Health Statistics 2021-22**, manpower as on **31 March 2022**,
+extracted from the published PDF by `ingestion/extract_rhs_2122.py` into
+`Data/India/*_2021-22.csv`. Every file shares one schema — State/UT,
+Required [R], Sanctioned [S], In Position [P], Vacant [S-P], Shortfall [R-P] —
+for 36 states plus an All India row.
 
 **The vacancy rates are real, and they are the point.** A post that is vacant
 cannot be attended, so the vacancy rate from this data sets the ceiling on
-attendance before any behaviour is modelled. Nationally in 2017:
+staffing before anything else is said about it. Nationally as on 31 March 2022,
+vacancy being the source's own definition (state-wise vacant posts summed with
+surplus states ignored, over sanctioned):
 
 | Cadre | Sanctioned | In position | Vacant |
 |---|---|---|---|
-| Doctor (allopathic), PHC | 33,968 | 27,124 | 20.1% |
-| Nursing staff, PHC+CHC | 77,956 | 70,738 | 9.3% |
-| Pharmacist, PHC+CHC | 29,315 | 25,193 | 14.1% |
-| Health assistant (male), PHC | 22,753 | 12,288 | 46.0% |
-| Health assistant (female), PHC | 21,748 | 14,267 | 34.4% |
+| Doctor (allopathic), PHC | 39,669 | 30,640 | 23.8% |
+| Nursing staff, PHC | 45,310 | 36,079 | 23.8% |
+| Nursing staff, CHC | 54,698 | 43,854 | 22.3% |
+| Pharmacist, PHC | 24,906 | 19,359 | 23.2% |
+| Pharmacist, CHC | 9,160 | 7,776 | 18.8% |
+| Health assistant [M+F], PHC | 17,796 | 11,329 | 37.0% |
 
-Two things to know before using it.
+An earlier draft of this table derived "sanctioned" as in-position plus vacant,
+which overstates it wherever a state is in surplus or reports no sanctioned
+figure; four of its six rows were wrong. These are the summed sanctioned
+columns, which `extract_rhs_2122.py` checks against each table's All India
+row. The run summary below prints a second rate — sanctioned minus in-position
+over all states — which nets surplus against deficit and reads lower.
+
+Pharmacists, PHC and CHC together, are now sanctioned **above** requirement
+(34,066 against 30,415). The 2017 edition had them below it (29,315 against
+31,274), which the pitch cited; that claim does not survive the refresh.
+
+Three things to know before using it.
 
 **Granularity is state-level, not facility-level**, exactly like
 `population_served`. Per-facility sanctioned strength is a state x cadre
-average and is an assumption, not a measurement. See `Data/README.md`.
+average and is an assumption, not a measurement. `vacancy_rate` therefore takes
+one distinct value per state and cadre, which is why no figure derived from it
+may be reported per district or per facility. See `Data/README.md`.
 
-**Denominators differ between files.** `allo-doc-PHCS` and the two
-`assistant-*-PHCS` files count PHC posts, so they divide by PHCs. But
-`nursing-staff-PHCS-CHCS` and `pharmacists-PHCS-CHCS` are PHC **and** CHC
-combined, so they must divide by PHCs plus CHCs. Dividing those two by PHCs
-alone would overstate per-PHC staffing by about 18%.
+**Denominators no longer differ between files.** The 2017 edition published
+Nursing and Pharmacist as PHC *and* CHC combined, so those two had to be
+divided by PHCs plus CHCs; dividing them by PHCs alone overstated per-PHC
+staffing by about 18%. The 2021-22 edition publishes PHC and CHC separately,
+so every row here carries exactly one facility type and the hazard is gone.
 
-**Vintage.** This is the 2017 edition. MoHFW now publishes the same series as
-"Health Dynamics of India (Infrastructure and Human Resources)". The 2017 data
-is internally consistent and adequate for setting a vacancy baseline; it should
-be refreshed before any real deployment, and the vintage is carried on every
-row so nothing can quote it as current.
+**Health assistants are one cadre now.** The 2017 edition split them male and
+female (46.0% and 34.4% vacant); 2021-22 publishes "Health Assistant at PHCs"
+combined at 37.0%. The split is not carried forward from the older edition,
+because mixing vintages inside one table to preserve a headline figure is worse
+than losing the figure. Male and female health assistants remain distinct
+*items* for voice capture — what a worker can report is a different question
+from what the establishment sanctions.
+
+**Vintage.** One edition newer exists: "Health Dynamics of India
+(Infrastructure and Human Resources) 2022-23", as on 31 March 2023. MoHFW
+blocks automated download, so it needs a human with a browser; the extractor
+should take it with only its page map updated. The source year is carried on
+every row so nothing can quote this as current.
 """
 
 from __future__ import annotations
@@ -51,15 +77,23 @@ TABLE = f"{PROJECT}.{DATASET}.staffing"
 FACILITIES = f"`{PROJECT}.{DATASET}.facilities`"
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "Data" / "India"
-SOURCE_YEAR = 2017
+# The year the manpower position was taken, not the edition label: RHS 2021-22
+# reports as on 31 March 2022.
+SOURCE_YEAR = 2022
 
 # file -> (cadre, which facility types the posts belong to)
+#
+# Every entry now carries exactly one facility type. Nursing and Pharmacist
+# appear twice, once per type, because the source publishes them separately —
+# which is what removes the combined-denominator hazard the 2017 loader had to
+# warn about.
 FILES: dict[str, tuple[str, tuple[str, ...]]] = {
-    "allo-doc-PHCS_2017": ("Doctor (allopathic)", ("phc",)),
-    "nursing-staff-PHCS-CHCS_2017": ("Nursing staff", ("phc", "chc")),
-    "pharmacists-PHCS-CHCS_2017": ("Pharmacist", ("phc", "chc")),
-    "assistant-male-PHCS_2017": ("Health assistant (male)", ("phc",)),
-    "assistant-female-PHCS_2017": ("Health assistant (female)", ("phc",)),
+    "allo-doc-PHCS_2021-22": ("Doctor (allopathic)", ("phc",)),
+    "nursing-staff-PHCS_2021-22": ("Nursing staff", ("phc",)),
+    "nursing-staff-CHCS_2021-22": ("Nursing staff", ("chc",)),
+    "pharmacists-PHCS_2021-22": ("Pharmacist", ("phc",)),
+    "pharmacists-CHCS_2021-22": ("Pharmacist", ("chc",)),
+    "assistant-PHCS_2021-22": ("Health assistant", ("phc",)),
 }
 
 SCHEMA = [
@@ -111,12 +145,14 @@ def build() -> pd.DataFrame:
                 "source_year": SOURCE_YEAR,
                 "source_file": f"{stem}.csv",
             })
-        print(f"  {stem:32s} {len(df):>3} states, cadre={cadre}")
+        print(f"  {stem:32s} {len(df):>3} states, "
+              f"cadre={cadre} ({'+'.join(types)})")
     return pd.DataFrame(records)
 
 
 def run() -> None:
-    print("Reading Rural Health Statistics 2017 staffing files ...")
+    print("Reading Rural Health Statistics 2021-22 staffing files "
+          "(as on 31 March 2022) ...")
     frame = build()
 
     client = bigquery.Client(project=PROJECT, location=LOCATION)

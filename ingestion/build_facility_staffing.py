@@ -45,9 +45,15 @@ STAFFING = f"`{PROJECT}.{DATASET}.staffing`"
 FACILITY_STAFFING = f"`{PROJECT}.{DATASET}.facility_staffing`"
 
 # The facility master and the staffing files spell some states differently.
+# Written against RHS 2021-22. Its spellings moved from 2017's: "A & N Island"
+# became "Andaman & Nicobar Islands", and Dadra & Nagar Haveli and Daman & Diu
+# are one UT since 2020, so the facility master's two names both map to the
+# merged row. Left unmapped, those 45 centres silently got no establishment.
 STATE_ALIASES = {
-    "A & N Islands": "A & N Island",
+    "A & N Islands": "Andaman & Nicobar Islands",
     "Andhra Pradesh Old": "Andhra Pradesh",
+    "Dadra & Nagar Haveli": "Dadra & Nagar Haveli and Daman & Diu",
+    "Daman & Diu": "Dadra & Nagar Haveli and Daman & Diu",
 }
 
 BUILD = f"""
@@ -175,7 +181,7 @@ def run() -> None:
         WHERE cadre = 'Nursing staff' AND nurses_required_by_beds IS NOT NULL
     """).result()))
     print(f"\n  Nursing, two independent requirements:")
-    print(f"    sanctioned establishment (RHS 2017):  "
+    print(f"    sanctioned establishment (RHS 2021-22):  "
           f"{gap.avg_sanctioned} per facility")
     print(f"    required by beds (INC 1:6, cited by IPHS): "
           f"{gap.avg_required_by_beds} per facility")

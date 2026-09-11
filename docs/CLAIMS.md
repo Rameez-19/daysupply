@@ -588,9 +588,10 @@ filled to **89.4%** of doctor posts, with female health assistants typical at
 fill here" is a recruitment decision.
 
 **Staffing is compared by STATE when unscoped, and that is forced by the data.** Vacancy comes
-from Rural Health Statistics 2017, which publishes at state level. Measured:
-**exactly one distinct value per state** — all 33 Rajasthan districts read
-59.3%, all 27 Assam districts read 96.3%. A district table built on it would
+from Rural Health Statistics (2021-22 since 2026-09-11), which publishes at
+state level. Measured: **exactly one distinct value per state** — all
+33 Rajasthan districts read 69.3%, all 27 Assam districts
+read 78.1% (2017 read 59.3% and 96.3%). A district table built on it would
 rank 33 districts as jointly worst and invite a reader to blame Jaisalmer for a
 Rajasthan statistic. `test_staff_vacancy_really_is_constant_within_a_state`
 pins the measurement the decision rests on, so if it ever stops being true the
@@ -775,14 +776,14 @@ life-saving medicines are tracked here."
 
 | Beds | | Staff | |
 |---|---|---|---|
-| Beds free on average | **69.5%** | Posts filled | **78.2%** |
-| Centres over capacity | **22.5%** (45 of 200) | Actually on duty | **53.2%** |
-| Patients turned away | **392** | Roles with a day nobody came | **94.3%** (875 of 928) |
+| Beds free on average | **69.5%** | Posts filled | **77.8%** |
+| Centres over capacity | **22.5%** (45 of 200) | Worst state and role | **56.2%** (Pharmacist, Rajasthan) |
+| Patients turned away (30 days) | **392** | Roles 30% vacant or worse | **31.6%** (6 of 19) |
 | Centres turning people away | **22.5%** | Nurses below the bed norm | **11** |
-| Districts affected | **25.9%** | Districts affected | **100%** |
+| Districts affected | **25.9%** | Sanctioned posts | **1,061** |
 
-The staff ranking is by **role, not by facility**: "male health assistants are
-**38.4%** vacant, against doctors at **8.6%**" is a recruitment decision, and
+The staff ranking is by **role, not by facility**: "health assistants are
+**32.9%** vacant, against doctors at **16.9%**" is a recruitment decision, and
 no per-facility list adds up to that sentence.
 
 **All three resources return one contract** — `kpis`, `labels`, `distribution`,
@@ -794,9 +795,9 @@ pins the shape.
 **Beds and staff have no fourth question.** Medicines ask "could the network
 take a shock"; there is no bed equivalent, so rather than invent one those two
 get the provenance panel — which matters more for them anyway, because bed
-occupancy and daily attendance are **modelled** while capacity (IPHS 2022) and
-vacancy (RHS 2017) are real, and a reader would otherwise assume all four were
-counted.
+occupancy is **modelled** while capacity (IPHS 2022) and vacancy (RHS
+2021-22) are real — daily attendance is not shown at all — and a reader would
+otherwise assume all three were counted.
 
 *(Superseded: beds and staff are graded — see above.)*
 
@@ -844,14 +845,14 @@ understates road distance — so any distance shown is a floor, never a boast.
 | **148,554 overnight beds** | rural PHCs only; urban PHCs get day-care beds | **REAL NORM** | same |
 | `is_24x7` = **NULL for every PHC** | nothing in the data records it | **EXPLICIT UNKNOWN** | same — a test asserts it stays unpopulated |
 | **1 nurse per 6 beds** | **Indian Nursing Council regulation**, which CHC IPHS 2022 *cites* at p.60 and tabulates at p.118 | **REAL** | `set_bed_capacity.py`, `build_facility_staffing.py` |
-| Doctor vacancy **20.1%** (33,968 sanctioned / 27,124 in position) | Rural Health Statistics 2017 | **REAL** | `ingestion/load_staffing.py` |
-| Health assistant (male) **46.0%** (22,753 / 12,288) | same | **REAL** | same |
-| Health assistant (female) **34.4%** (21,748 / 14,267) | same | **REAL** | same |
-| Pharmacist **14.1%** (29,315 / 25,193) | same — PHC **and** CHC denominator | **REAL** | same |
-| Nursing **9.3%** (77,956 / 70,738) | same — PHC **and** CHC denominator | **REAL** | same |
-| Pharmacist sanctioned (29,315) is **below** required (31,274) | same | **REAL** | same |
+| Doctor (allopathic) at PHCs vacancy **23.8%** (9,451 vacant of 39,669 sanctioned; 30,640 in position) | Rural Health Statistics **2021-22**, as on 31 Mar 2022, rural Table 16 | **REAL** | `ingestion/extract_rhs_2122.py` → `load_staffing.py` |
+| Health assistant [M+F] at PHCs **37.0%** (6,580 / 17,796) — **one cadre now**; the 2017 male/female split is not published | same, Table 15 | **REAL** | same |
+| Nursing at PHCs **23.8%** (10,776 / 45,310); at CHCs **22.3%** (12,174 / 54,698) — published separately now | same, Tables 33 and 34 | **REAL** | same |
+| Pharmacist at PHCs **23.2%** (5,766 / 24,906); at CHCs **18.8%** (1,723 / 9,160) | same, Tables 29 and 30 | **REAL** | same |
+| Pharmacists sanctioned (34,066) vs required (30,415), PHC+CHC | same | **REAL** | same — sanctioned now **exceeds** required; the 2017 'below required' claim no longer holds |
+| **Telangana sanctions 0 health assistants at PHCs** against 1,156 required | same, Table 15 | **REAL** | no vacancy rate can exist; 20 centre-roles excluded rather than counted as zero |
 | **35 bed referral routes**, 24 facilities, mean 33 km | occupancy vs capacity, 50 km limit | **MEASURED** on generated occupancy | `ingestion/build_resource_status.py` |
-| **0 staff reallocations** | **3** of 5 cadres sanctioned at most one post per PHC (Doctor and Nursing carry more than one somewhere); 116 districts apart | **MEASURED — a real finding** | `app/resources.py`; the API returns the reason, not an empty list |
+| **0 staff reallocations** | **2** of 4 cadres (health assistants, pharmacists) sanctioned at most one post per PHC under RHS 2021-22 — 3 of 5 under 2017; doctors and nursing carry more than one somewhere, 116 districts apart | **MEASURED — a real finding** | `app/resources.py`; the API returns the reason, not an empty list |
 
 > ⚠️ **Attribute 1:6 to the Indian Nursing Council, not IPHS.** IPHS cites it;
 > the INC originates it. This wording is required everywhere including the deck
@@ -859,6 +860,13 @@ understates road distance — so any distance shown is a floor, never a boast.
 
 > ⚠️ Bed **occupancy** is generated. Bed **capacity** and staff **vacancy**
 > are real. Do not blur them.
+
+> ⚠️ **Turned away is a 30-day figure, not a year.** 392 patients in the 30
+> days of reporting to 29 August 2026, at 45 centres. Three pages said "over the
+> year"; corrected 2026-09-11. The same day a rebuild showed 339: `bed_status`
+> anchored its window to the latest event of *any* resource, so medicine
+> captures on 2-3 September slid it past the end of the bed data. The window is
+> now anchored to the bed ledger itself.
 
 > ⚠️ **Staff attendance was removed from the product on 2026-09-11.** It is not
 > disclosed any more because it is not shown any more — see §8a.
@@ -888,21 +896,45 @@ It was also wrong on its own terms:
 A flag that fires on 94% of rows cannot separate a struggling centre from a
 healthy one, and the 875 was a count of random draws.
 
-**What replaced it is real, and narrower.** `vacancy_rate` takes **23 distinct
-values across all 928 rows** — one per state and cadre, from RHS 2017. It does
-**not vary by district or by facility**.
+**What replaced it is real, and narrower.** `vacancy_rate` takes one value per
+state and cadre — **23** under RHS 2017, **20** under RHS 2021-22, where
+health assistants became one cadre. It does **not vary by district or by
+facility**.
 
 > ⚠️ **No personnel figure may be reported per district or per facility.** The
 > staffing scatter used to plot 116 districts from those 23 numbers, inviting a
 > reader to compare districts carrying an identical figure — the same mistake
 > already corrected once on the Network page. It now plots one point per
-> **state and cadre**, 21 of them.
+> **state and cadre** — 19 of them, Telangana's health assistants having
+> no rate to plot.
 
 Rates are weighted by sanctioned posts: a plain average gave Delhi's 11 posts
-the same say as Maharashtra's several hundred. 47 cadres are **over
-establishment** (negative vacancy, a real RHS outcome, capped at 100% filled
-for display and explained on the scatter) and 31 centre-roles carry **no RHS
-figure** and are excluded from the rates rather than counted as zero.
+the same say as Maharashtra's several hundred. Under 2021-22, 0 centre-roles
+in our five states are over establishment (2017 had 47; the cap at 100% filled
+stays because the source reports it elsewhere), and 20 have no vacancy
+rate because Telangana sanctions no health-assistant posts.
+
+**The data layer, not just the pages.** The first pass hid generated attendance
+at the API while `staff_status` was still *built from* it, with real vacancy
+LEFT JOINed on. It is now built from the establishment: no generated column
+exists in it, `staff_reallocation` is dropped, and the generator no longer
+produces personnel.
+
+> ⚠️ **"Nurses below the bed norm" was described as per-facility and real. It
+> was computed against generated attendance.** It now uses nurses in position —
+> the state rate applied to each centre's posts — which is an estimate, and the
+> tile says so.
+
+**Live product figures after the 2021-22 refresh** (200 forecast PHCs):
+
+| Figure | Value |
+|---|---|
+| Posts filled, weighted by establishment | **77.8%** |
+| Worst state and role: Pharmacist | **56.2%** — Rajasthan; nationally the hardest role is health assistants at **32.9%** |
+| Roles 30% vacant or worse | **31.6%** — 6 of 19 state-and-cadre pairs |
+| Nurses below the bed norm | **11** |
+| Sanctioned posts | **1,061** |
+| National summary line | "22% of 1,061 sanctioned posts are unfilled across 200 health centres, and Health assistant is the hardest role to fill at 32.9%." |
 
 ---
 
@@ -968,7 +1000,7 @@ figure** and are excluded from the rates rather than counted as zero.
 | `Ahmadnagar` (HMIS) vs `Ahmednagar` (facility master) | both spellings kept; reconciled via `district_key`; UI displays one | **REAL** | `parse_hmis.py`, `app/facilities.py` |
 | 2019-20 HMIS = **April 2019 – March 2020** | Feb and Mar 2020 are COVID-affected | **REAL caveat** | `Data/README.md` §4 |
 | **1 duplicated write-off id** in 770 expiry events | `generate_usage.py` builds write-off ids as `seed-x-{facility}-{item}-{date}` with no batch discriminator, so two batches of one item expiring at one facility on one day collide | **REAL, known, deliberately unfixed** | `ingestion/generate_usage.py:461`; pinned by `tests/test_supply_chain.py::TestKnownSeedDefects` |
-| Rural Health Statistics vintage = **2017** | superseded by *Health Dynamics of India* | **REAL caveat** | `load_staffing.py`, `source_year` on every row |
+| Rural Health Statistics vintage = **2021-22** (as on 31 Mar 2022; refreshed from 2017 on 2026-09-11) | one newer edition, *Health Dynamics of India 2022-23*, needs manual download | **REAL caveat** | `extract_rhs_2122.py`, `load_staffing.py`, `source_year` on every row |
 
 ---
 

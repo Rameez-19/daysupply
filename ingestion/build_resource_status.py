@@ -8,26 +8,21 @@ because the resources behave differently:
 * **Beds do not transfer.** You cannot move a bed to a patient in useful time.
   Bed pressure is a *referral* signal: which facility nearby has capacity
   tonight. So this builds `bed_referrals`, not bed transfers.
-* **Personnel transfer, but as people, not units.** A facility with nobody in a
-  cadre needs a person reassigned from a facility that has slack, within
-  reasonable travelling distance. That is a redistribution problem of the same
-  shape as medicines, so it reuses the same distance and donor-protection
-  logic.
+* **Personnel are reported as they are, not moved.** `staff_status` is the
+  sanctioned establishment and its vacancy from Rural Health Statistics
+  2021-22, one row per forecast PHC and cadre.
 
-  Two things limit it, and both are real rather than defects:
+  It used to be built *from* generated attendance events, with real vacancy
+  only LEFT JOINed on — so the one real figure depended on a simulated one
+  being present, and every column readers saw beside it (`mean_present`,
+  `days_none_present`, `status`) came from a fixed-seed random propensity.
+  It is now driven by `facility_staffing`, and none of those columns exist.
 
-  **Four of the five cadres have an establishment of one post.** A PHC is
-  sanctioned one doctor, one pharmacist, one male and one female health
-  assistant. No facility can donate its only doctor, so a doctor vacancy cannot
-  be answered by reallocation at all — it needs recruitment. Only nursing, at
-  about 2.5 sanctioned posts, can ever have someone to spare.
-
-  **The forecast facilities are deliberately far apart.** They were chosen to
-  span 116 districts for geographic reach, so the nearest nursing-short and
-  nursing-adequate pair is over 1,200 km apart — far beyond any sensible staff
-  reassignment. The engine is correct and returns nothing, which is the honest
-  answer for this facility set. A district-dense deployment would produce
-  candidates; this one cannot.
+  The staff reallocation engine went with them. It proposed moves by
+  differencing two generated attendance figures. The real answer to "can we
+  move staff?" is structural and lives in `app/resources.py`: most cadres are
+  sanctioned one post per centre, so nobody can be lent without leaving a
+  centre empty.
 
 Rule-based throughout, no ARIMA — see `generate_bed_personnel.py` for why.
 """
@@ -51,6 +46,16 @@ BED_REFERRALS = f"`{PROJECT}.{DATASET}.bed_referrals`"
 STAFF_STATUS = f"`{PROJECT}.{DATASET}.staff_status`"
 STAFF_REALLOCATION = f"`{PROJECT}.{DATASET}.staff_reallocation`"
 
+# The date the RHS 2021-22 manpower position was taken. `staff_status` used to
+# stamp MAX(event_ts) from the generated ledger, which dated a 2022 survey to
+# last week.
+STAFF_AS_OF = "2022-03-31"
+
+# Nothing generated may reach the table readers see; `run()` refuses to finish
+# if any of these columns reappear.
+GENERATED_COLUMNS = {"mean_present", "attendance_vs_sanctioned",
+                     "days_none_present", "days_reported", "status"}
+
 # Recent window used for the current picture.
 WINDOW_DAYS = 30
 # Above this mean occupancy a facility is under pressure and should be routed
@@ -65,8 +70,14 @@ BUILD_BED_STATUS = f"""
 CREATE OR REPLACE TABLE {BED_STATUS}
 CLUSTER BY state, district
 AS
+-- Anchored to the bed ledger's own last day. It took MAX over every
+-- resource_event, so medicine captures on 2-3 September slid the bed window
+-- five days past the end of the bed data: 392 turned away became 339 on a
+-- rebuild, and nothing about beds had changed. One vertical's activity must
+-- not move another's window.
 WITH as_of AS (
   SELECT MAX(DATE(event_ts)) AS today FROM {RESOURCE_EVENTS}
+  WHERE resource_type = 'bed'
 ),
 recent AS (
   SELECT
@@ -159,26 +170,8 @@ BUILD_STAFF_STATUS = f"""
 CREATE OR REPLACE TABLE {STAFF_STATUS}
 CLUSTER BY state, district
 AS
-WITH as_of AS (
-  SELECT MAX(DATE(event_ts)) AS today FROM {RESOURCE_EVENTS}
-),
-recent AS (
-  SELECT
-    e.facility_id,
-    e.item_id,
-    ANY_VALUE(e.resource_subtype) AS cadre,
-    ANY_VALUE(e.capacity)         AS sanctioned_posts,
-    AVG(e.quantity)               AS mean_present,
-    COUNTIF(e.quantity = 0)       AS days_none_present,
-    COUNT(*)                      AS days_reported
-  FROM {RESOURCE_EVENTS} e
-  CROSS JOIN as_of a
-  WHERE e.resource_type = 'personnel' AND e.event_type = 'attendance'
-    AND DATE(e.event_ts) > DATE_SUB(a.today, INTERVAL {WINDOW_DAYS} DAY)
-  GROUP BY e.facility_id, e.item_id
-)
 SELECT
-  f.facility_id,
+  s.facility_id,
   f.name       AS facility_name,
   f.admin_l1   AS state,
   f.admin_l2   AS district,
@@ -186,83 +179,30 @@ SELECT
   f.longitude,
   f.bed_capacity,
   f.nurses_required,
-  r.item_id,
-  r.cadre,
-  CAST(r.sanctioned_posts AS INT64)         AS sanctioned_posts,
+  -- Health assistants have no single item. Capture keeps male and female
+  -- apart; the 2021-22 establishment publishes them combined. NULL rather
+  -- than pinning the combined cadre to one of the two.
+  CASE s.cadre
+    WHEN 'Doctor (allopathic)' THEN 'STAFF-DOCTOR'
+    WHEN 'Nursing staff'       THEN 'STAFF-NURSE'
+    WHEN 'Pharmacist'          THEN 'STAFF-PHARMACIST'
+  END AS item_id,
+  s.cadre,
+  s.sanctioned_posts,
   s.expected_in_position,
   s.vacancy_rate,
-  ROUND(r.mean_present, 2)                  AS mean_present,
-  ROUND(SAFE_DIVIDE(r.mean_present, NULLIF(r.sanctioned_posts, 0)), 3)
-                                            AS attendance_vs_sanctioned,
-  r.days_none_present,
-  r.days_reported,
-  -- Nursing carries a second requirement from bed capacity: the Indian
-  -- Nursing Council 1:6 ratio, which IPHS cites rather than originates.
-  IF(r.item_id = 'STAFF-NURSE',
-     GREATEST(f.nurses_required - CAST(ROUND(r.mean_present) AS INT64), 0),
+  -- INC 1:6 against nurses in position. This was computed against generated
+  -- `mean_present`. In-position is the RHS state rate applied to this
+  -- centre's sanctioned posts: an estimate, but not a random one.
+  IF(s.cadre = 'Nursing staff',
+     GREATEST(f.nurses_required - s.expected_in_position, 0),
      NULL) AS nurses_short_of_bed_norm,
-  CASE
-    WHEN r.mean_present < 0.5 THEN 'unstaffed'
-    WHEN SAFE_DIVIDE(r.mean_present, NULLIF(r.sanctioned_posts, 0)) < 0.5
-      THEN 'critically_short'
-    WHEN SAFE_DIVIDE(r.mean_present, NULLIF(r.sanctioned_posts, 0)) < 0.8
-      THEN 'short'
-    ELSE 'adequate'
-  END AS status,
-  (SELECT today FROM as_of) AS as_of_date
-FROM recent r
-JOIN {FACILITIES} f ON f.facility_id = r.facility_id
-LEFT JOIN {FACILITY_STAFFING} s
-  ON s.facility_id = r.facility_id AND s.cadre = r.cadre
-"""
-
-# Personnel do transfer — as people, within travelling distance, from a
-# facility with slack. Same shape as the medicine engine: never strand the
-# donor.
-BUILD_STAFF_REALLOCATION = f"""
-CREATE OR REPLACE TABLE {STAFF_REALLOCATION}
-CLUSTER BY to_facility_id
-AS
-WITH short AS (
-  SELECT * FROM {STAFF_STATUS}
-  WHERE status IN ('unstaffed', 'critically_short')
-),
-spare AS (
-  SELECT * FROM {STAFF_STATUS}
-  WHERE status = 'adequate' AND mean_present >= 2
-)
-SELECT
-  d.facility_id     AS to_facility_id,
-  d.facility_name   AS to_facility_name,
-  d.state, d.district,
-  d.item_id, d.cadre,
-  d.sanctioned_posts AS to_sanctioned,
-  d.mean_present     AS to_present,
-  d.status           AS to_status,
-  s.facility_id     AS from_facility_id,
-  s.facility_name   AS from_facility_name,
-  s.mean_present    AS from_present,
-  s.sanctioned_posts AS from_sanctioned,
-  -- One person at a time, and only if the donor keeps at least one.
-  1 AS staff_to_move,
-  ROUND(s.mean_present - 1, 2) AS from_present_after,
-  ROUND(d.mean_present + 1, 2) AS to_present_after,
-  ROUND(ST_DISTANCE(ST_GEOGPOINT(d.longitude, d.latitude),
-                    ST_GEOGPOINT(s.longitude, s.latitude)) / 1000.0, 1)
-                    AS distance_km,
-  ROW_NUMBER() OVER (
-    PARTITION BY d.facility_id, d.item_id
-    ORDER BY ST_DISTANCE(ST_GEOGPOINT(d.longitude, d.latitude),
-                         ST_GEOGPOINT(s.longitude, s.latitude))
-  ) AS rn
-FROM short d
-JOIN spare s
-  ON s.item_id = d.item_id
- AND s.facility_id != d.facility_id
- AND ST_DISTANCE(ST_GEOGPOINT(d.longitude, d.latitude),
-                 ST_GEOGPOINT(s.longitude, s.latitude)) / 1000.0
-     <= {REALLOCATION_MAX_KM}
-QUALIFY rn = 1
+  DATE '{STAFF_AS_OF}' AS as_of_date
+FROM {FACILITY_STAFFING} s
+JOIN {FACILITIES} f ON f.facility_id = s.facility_id
+-- The same 200 centres the medicine vertical forecasts, so every page counts
+-- one population.
+WHERE f.is_forecast_facility
 """
 
 
@@ -302,77 +242,35 @@ def run() -> None:
     print(f"  referral options:                   {ref.options}")
     print(f"  mean distance:                      {ref.avg_km} km")
 
-    print("\nBuilding staff_status ...")
+    print("\nBuilding staff_status (establishment, RHS 2021-22) ...")
     client.query(BUILD_STAFF_STATUS).result()
     for r in client.query(f"""
         SELECT cadre,
                COUNT(*) AS facilities,
-               COUNTIF(status = 'unstaffed') AS unstaffed,
-               COUNTIF(status = 'critically_short') AS critical,
-               COUNTIF(status = 'short') AS short,
-               ROUND(AVG(attendance_vs_sanctioned) * 100, 1) AS attendance_pct
+               SUM(sanctioned_posts) AS posts,
+               ROUND(100 * SAFE_DIVIDE(
+                 SUM(vacancy_rate * sanctioned_posts),
+                 SUM(IF(vacancy_rate IS NULL, 0, sanctioned_posts))), 1)
+                 AS vacancy_pct,
+               COUNTIF(vacancy_rate IS NULL) AS no_figure
         FROM {STAFF_STATUS} GROUP BY cadre ORDER BY cadre
     """).result():
-        print(f"  {r.cadre:28s} {r.facilities:>4} facs  "
-              f"unstaffed {r.unstaffed:>3}  critical {r.critical:>3}  "
-              f"short {r.short:>3}  attendance {r.attendance_pct}%")
+        print(f"  {r.cadre:28s} {r.facilities:>4} facs  posts {r.posts:>5}  "
+              f"vacancy {r.vacancy_pct}%  ({r.no_figure} with no RHS figure)")
 
-    print("\nBuilding staff_reallocation ...")
-    client.query(BUILD_STAFF_REALLOCATION).result()
-    alloc = next(iter(client.query(f"""
-        SELECT COUNT(*) AS moves,
-               COUNT(DISTINCT to_facility_id) AS receiving,
-               ROUND(AVG(distance_km), 1) AS avg_km
-        FROM {STAFF_REALLOCATION}
-    """).result()))
-    print(f"  reallocations proposed: {alloc.moves}")
-    print(f"  facilities helped:      {alloc.receiving}")
-    print(f"  mean distance:          {alloc.avg_km} km")
-
-    bad = next(iter(client.query(f"""
-        SELECT COUNTIF(from_present_after < 1) AS strands_donor
-        FROM {STAFF_REALLOCATION}
-    """).result()))
-    if bad.strands_donor:
+    cols = {c.name for c in client.get_table(STAFF_STATUS.strip("`")).schema}
+    leaked = cols & GENERATED_COLUMNS
+    if leaked:
         raise SystemExit(
-            f"{bad.strands_donor} reallocations would leave a donor unstaffed")
+            f"staff_status carries generated columns: {sorted(leaked)}")
 
-    if alloc.moves == 0:
-        # Empty is a legitimate answer here, but it must be an explained one.
-        diag = next(iter(client.query(f"""
-            WITH short AS (
-              SELECT * FROM {STAFF_STATUS}
-              WHERE status IN ('unstaffed', 'critically_short')
-            ),
-            spare AS (
-              SELECT * FROM {STAFF_STATUS}
-              WHERE status = 'adequate' AND mean_present >= 2
-            )
-            SELECT
-              (SELECT COUNT(*) FROM short) AS facilities_short,
-              (SELECT COUNT(*) FROM spare) AS facilities_with_spare,
-              (SELECT COUNT(DISTINCT cadre) FROM spare) AS cadres_with_spare,
-              (SELECT ROUND(MIN(ST_DISTANCE(
-                  ST_GEOGPOINT(d.longitude, d.latitude),
-                  ST_GEOGPOINT(s.longitude, s.latitude)) / 1000), 0)
-               FROM short d, spare s
-               WHERE d.item_id = s.item_id
-                 AND d.facility_id != s.facility_id) AS nearest_pair_km
-        """).result()))
-        print("\n  No reallocation is possible, and here is why:")
-        print(f"    facilities short:            {diag.facilities_short}")
-        print(f"    facilities able to donate:   {diag.facilities_with_spare} "
-              f"(in {diag.cadres_with_spare} cadre — only nursing has more "
-              "than one sanctioned post)")
-        print(f"    nearest short/donor pair:    {diag.nearest_pair_km} km, "
-              f"against a {REALLOCATION_MAX_KM:.0f} km limit")
-        print("    The forecast set spans 116 districts for reach, so no two "
-              "facilities are close enough.")
-        print("    A doctor vacancy could not be solved this way regardless: "
-              "a PHC is sanctioned one doctor.")
+    # Dropped, not left stale: every row in it was a move between two
+    # generated attendance figures.
+    client.query(f"DROP TABLE IF EXISTS {STAFF_REALLOCATION}").result()
+    print("  staff_reallocation dropped (it differenced generated attendance)")
 
-    print("\nOK — beds route referrals, personnel reallocate, medicines "
-          "transfer. Three resources, one engine shape.")
+    print("\nOK — beds route referrals, medicines transfer, and staffing "
+          "reports its real establishment rather than a simulated roster.")
 
 
 if __name__ == "__main__":

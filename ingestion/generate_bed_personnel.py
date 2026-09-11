@@ -100,6 +100,15 @@ SCHEMA = [
     bigquery.SchemaField("capacity", "FLOAT64"),
 ]
 
+# Personnel attendance is no longer generated. It was a fixed-seed propensity,
+# lower on Sundays, and every figure built on it was removed from the product
+# on 2026-09-11 (CLAIMS §8a) — no public facility-level attendance data exists
+# in India to replace it with. Left on, a rerun would also crash: the 2021-22
+# establishment has one "Health assistant" cadre, which has no entry below.
+# The personnel rows already in `resource_events` are orphaned history that
+# nothing reads; a rerun with this off removes them.
+GENERATE_PERSONNEL = False
+
 CADRE_ITEM_IDS = {
     "Doctor (allopathic)": "STAFF-DOCTOR",
     "Nursing staff": "STAFF-NURSE",
@@ -276,7 +285,7 @@ def generate(dry_run: bool = False) -> None:
                 }))
 
         # ---- Personnel ----------------------------------------------------
-        posts = by_facility.get(fid)
+        posts = by_facility.get(fid) if GENERATE_PERSONNEL else None
         if posts is None:
             continue
         base = rng.uniform(*ATTENDANCE_BASE)

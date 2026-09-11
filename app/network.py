@@ -109,7 +109,7 @@ MEDICINE_LABELS = {
 
 BED_LABELS = {
     "column_note":
-        "'Free' is the share of bed capacity unoccupied on average. 'At capacity' is the share of centres with more patients than beds. 'Turned away' is a count of people over the year, not a percentage.",
+        "'Free' is the share of bed capacity unoccupied on average. 'At capacity' is the share of centres with more patients than beds. 'Turned away' is a count of people over the last 30 days of reporting, not a percentage.",
     "title": "Which districts have the most bed pressure?",
     "score": "Beds free",
     "score_short": "Free",
@@ -341,7 +341,7 @@ def staff_comparison(state: str = "") -> dict:
     """Staffing, compared at the grain the data actually has.
 
     **No state chosen — compare states.** Vacancy comes from Rural Health
-    Statistics 2017, which publishes it at state level. Applied down to
+    Statistics 2021-22, which publishes it at state level. Applied down to
     facilities it is the same number everywhere within a state: all 33
     Rajasthan districts read 59.3%, all 27 Assam districts read 96.3% —
     measured, exactly one distinct value per state. A district league table
