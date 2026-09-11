@@ -353,7 +353,7 @@ function v2Kpi(value, unit, label, sub, tone, says) {
   const missing = value === null || value === undefined || value === '';
   return `
     <div class="v2-kpi ${missing ? 'unknown' : (tone || '')}">
-      <div class="v2-kpi-value">${missing ? '—' : value}<span class="v2-kpi-unit">${missing ? '' : (unit || '')}</span></div>
+      <div class="v2-kpi-value">${missing ? '—' : (typeof value === 'number' ? v2n(value) : value)}<span class="v2-kpi-unit">${missing ? '' : (unit || '')}</span></div>
       <div class="v2-kpi-label">${label}</div>
       <div class="v2-kpi-sub">${sub || ''}</div>
       <div class="v2-kpi-says">${says || ''}</div>
@@ -577,11 +577,18 @@ function v2Quadrant(d) {
   const rows = d.quadrant || [];
   if (v2Charts.quadrant) { v2Charts.quadrant.destroy(); v2Charts.quadrant = null; }
   if (!rows.length) {
-    if (note) note.textContent = 'Not enough here to compare districts.';
+    if (note) note.textContent = lab.empty
+      || 'Not enough here to compare.';
     return;
   }
 
   const pt = r => ({ x: r.x, y: r.y, r_: r });
+  // Both axes used to be hardcoded as percentages, which was true while this
+  // plotted districts by vacancy against attendance. Staffing now plots the
+  // size of the establishment up the y-axis, and a count of 450 sanctioned
+  // posts rendered as "450%". The unit travels with the label instead.
+  const xu = lab.x_unit === undefined ? '%' : lab.x_unit;
+  const yu = lab.y_unit === undefined ? '%' : lab.y_unit;
   v2Charts.quadrant = new Chart(el.getContext('2d'), {
     type: 'scatter',
     data: {
@@ -607,7 +614,8 @@ function v2Quadrant(d) {
           },
           label: c => {
             const r = c.raw.r_;
-            return [`${lab.x || 'x'}: ${r.x}%`, `${lab.y || 'y'}: ${r.y}%`];
+            return [`${lab.x || 'x'}: ${v2n(r.x)}${xu}`,
+                    `${lab.y || 'y'}: ${v2n(r.y)}${yu}`];
           }
         } }
       },
@@ -617,11 +625,13 @@ function v2Quadrant(d) {
         x: { title: { display: true, text: `${lab.x || ''} →`,
                       color: V2_INK, font: { size: 11 } },
              beginAtZero: true, grid: { color: V2_GRID },
-             ticks: { color: V2_INK, font: { size: 10 }, callback: v => `${v}%` } },
+             ticks: { color: V2_INK, font: { size: 10 },
+                      callback: v => `${v2n(v)}${xu}` } },
         y: { title: { display: true, text: `${lab.y || ''} ↑`,
                       color: V2_INK, font: { size: 11 } },
              beginAtZero: true, grid: { color: V2_GRID },
-             ticks: { color: V2_INK, font: { size: 10 }, callback: v => `${v}%` } }
+             ticks: { color: V2_INK, font: { size: 10 },
+                      callback: v => `${v2n(v)}${yu}` } }
       }
     }
   });
@@ -629,9 +639,9 @@ function v2Quadrant(d) {
   const bad = rows.filter(r => r.critical).sort((a, b) => b.x - a.x || a.y - b.y);
   if (note) {
     note.innerHTML = bad.length
-      ? `<strong>${v2n(bad.length)} in the danger corner</strong> — worst is `
+      ? `<strong>${v2n(bad.length)} ${v2Esc(lab.flagged || 'in the danger corner')}</strong> — worst is `
         + `<strong>${v2Esc(bad[0].name)}${bad[0].sub ? ', ' + v2Esc(bad[0].sub) : ''}</strong>`
-        + ` at ${bad[0].x}% against ${bad[0].y}%.`
+        + ` at ${v2n(bad[0].x)}${xu} against ${v2n(bad[0].y)}${yu}.`
       : `None here falls in the danger corner.`;
   }
 }

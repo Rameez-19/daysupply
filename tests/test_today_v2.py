@@ -436,8 +436,11 @@ class TestBedsAndStaffAreGraded:
         assert vals == sorted(vals, reverse=True), vals
         assert vals[-1] > 0
 
-    @pytest.mark.parametrize("fn", [today_v2.bed_scorecard,
-                                    today_v2.staff_scorecard])
+    # Staff dropped out of this: its spread KPI counted districts where
+    # `days_none_present > 0`, which is generated. Vacancy has no per-district
+    # variation to spread in the first place — 23 distinct values across 116
+    # districts — so there is no honest spread metric for staffing to withhold.
+    @pytest.mark.parametrize("fn", [today_v2.bed_scorecard])
     def test_a_single_district_withholds_the_spread_metric(self, fn):
         d = fn("Assam", "Kamrup R")
         spread = d["kpis"][-1]
@@ -451,9 +454,16 @@ class TestBedsAndStaffAreGraded:
         prov = today_v2.bed_scorecard()["labels"]["provenance"]
         assert "IPHS" in prov and "modelled" in prov
 
-    def test_staff_disclose_that_attendance_is_modelled(self):
+    def test_staff_disclose_the_grain_rather_than_the_old_disclaimer(self):
+        """This used to require the provenance to say attendance was
+        "modelled". Disclosing a generated figure is weaker than not showing
+        it, and the figure is gone — so the disclosure it needs now is the one
+        thing a reader would otherwise get wrong: vacancy is a state-and-cadre
+        number, not a per-facility measurement."""
         prov = today_v2.staff_scorecard()["labels"]["provenance"]
-        assert "Rural Health Statistics" in prov and "modelled" in prov
+        assert "Rural Health Statistics" in prov
+        assert "state-and-cadre" in prov
+        assert "modelled" not in prov and "attendance" not in prov.lower()
 
     def test_staff_ranking_is_by_role_not_by_facility(self):
         """"Male health assistants are 38% vacant" is a recruitment decision;

@@ -576,18 +576,38 @@ STAFF_LABELS = {
                 "30% or worse.",
         "unit": "% of posts unfilled",
     },
+    # Was "which districts are worst staffed?", plotted against attendance.
+    # Both axes were wrong. Vacancy in `staff_status` takes exactly 23 distinct
+    # values — one per state and cadre, from RHS 2017 — repeated across 928
+    # rows and 116 districts, so a district scatter drew 116 points from 23
+    # numbers and invited the reader to compare districts that carry an
+    # identical figure. Attendance was generated outright.
+    #
+    # Plotted at the grain the data actually has, it answers a recruitment
+    # question instead: which cadre, in which state, is both badly vacant and
+    # large enough for that to matter.
     "quadrant": {
-        "title": "Which districts are worst staffed?",
-        "note": "Districts placed by how many posts are unfilled (across) "
-                "against how many people are actually on duty (up). The "
-                "bottom right is empty posts and poor attendance together.",
-        "x": "Posts unfilled",
-        "y": "Actually on duty",
-        "critical": "Worst staffed",
-        "other": "Other districts",
+        "title": "Which roles need recruiting into first?",
+        "note": "One point per cadre per state, placed by the share of "
+                "sanctioned posts unfilled (across) against how many posts "
+                "there are (up). Top right is a large establishment with a "
+                "lot of it empty. Points left of zero are cadres RHS records "
+                "as over establishment - more staff in position than "
+                "sanctioned - which is a real finding, not a negative gap.",
+        "x": "% of posts unfilled",
+        "y": "Sanctioned posts",
+        # The y-axis is a count now, not a share. Without this the renderer's
+        # default drew "450%" on an axis of sanctioned posts.
+        "x_unit": "%",
+        "y_unit": "",
+        "critical": "30% or worse",
+        "other": "Other roles",
+        "flagged": "roles at 30% vacant or worse",
+        "empty": "No role in scope carries an RHS 2017 vacancy figure.",
     },
-    "provenance": "Vacancy is from Rural Health Statistics 2017, which is "
-                  "real. Day-to-day attendance is modelled.",
+    "provenance": "Vacancy and sanctioned strength are from Rural Health "
+                  "Statistics 2017 at state-and-cadre grain, which is the "
+                  "grain this panel reports. Nothing here is per-facility.",
 }
 
 
@@ -709,10 +729,25 @@ def bed_scorecard(state: str = "", district: str = "", phc: str = "") -> dict:
 
 def staff_scorecard(state: str = "", district: str = "",
                     phc: str = "") -> dict:
-    """Staffing, graded.
+    """Staffing, graded — at the grain the data actually has.
 
-    Vacancy is real, from Rural Health Statistics 2017. Day-to-day attendance
-    is modelled, and the page says so.
+    Three of the five KPIs here used to be built on `attendance_vs_sanctioned`
+    and `days_none_present`, which `ingestion/generate_bed_personnel.py`
+    produces from a fixed-seed random propensity. "Actually on duty 53.2%" was
+    a random number, and it was also wrong on its own terms: 278 facility-cadres
+    with posts filled reported nobody present across all 30 days, and
+    `days_none_present > 0` covered 875 of 928 rows — 94% of everything, which
+    cannot distinguish anything from anything.
+
+    What survives is real and narrower than the old page implied. Vacancy takes
+    **23 distinct values** across all 928 rows — one per state and cadre, from
+    Rural Health Statistics 2017 — so it does not vary by district or by
+    facility at all. Sanctioned posts are the IPHS norm. Nurses against the bed
+    norm is the Indian Nursing Council ratio applied to real bed capacity.
+
+    Everything below therefore reports state-and-cadre, and says so. 47 cadres
+    are over establishment (negative vacancy) and 31 carry no RHS figure; both
+    are handled rather than averaged into silence.
     """
     where = _geo_where(state, district, phc)
     params = _geo_params(state, district, phc)
@@ -723,14 +758,29 @@ def staff_scorecard(state: str = "", district: str = "",
          COUNT(*) AS facility_cadres,
          COUNT(DISTINCT facility_id) AS centres,
          SUM(sanctioned_posts) AS posts,
-         SUM(expected_in_position) AS filled,
-         ROUND(AVG(vacancy_rate), 4) AS mean_vacancy,
-         ROUND(AVG(attendance_vs_sanctioned), 4) AS mean_attendance,
-         COUNTIF(days_none_present > 0) AS cadres_with_a_gap,
+         COUNT(DISTINCT CONCAT(state, '|', cadre)) AS roles,
+         -- Weighted by establishment size, so a 40%-vacant cadre of three
+         -- posts does not outvote a 12%-vacant cadre of three hundred.
+         ROUND(SAFE_DIVIDE(SUM(vacancy_rate * sanctioned_posts),
+                           SUM(IF(vacancy_rate IS NULL, 0,
+                                  sanctioned_posts))), 4) AS mean_vacancy,
+         COUNTIF(vacancy_rate IS NULL) AS no_rhs_figure,
          SUM(nurses_short_of_bed_norm) AS nurses_short,
          COUNT(DISTINCT district) AS districts,
-         COUNT(DISTINCT IF(days_none_present > 0, district, NULL)) AS districts_affected
+         COUNT(DISTINCT state) AS states
        FROM `{D}.staff_status` WHERE {where}) AS s,
+
+      -- Counted over state-and-cadre pairs, not over the 928 rows those 23
+      -- numbers are repeated across.
+      (SELECT AS STRUCT
+         COUNTIF(v >= 0.3) AS roles_badly_short,
+         COUNT(*) AS roles_scored,
+         ARRAY_AGG(STRUCT(cadre, state, ROUND(100 * v, 1) AS pct)
+                   ORDER BY v DESC LIMIT 1)[SAFE_OFFSET(0)] AS worst
+       FROM (SELECT cadre, state, ANY_VALUE(vacancy_rate) AS v
+             FROM `{D}.staff_status`
+             WHERE {where} AND vacancy_rate IS NOT NULL
+             GROUP BY state, cadre)) AS roleagg,
 
       ARRAY(SELECT AS STRUCT bucket, sort_order, n FROM (
         SELECT CASE WHEN vacancy_rate >= 0.5 THEN 'Half the posts empty'
@@ -750,22 +800,34 @@ def staff_scorecard(state: str = "", district: str = "",
       -- recruitment decision; no per-facility list adds up to that sentence.
       ARRAY(SELECT AS STRUCT name, value, sub, flag FROM (
         SELECT cadre AS name,
-               ROUND(100 * AVG(vacancy_rate), 1) AS value,
+               -- Weighted, like the headline. A plain AVG here gave each
+               -- state's figure equal say regardless of how many posts it
+               -- covers, so Delhi's 11 posts counted as much as
+               -- Maharashtra's several hundred.
+               ROUND(100 * SAFE_DIVIDE(
+                       SUM(vacancy_rate * sanctioned_posts),
+                       SUM(IF(vacancy_rate IS NULL, 0, sanctioned_posts))),
+                     1) AS value,
                CONCAT(CAST(SUM(sanctioned_posts) AS STRING),
                       ' sanctioned posts') AS sub,
-               AVG(vacancy_rate) >= 0.3 AS flag
+               SAFE_DIVIDE(SUM(vacancy_rate * sanctioned_posts),
+                           SUM(IF(vacancy_rate IS NULL, 0,
+                                  sanctioned_posts))) >= 0.3 AS flag
         FROM `{D}.staff_status` WHERE {where}
         GROUP BY cadre ORDER BY value DESC LIMIT {TOP_N})) AS ranking,
 
+      -- One point per state and cadre. A district scatter drew 116 points
+      -- from 23 numbers, so districts sharing an identical figure appeared as
+      -- distinct observations to compare.
       ARRAY(SELECT AS STRUCT name, sub, x, y, tracked, critical FROM (
-        SELECT district AS name, ANY_VALUE(state) AS sub,
-               ROUND(100 * AVG(vacancy_rate), 1) AS x,
-               ROUND(100 * AVG(attendance_vs_sanctioned), 1) AS y,
-               COUNT(*) AS tracked,
-               AVG(vacancy_rate) >= 0.3
-                 AND AVG(attendance_vs_sanctioned) < 0.5 AS critical
-        FROM `{D}.staff_status` WHERE {where}
-        GROUP BY district)) AS quadrant
+        SELECT cadre AS name, state AS sub,
+               ROUND(100 * ANY_VALUE(vacancy_rate), 1) AS x,
+               SUM(sanctioned_posts) AS y,
+               COUNT(DISTINCT facility_id) AS tracked,
+               ANY_VALUE(vacancy_rate) >= 0.3 AS critical
+        FROM `{D}.staff_status`
+        WHERE {where} AND vacancy_rate IS NOT NULL
+        GROUP BY state, cadre)) AS quadrant
     """, params, cache_key=f"v2staff:{state}:{district}:{phc}", ttl=300)
 
     if not rows:
@@ -779,12 +841,16 @@ def staff_scorecard(state: str = "", district: str = "",
         return {"resource": "personnel", "empty": True, "scorecard": s,
                 "kpis": [], "labels": STAFF_LABELS}
 
-    filled = round(100 - 100 * (s.get("mean_vacancy") or 0), 1)
-    attendance = round(100 * (s.get("mean_attendance") or 0), 1)
-    gaps = _rate(s.get("cadres_with_a_gap") or 0, cadres)
+    ra = dict(r["roleagg"]) if r.get("roleagg") else {}
+    worst = dict(ra["worst"]) if ra.get("worst") else {}
+    roles_scored = ra.get("roles_scored") or 0
+
+    # 47 cadres are over establishment — more in position than sanctioned —
+    # which is a real RHS outcome and not an error. Capped for display, because
+    # "103% of posts filled" invites the reader to think a post is missing.
+    filled = min(100.0, round(100 - 100 * (s.get("mean_vacancy") or 0), 1))
+    badly_short = _rate(ra.get("roles_badly_short") or 0, roles_scored)         if roles_scored else None
     districts = s.get("districts") or 0
-    spread = (_rate(s.get("districts_affected") or 0, districts)
-              if districts > 1 else None)
 
     return {
         "resource": "personnel",
@@ -797,33 +863,41 @@ def staff_scorecard(state: str = "", district: str = "",
                     "districts": districts},
         "kpis": [
             _kpi(filled, "%", "Posts filled",
-                 f"{s.get('posts') or 0:,} sanctioned posts at "
-                 f"{s.get('centres') or 0:,} centres",
+                 f"{roles_scored:,} state-and-cadre roles, weighted by "
+                 "establishment size",
                  _band(filled, 90, 75),
-                 "A vacant post cannot be attended by anybody, so this is the "
-                 "ceiling on everything below it."),
-            _kpi(attendance, "%", "Actually on duty",
-                 "Against sanctioned strength, day to day",
-                 _band(attendance, 80, 60),
-                 "Filling a post and turning up are different things, and only "
-                 "the second one treats a patient."),
-            _kpi(gaps, "%", "Roles with a day nobody came",
-                 f"{s.get('cadres_with_a_gap') or 0:,} of {cadres:,} "
-                 "centre-roles",
-                 _band(gaps, 10, 40, higher_is_better=False),
-                 "At least one day in the year with nobody in that role at "
-                 "that centre at all."),
+                 "Rural Health Statistics 2017, weighted by sanctioned posts "
+                 "so a small badly-vacant cadre does not outvote a large "
+                 "one."),
+            _kpi(worst.get("pct"), "%",
+                 f"Hardest to fill: {worst.get('cadre') or 'n/a'}"
+                 if worst else "Hardest role to fill",
+                 f"{worst.get('state') or ''} — the worst-vacant cadre in scope"
+                 if worst else "No RHS figure in scope",
+                 _band(worst.get("pct"), 15, 30, higher_is_better=False),
+                 "Recruitment happens by cadre and by state, which is also the "
+                 "only grain this figure exists at."),
+            _kpi(badly_short, "%", "Roles 30% vacant or worse",
+                 f"{ra.get('roles_badly_short') or 0:,} of {roles_scored:,} "
+                 "state-and-cadre pairs",
+                 _band(badly_short, 20, 40, higher_is_better=False),
+                 "Counted over the roles themselves. Counting the 928 rows "
+                 "they repeat across would report the same 23 figures as "
+                 "though they were 928 observations."),
             _kpi(s.get("nurses_short") or 0, "", "Nurses below the bed norm",
                  "Against the Indian Nursing Council ratio IPHS cites",
                  "bad" if (s.get("nurses_short") or 0) > 0 else "ok",
                  "Nursing need is set by how many beds a centre has, not by "
-                 "its sanctioned list."),
-            _kpi(spread, "%", "Districts affected",
-                 f"{s.get('districts_affected') or 0:,} of {districts:,} districts",
-                 _band(spread, 25, 60, higher_is_better=False),
-                 _say_spread(spread) if spread is not None
-                 else "Not meaningful for a single district - widen the area "
-                      "to compare districts against each other."),
+                 "its sanctioned list. This one is per-facility and real."),
+            _kpi(s.get("posts") or 0, "", "Sanctioned posts",
+                 f"across {s.get('centres') or 0:,} centres in "
+                 f"{districts:,} districts",
+                 "ok",
+                 "The establishment these vacancy rates are shares of. "
+                 + (f"{s.get('no_rhs_figure') or 0:,} centre-roles carry no "
+                    "RHS 2017 figure and are excluded from the rates above."
+                    if (s.get("no_rhs_figure") or 0) else
+                    "Every centre-role in scope carries an RHS 2017 figure.")),
         ],
         "distribution": [dict(x) for x in (r.get("distribution") or [])],
         "ranking": [dict(x) for x in (r.get("ranking") or [])],

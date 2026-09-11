@@ -851,14 +851,58 @@ understates road distance — so any distance shown is a floor, never a boast.
 | Nursing **9.3%** (77,956 / 70,738) | same — PHC **and** CHC denominator | **REAL** | same |
 | Pharmacist sanctioned (29,315) is **below** required (31,274) | same | **REAL** | same |
 | **35 bed referral routes**, 24 facilities, mean 33 km | occupancy vs capacity, 50 km limit | **MEASURED** on generated occupancy | `ingestion/build_resource_status.py` |
-| **0 staff reallocations** | 4 of 5 cadres sanctioned at one post per PHC; nearest nursing donor **1,218 km** | **MEASURED — a real finding** | same; the API returns the reason, not an empty list |
+| **0 staff reallocations** | **3** of 5 cadres sanctioned at most one post per PHC (Doctor and Nursing carry more than one somewhere); 116 districts apart | **MEASURED — a real finding** | `app/resources.py`; the API returns the reason, not an empty list |
 
 > ⚠️ **Attribute 1:6 to the Indian Nursing Council, not IPHS.** IPHS cites it;
 > the INC originates it. This wording is required everywhere including the deck
 > and video.
 
-> ⚠️ Bed **occupancy** and staff **attendance** are generated. Bed **capacity**
-> and staff **vacancy** are real. Do not blur them.
+> ⚠️ Bed **occupancy** is generated. Bed **capacity** and staff **vacancy**
+> are real. Do not blur them.
+
+> ⚠️ **Staff attendance was removed from the product on 2026-09-11.** It is not
+> disclosed any more because it is not shown any more — see §8a.
+
+### 8a. Staff attendance — removed, not disclosed
+
+*Last verified against the live deployment: **2026-09-11**.*
+
+`ingestion/generate_bed_personnel.py` builds `mean_present` from a fixed-seed
+random attendance propensity, lower on Sundays. Four surfaces reported it:
+
+| Surface | What it said | Status |
+|---|---|---|
+| Today v2 | "Actually on duty **53.2%**" | **REMOVED** |
+| Today v2 | "Roles with a day nobody came" and "Districts affected" | **REMOVED** |
+| Today v1 national summary | "in **875** cases a role had a day with nobody on duty at all" | **REMOVED** |
+| `/api/v1/personnel/reallocation` | proposed staff moves | **REMOVED** — each was the difference of two generated numbers, and the `status` values selecting donor and recipient (`unstaffed`, `adequate`) are thresholds on the same generated column |
+
+It was also wrong on its own terms:
+
+| Check | Result |
+|---|---|
+| Facility-cadres that are fully vacant | **0** |
+| ...yet report zero present across all 30 days **with posts filled** | **278** |
+| Rows with `days_none_present > 0` | **875 of 928 — 94%** |
+
+A flag that fires on 94% of rows cannot separate a struggling centre from a
+healthy one, and the 875 was a count of random draws.
+
+**What replaced it is real, and narrower.** `vacancy_rate` takes **23 distinct
+values across all 928 rows** — one per state and cadre, from RHS 2017. It does
+**not vary by district or by facility**.
+
+> ⚠️ **No personnel figure may be reported per district or per facility.** The
+> staffing scatter used to plot 116 districts from those 23 numbers, inviting a
+> reader to compare districts carrying an identical figure — the same mistake
+> already corrected once on the Network page. It now plots one point per
+> **state and cadre**, 21 of them.
+
+Rates are weighted by sanctioned posts: a plain average gave Delhi's 11 posts
+the same say as Maharashtra's several hundred. 47 cadres are **over
+establishment** (negative vacancy, a real RHS outcome, capped at 100% filled
+for display and explained on the scatter) and 31 centre-roles carry **no RHS
+figure** and are excluded from the rates rather than counted as zero.
 
 ---
 
@@ -997,7 +1041,7 @@ with the one we can.
 |---|---|
 | **1,157,367 daily stock events** | no per-facility daily stock data is published in India by anyone |
 | Bed **occupancy** (2,430 turned away) | derived from real HMIS admission volumes × assumed 1.8-day length of stay |
-| Staff **attendance** (**53%** of sanctioned) | product of real vacancy and a generated presence model |
+| ~~Staff **attendance** (53% of sanctioned)~~ | **REMOVED from the product 2026-09-11 — do not quote it at all.** It was a fixed-seed random draw, and 875 of 928 rows carried its "nobody on duty" flag. See §8a. |
 | `captures_today` | **NOT generated — counted, and the loop is closed.** Reads **9** all-time (9 chat, 0 voice, 0 barcode), written straight into `resource_events` above the confidence gate. `is_generated: false`. It moves within seconds of a capture. |
 | Review-queue items | **Currently 4 REAL held extractions**, `is_example_data: false` — items the model was unsure about, awaiting a human. Three worked examples exist as a fallback *only* when nothing real is pending, and are then labelled `is_example_data: true` with a banner. **Check the flag before describing them.** |
 

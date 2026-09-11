@@ -109,12 +109,29 @@ def national_picture(state: str = "") -> dict:
          SUM(turned_away) AS turned_away
        FROM `{D}.bed_status` WHERE {where}) AS beds,
 
-      -- Personnel. Vacancy is real (RHS 2017); attendance is generated.
+      -- Personnel. Only vacancy is real here, and only at state-and-cadre
+      -- grain: `vacancy_rate` takes 23 distinct values across all 928 rows,
+      -- one per state and cadre from RHS 2017. `days_none_present` and
+      -- `mean_present` come from a fixed-seed random propensity in
+      -- generate_bed_personnel.py, so the sentence this used to build --
+      -- "in 875 cases a role had a day with nobody on duty" -- was a random
+      -- number, and covered 94% of all rows besides.
       (SELECT AS STRUCT
          COUNT(DISTINCT facility_id) AS facilities,
          COUNT(*) AS facility_cadres,
-         COUNTIF(days_none_present > 0) AS cadres_with_a_gap,
-         ROUND(AVG(vacancy_rate), 3) AS mean_vacancy
+         COUNT(DISTINCT CONCAT(state, '|', cadre)) AS roles,
+         SUM(sanctioned_posts) AS posts,
+         -- Weighted by establishment, so a tiny badly-vacant cadre does not
+         -- outvote a large one.
+         ROUND(SAFE_DIVIDE(SUM(vacancy_rate * sanctioned_posts),
+                           SUM(IF(vacancy_rate IS NULL, 0,
+                                  sanctioned_posts))), 3) AS mean_vacancy,
+         (SELECT AS STRUCT cadre, ROUND(100 * v, 1) AS pct FROM (
+            SELECT cadre, SAFE_DIVIDE(SUM(vacancy_rate * sanctioned_posts),
+                                      SUM(IF(vacancy_rate IS NULL, 0,
+                                             sanctioned_posts))) AS v
+            FROM `{D}.staff_status` WHERE {where}
+            GROUP BY cadre ORDER BY v DESC LIMIT 1)) AS worst_role
        FROM `{D}.staff_status` WHERE {where}) AS personnel,
 
       -- 2. Where is it concentrated?
@@ -273,10 +290,13 @@ def _headline(r: dict) -> dict:
             "average."
             if beds.get("facilities") else "No bed data here yet."),
         "personnel": (
-            f"{100 * (staff.get('mean_vacancy') or 0):.0f}% of sanctioned "
-            f"posts are unfilled across {staff.get('facilities', 0)} health "
-            f"centres. In {staff.get('cadres_with_a_gap', 0)} cases a role had "
-            "a day with nobody on duty at all."
+            f"{100 * (staff.get('mean_vacancy') or 0):.0f}% of "
+            f"{staff.get('posts') or 0:,} sanctioned posts are unfilled across "
+            f"{staff.get('facilities', 0)} health centres"
+            + (f", and {(staff.get('worst_role') or {}).get('cadre')} is the "
+               f"hardest role to fill at "
+               f"{(staff.get('worst_role') or {}).get('pct')}%."
+               if (staff.get("worst_role") or {}).get("cadre") else ".")
             if staff.get("facilities") else "No staffing data here yet."),
         "resilience": (
             f"If demand suddenly tripled, only {absorb3}% of district medicine "
