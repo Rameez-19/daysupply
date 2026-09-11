@@ -435,15 +435,38 @@
 
         <div class="dashboard-section chart-section">
           <div class="chart-header">
-            <h3>Forecast demand</h3>
+            <h3 id="outlook-title">Forecast demand</h3>
             <div class="chart-controls">
-              <button class="chart-btn active" onclick="loadChart(7)">7D</button>
-              <button class="chart-btn" onclick="loadChart(15)">15D</button>
-              <button class="chart-btn" onclick="loadChart(30)">30D</button>
+              <label class="filter-label" for="outlook-class">Medicine class</label>
+              <select id="outlook-class" onchange="onOutlookClass()"></select>
             </div>
           </div>
-          <div class="chart-container"><canvas id="forecastChart"></canvas></div>
-          <p id="forecast-note" class="chart-note"></p>
+          <p class="section-note" id="outlook-note"></p>
+          <div class="chart-container"><canvas id="outlookChart"></canvas></div>
+          <p id="outlook-caption" class="chart-note"></p>
+        </div>
+
+        <!-- Any forecast can be drawn. These two panels are why a reader
+             should believe this one, and they are the challenge's "shared
+             predictive modelling across states" as a measurement rather than
+             an adjective. -->
+        <div class="dashboard-row">
+          <div class="dashboard-section flex-1">
+            <h3>How good is this forecast?</h3>
+            <p class="section-note" id="accuracy-note"></p>
+            <div id="accuracy-panel"></div>
+          </div>
+          <div class="dashboard-section flex-1">
+            <h3>Why the shape is pooled, not borrowed</h3>
+            <p class="section-note">
+              Districts exchange a twelve-number monthly multiplier per medicine
+              class &mdash; a shape, not their data. The obvious way to do that
+              is to pair each district with its closest demographic twin. These
+              are those twins, and pairing with them is the worst arm on this
+              page.
+            </p>
+            <div id="donor-panel"></div>
+          </div>
         </div>
 
         <h3 class="section-heading">Early warnings</h3>

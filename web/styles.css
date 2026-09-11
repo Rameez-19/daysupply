@@ -115,10 +115,13 @@ button { font-family: inherit; cursor: pointer; }
 .quick-action-btn:hover { border-color:var(--brand-500); color:var(--brand-500); background:#fff; }
 
 /* ===== Chart Controls ===== */
-.chart-controls { display:flex; gap:6px; }
-.chart-btn { padding:5px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:0.8rem; font-weight:600; color:var(--gray-500); cursor:pointer; transition:all 0.15s; }
-.chart-btn:hover { background:var(--gray-200); }
-.chart-btn.active { background:var(--brand-500); color:white; border-color:var(--brand-500); }
+.chart-controls { display:flex; gap:8px; align-items:center; }
+.chart-controls select {
+  padding:5px 10px; background:var(--surface); border:1px solid var(--border);
+  border-radius:6px; font-size:0.8rem; font-weight:600; color:var(--gray-700);
+  cursor:pointer; max-width:260px;
+}
+.chart-controls .filter-label { margin:0; white-space:nowrap; }
 
 /* ===== Voice Capture ===== */
 .capture-card { background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow); padding:40px 32px; text-align:center; max-width:480px; border:1px solid var(--border); }
@@ -643,6 +646,29 @@ button { font-family: inherit; cursor: pointer; }
 
 .ven-note { font-size: 11.5px; color: var(--gray-500, #64748b); margin-top: 4px; }
 
+/* The forecast-accuracy bars. Blue is the method the product uses; grey are
+   the alternatives it is measured against. The deliberately poor twin is red
+   and sits below a rule, because it is 3.7x the pooled error and sharing an
+   axis with it would squeeze the 19.4 -> 14.4 gain — the actual claim — into
+   nothing. A broken scale is only honest if the break is visible. */
+.ven-fill.alt     { background: #94a3b8; }
+.ven-fill.control { background: #b91c1c; }
+
+.scale-break {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border, #e2e8f0);
+}
+.scale-break-label {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gray-500, #64748b);
+}
+
 /* ===== Section heads and the hand-off to the full queue ===== */
 .section-head-row {
   display: flex;
@@ -812,6 +838,32 @@ button { font-family: inherit; cursor: pointer; }
 .panel-verdict.ok   { background: #ecfdf5; color: #166534; }
 .panel-verdict.warn { background: #fff7ed; color: #9a3412; }
 .panel-verdict.bad  { background: #fef2f2; color: #991b1b; }
+
+/* The verdict carries a sentence now rather than one number, so the basis it
+   was measured on drops to a second line instead of competing with it. */
+.verdict-basis {
+  display: block;
+  margin-top: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+.ven-note.scale-same { margin-top: 10px; }
+
+/* The forecast error, pinned to the caption under the chart: the curve should
+   never be readable without it. */
+.caption-error {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.caption-error.ok   { background: #ecfdf5; color: #166534; }
+.caption-error.warn { background: #fff7ed; color: #9a3412; }
+.caption-error.bad  { background: #fef2f2; color: #991b1b; }
 
 @media (max-width: 640px) {
   .step { flex-direction: column; gap: 8px; }

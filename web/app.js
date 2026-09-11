@@ -94,7 +94,6 @@ async function syncQueue() {
 let currentState = "";
 let currentDistrict = "";
 let currentPHC = "";
-let currentChartDays = 7;
 let currentPHCName = "";
 // Medicines, beds and personnel are one platform with one filter bar, not
 // three products with three pages. The selector swaps what the panel shows;
@@ -258,7 +257,7 @@ function refreshAll() {
     // instead, which is the one thing no other page does.
     if (typeof initNetwork === 'function') initNetwork();
   } else if (view === 'plan-view') {
-    loadChart(currentChartDays);
+    loadOutlook();
     if (typeof loadSurge === 'function') loadSurge();
   } else if (view === 'today2-view') {
     // Self-contained: its own filters and its own fetch, so v1 is untouched.
@@ -853,61 +852,11 @@ function showCaptureResult(data) {
   if (wanted) switchTab(wanted); else refreshAll();
 })();
 
-// ===== Analytics Charts =====
-let forecastChart = null;
-let doughnutChart = null;
-let barChart = null;
-
-async function loadChart(days) {
-  currentChartDays = days;
-  document.querySelectorAll('.chart-btn').forEach(btn => btn.classList.remove('active'));
-  const activeBtn = document.querySelector(`.chart-btn[onclick="loadChart(${days})"]`);
-  if(activeBtn) activeBtn.classList.add('active');
-
-  // 1. Forecast — real history plus real ML.FORECAST output. Nothing about
-  // this curve is computed in the browser.
-  try {
-    const res = await fetch(`/api/v1/forecast-chart?days=${days}&${getFilterParams()}`);
-    if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
-    const data = await res.json();
-    const ctx = document.getElementById('forecastChart');
-    if(ctx) {
-      if(forecastChart) forecastChart.destroy();
-      forecastChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: data.labels,
-          datasets: [
-            { label: 'Dispensed (recorded)', data: data.historical, borderColor: '#94a3b8', backgroundColor: 'rgba(148,163,184,0.1)', fill: true, tension: 0.3, pointRadius: 0 },
-            { label: 'ARIMA_PLUS forecast', data: data.forecast, borderColor: '#1e3a8a', backgroundColor: 'rgba(30,58,138,0.08)', borderDash: [5,5], fill: true, tension: 0.3, pointRadius: 2 },
-            { label: `${Math.round(data.confidence_level*100)}% interval`, data: data.upper, borderColor: 'rgba(30,58,138,0.25)', borderWidth: 1, pointRadius: 0, fill: '+1' },
-            { label: '', data: data.lower, borderColor: 'rgba(30,58,138,0.25)', borderWidth: 1, pointRadius: 0, fill: false }
-          ]
-        },
-        options: {
-          responsive:true, maintainAspectRatio:false,
-          plugins:{
-            legend:{ position:'bottom', labels:{ font:{ size:11, weight:'600' }, filter: it => it.text !== '' } },
-            title:{ display:true, text: `${data.item_name} — ${data.facility_name}`, font:{ size:12, weight:'600' } }
-          },
-          scales:{ y:{ beginAtZero:true, title:{ display:true, text: data.unit || 'Qty', font:{ size:11 } } } }
-        }
-      });
-    }
-    setChartNote('forecast-note', `Source: ${data.source}`);
-  } catch(e) {
-    console.error('Forecast chart failed', e);
-    setChartNote('forecast-note', `Forecast unavailable: ${e.message}`);
-  }
-
-  // The stock-health doughnut and the critical-shortages bar used to be drawn
-  // here for the old Network page. That page now ranks and compares instead,
-  // and Today v2 covers stock health better, so both canvases were deleted.
-  // The `/api/v1/stock-health` request that fed them went with them: guarded
-  // against the missing elements it was harmless, but it was still a round
-  // trip on every Plan ahead load, fetching data for three elements that no
-  // longer exist.
-}
+// The old Plan ahead forecast — one facility-item, `#forecastChart`, and the
+// 7/14/30-day `.chart-btn` row — was deleted with the markup it wrote into.
+// `loadOutlook()` below answers the same question at the scope the reader
+// chose. `/api/v1/forecast-chart` is still served: it is the only surface on
+// the trained ARIMA_PLUS model, and it has no page until one is decided on.
 
 // The single clearest illustration of the lead-time rule: two real PHCs,
 // the same medicine, reorder points that differ only by distance to the
@@ -1043,11 +992,6 @@ window.onResourceChange = onResourceChange;
 
 function pct(v) { return v === null || v === undefined ? '—' : `${Math.round(v)}%`; }
 
-
-function setChartNote(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
-}
 
 // ===== Barcode Scanner =====
 let html5QrcodeScanner = null;
@@ -1850,4 +1794,296 @@ function toggleAllShortages() {
   const show = list.hidden;
   list.hidden = !show;
   btn.textContent = show ? 'Hide the full list' : 'Show all shortages';
+}
+
+// ===== Plan ahead: demand at the scope the reader chose =====
+//
+// This replaces a chart of one facility-item out of 2,794 — Ferrous Salt at
+// Jahanuma PHC. On a page a state official opens, the panel carrying the whole
+// "forecast demand" requirement was a single clinic's single medicine, and the
+// horizon buttons changed the range of a series nobody had picked.
+//
+// A medicine class is always selected and never aggregated away. Units are per
+// class — tablets, vials, capsules — so summing across classes gives a number
+// in no unit at all; the first version did that and reported 70 million of
+// nothing.
+//
+// The window is July to February because April, May and June are the only
+// history each district is allowed to see. Three months is not enough to show
+// a district its own seasonality, which is the point: everything after June is
+// held out, predicted, and then compared with what the district really
+// reported.
+
+let outlookChart = null;
+let outlookData = null;
+let outlookClass = '';
+let outlookScope = null;   // the scope outlookClass was chosen for
+
+const OUT_ACTUAL = '#1e3a8a';
+const OUT_POOLED = '#0369a1';
+const OUT_FLAT = '#94a3b8';
+
+function onOutlookClass() {
+  const sel = document.getElementById('outlook-class');
+  outlookClass = sel ? sel.value : '';
+  loadOutlook();
+}
+
+async function loadOutlook() {
+  const cap = document.getElementById('outlook-caption');
+  const note = document.getElementById('outlook-note');
+  if (!document.getElementById('outlookChart')) return;
+
+  // A class that is busiest in Maharashtra may not be stocked in Assam at all.
+  // Carrying the old selection into a new scope asks the API for a series that
+  // does not exist there and draws an empty chart; dropping it lets the server
+  // pick the busiest class in the scope the reader actually chose.
+  const scope = `${currentState}|${currentDistrict}`;
+  if (outlookScope !== null && outlookScope !== scope) outlookClass = '';
+  outlookScope = scope;
+
+  if (note) note.textContent = 'Working out what demand does here…';
+
+  try {
+    const q = new URLSearchParams();
+    if (currentState) q.set('state', currentState);
+    if (currentDistrict) q.set('district', currentDistrict);
+    if (outlookClass) q.set('atc_class', outlookClass);
+    const res = await fetch(`/api/v1/outlook?${q}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    outlookData = await res.json();
+    const s = outlookData.summary || {};
+
+    outlookClass = (outlookData.scope || {}).atc_class || '';
+    fillOutlookClasses();
+
+    const chosen = (outlookData.classes || [])
+      .find(c => c.atc_class === outlookClass);
+    const title = document.getElementById('outlook-title');
+    if (title) {
+      title.textContent = chosen && chosen.medicines
+        ? `Demand ahead — ${chosen.medicines}`
+        : 'Demand ahead';
+    }
+    if (note) note.textContent = s.coverage_note || '';
+
+    if (outlookData.empty || !(outlookData.curve || []).length) {
+      if (outlookChart) { outlookChart.destroy(); outlookChart = null; }
+      if (cap) {
+        cap.innerHTML = 'No held-out months have been scored at this scope, '
+          + 'so there is no forecast here to show or to check.';
+      }
+      renderAccuracy();
+      renderDonors();
+      return;
+    }
+
+    drawOutlookChart();
+    renderAccuracy();
+    renderDonors();
+
+    if (cap) {
+      cap.innerHTML = `<strong>${esc2(s.seasonality || '')}</strong>`
+        + (s.window ? ` Scored over ${esc2(s.window)}.` : '')
+        + (s.pooled !== null && s.pooled !== undefined
+            ? ` <span class="caption-error ${esc2((s.reliability || {}).level
+                || 'warn')}">${s.pooled.toFixed(1)}% forecast error</span>`
+            : '');
+    }
+  } catch (e) {
+    if (note) note.textContent = '';
+    if (cap) cap.innerHTML = panelError(e.message, 'loadOutlook');
+  }
+}
+
+function fillOutlookClasses() {
+  const sel = document.getElementById('outlook-class');
+  if (!sel || !outlookData) return;
+  sel.innerHTML = (outlookData.classes || []).map(c =>
+    `<option value="${esc2(c.atc_class)}">${
+      esc2(c.medicines || c.atc_class)}</option>`).join('');
+  sel.value = outlookClass;
+}
+
+function drawOutlookChart() {
+  const el = document.getElementById('outlookChart');
+  if (!el || typeof Chart === 'undefined') return;
+  const rows = outlookData.curve || [];
+  // The axis used to read 33.8 million with no unit, because the underlying
+  // series counts clinic visits rather than medicine. It is converted now, so
+  // the unit is known and belongs on the axis.
+  const unit = (outlookData.scope || {}).unit || '';
+  const units = unit ? (unit.endsWith('s') ? unit : unit + 's') : 'units';
+
+  if (outlookChart) outlookChart.destroy();
+  outlookChart = new Chart(el.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: rows.map(r => r.month),
+      datasets: [
+        // Drawn heaviest, because it is the thing the other two are trying to
+        // be — not a third opinion alongside them.
+        { label: 'What districts actually reported',
+          data: rows.map(r => r.actual),
+          borderColor: OUT_ACTUAL, backgroundColor: 'rgba(30,58,138,0.07)',
+          borderWidth: 2.5, fill: true, tension: 0.3, pointRadius: 3 },
+        { label: 'Forecast, seasonal shape borrowed',
+          data: rows.map(r => r.pooled),
+          borderColor: OUT_POOLED, borderWidth: 2, borderDash: [5, 4],
+          fill: false, tension: 0.3, pointRadius: 3 },
+        // The flat line is the comparison the gain is measured against: what a
+        // district gets holding a monthly average and no seasonality at all.
+        { label: 'Flat average, no seasonality',
+          data: rows.map(r => r.flat),
+          borderColor: OUT_FLAT, borderWidth: 1.5, borderDash: [2, 3],
+          fill: false, tension: 0, pointRadius: 0 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom',
+                  labels: { boxWidth: 12, usePointStyle: true,
+                            font: { size: 11 } } },
+        tooltip: { callbacks: {
+          label: c => `${c.dataset.label}: ${
+            Math.round(c.parsed.y).toLocaleString('en-IN')} ${units}`
+        } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: { grid: { color: '#eef2f7' },
+             title: { display: true, text: units, font: { size: 11 } },
+             ticks: { font: { size: 11 },
+                      callback: v => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M`
+                                   : v.toLocaleString('en-IN') } }
+      }
+    }
+  });
+}
+
+// The four arms do not belong on one linear scale. The deliberately poor twin
+// scores 71.2% against 14.4%, so a shared axis makes it the whole chart and
+// squeezes the 19.4 -> 14.4 gain — the actual claim — into three pixels of
+// difference. The three methods anyone would choose between share a scale; the
+// control gets its own, and the panel says so rather than quietly rescaling.
+function renderAccuracy() {
+  const host = document.getElementById('accuracy-panel');
+  const note = document.getElementById('accuracy-note');
+  if (!host || !outlookData) return;
+  const s = outlookData.summary || {};
+  const scored = (outlookData.accuracy || [])
+    .filter(a => a.wmape !== null && a.wmape !== undefined);
+
+  if (note) note.textContent = s.headline && scored.length ? s.headline : '';
+  if (!scored.length) {
+    host.innerHTML = panelEmpty(
+      'Nothing at this scope has enough held-out history to score a forecast '
+      + 'against.');
+    return;
+  }
+
+  const real = scored.filter(a => a.key !== 'demo_out');
+  const control = scored.find(a => a.key === 'demo_out');
+  const realWorst = Math.max(...real.map(r => r.wmape), 0.1);
+  // Nationally the control scores 71.2% against a 19.4% flat average and has
+  // to be broken out. For a single class it can land at 20.1% against 18.0%,
+  // where breaking the scale would exaggerate a difference that is not there.
+  // The break follows the data instead of being wired in.
+  const breakScale = !!control && control.wmape > realWorst * 1.5;
+  const worst = breakScale ? realWorst : Math.max(realWorst,
+                                                  control ? control.wmape : 0);
+
+  const bar = (r, width, cls) => `
+    <div class="ven-row">
+      <div class="ven-head">
+        <span class="ven-name">${esc2(r.label)}</span>
+        <span class="ven-figure"><strong>${r.wmape.toFixed(1)}%</strong> error</span>
+      </div>
+      <div class="ven-track">
+        <div class="ven-fill ${cls}" style="width:${Math.max(2, width)}%"></div>
+      </div>
+      <div class="ven-note">${esc2(r.note)}</div>
+    </div>`;
+
+  const cls = r => r.key === 'pooled' ? '' : (r.key === 'demo_out' ? 'control' : 'alt');
+  const shared = breakScale ? real : scored;
+  const bars = shared.map(r => bar(r, 100 * r.wmape / worst, cls(r))).join('');
+
+  const multiple = control && s.pooled
+    ? `<strong>${(control.wmape / s.pooled).toFixed(1)}&times;</strong> the
+       error of the pooled shape. If it made no difference which district you
+       borrow from, this bar would sit alongside the others.` : '';
+  const controlBlock = !control ? ''
+    : breakScale ? `
+      <div class="scale-break">
+        <span class="scale-break-label">Shown on its own scale</span>
+        ${bar(control, 100, 'control')}
+        ${multiple ? `<p class="ven-note">${multiple}</p>` : ''}
+      </div>`
+    : (multiple ? `<p class="ven-note scale-same">${multiple}</p>` : '');
+
+  // The verdict is computed server-side, because it is not the same sentence
+  // for every class: the pooled shape beats a flat average by 6.1 points for
+  // Paracetamol and loses to it outright for 18 of the 36 classes, and an 83%
+  // error needs saying rather than colouring green.
+  const rel = s.reliability || {};
+  host.innerHTML = bars + controlBlock + (rel.text
+    ? `<p class="panel-verdict ${esc2(rel.level || 'warn')}">
+         ${esc2(rel.text)}
+         <span class="verdict-basis">Measured on ${s.months || 0} months the
+         model never saw, across ${(s.districts || 0).toLocaleString('en-IN')}
+         districts. Lower is better.</span>
+       </p>`
+    : '');
+}
+
+function renderDonors() {
+  const host = document.getElementById('donor-panel');
+  if (!host || !outlookData) return;
+  const rows = outlookData.donors || [];
+  const s = outlookData.summary || {};
+  if (!rows.length) {
+    host.innerHTML = panelEmpty(
+      'No district at this scope has been matched to a donor yet.');
+    return;
+  }
+  const arms = Object.fromEntries(
+    (outlookData.accuracy || []).map(a => [a.key, a.wmape]));
+  host.innerHTML = `<div class="table-scroll">
+      <table class="scenario-table net-table">
+        <thead><tr>
+          <th>District</th>
+          <th>Closest twin, another state</th>
+          <th class="net-num">Profile<br>distance</th>
+        </tr></thead>
+        <tbody>${rows.map(d => `
+          <tr>
+            <td><strong>${esc2(outlookTitleCase(d.receiver))}</strong><br>
+              <span class="muted">${esc2(d.receiver_state)}</span></td>
+            <td><strong>${esc2(outlookTitleCase(d.donor_district))}</strong><br>
+              <span class="muted">${esc2(d.donor_state)}</span></td>
+            <td class="net-num">${d.profile_distance}</td>
+          </tr>`).join('')}
+        </tbody></table></div>
+    <p class="net-column-note">
+      Profile distance is how far apart two districts sit on population served,
+      facility count, PHC count and population per facility &mdash; smaller is
+      more alike, and these are the closest matches India has to offer.
+      ${arms.demo_out !== undefined && arms.demo_in !== undefined ? `
+        Borrowing their seasonal shape scores
+        <strong>${arms.demo_out.toFixed(1)}% error</strong>. Running the same
+        matching inside the district's own state scores
+        <strong>${arms.demo_in.toFixed(1)}%</strong>, and pooling every
+        district's shape scores <strong>${(arms.pooled || 0).toFixed(1)}%</strong>.
+        Two districts can be demographically interchangeable and still have
+        nothing to tell each other about <em>when</em> demand arrives &mdash;
+        monsoon and season follow geography, not demography. That is why the
+        shape is pooled rather than paired.` : ''}
+    </p>`;
+}
+
+function outlookTitleCase(s) {
+  return String(s || '').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 }

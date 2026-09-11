@@ -45,6 +45,7 @@ from app import resources
 from app import surge
 from app import transfers
 from app import executive, mapview, today_v2, access, action_queue
+from app import forecast_view
 from app import network as network_view
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
@@ -93,6 +94,7 @@ async def lifespan(_app: FastAPI):
             ("map (All India)", lambda: mapview.supply_map("")),
             ("nearest help", lambda: access.nearest_help()),
             ("action queue", lambda: action_queue.triage()),
+            ("outlook", lambda: forecast_view.outlook()),
             # Today v2. These were added as endpoints and never added here,
             # so every deploy left the first visitor to that page watching
             # "Loading…" while three uncached BigQuery jobs ran. The geography
@@ -265,6 +267,22 @@ async def today_v2_scorecard(state: str = "", district: str = "",
     if resource == "personnel":
         return _facility_query(today_v2.staff_scorecard, state, district, phc)
     return _facility_query(today_v2.scorecard, state, district, phc, vital_only)
+
+
+@app.get("/api/v1/outlook")
+async def demand_outlook(state: str = "", district: str = "",
+                         atc_class: str = ""):
+    """Demand ahead at the chosen scope, and how good that forecast is.
+
+    Replaces a chart of one facility-item out of 2,794. The grain is district x
+    medicine class x month rather than facility x item x day — coarser
+    resolution for far broader relevance, which is a real trade.
+
+    A medicine class is always chosen, defaulting to the busiest in scope:
+    units are per class, so summing tablets, vials and capsules together
+    produces a figure in no unit at all.
+    """
+    return _facility_query(forecast_view.outlook, state, district, atc_class)
 
 
 @app.get("/api/v1/action-queue")

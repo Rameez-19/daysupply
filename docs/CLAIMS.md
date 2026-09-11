@@ -166,6 +166,83 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 > most of it (16.4%), and pooling beats both (14.4%)". That is a *better* story:
 > it shows the mechanism is climate, not demography.
 
+### 5a. The same four arms, per medicine class
+
+*Last verified against the live deployment: **2026-09-11**.*
+
+The figures above pool all 36 ATC classes. The Plan ahead page lets a reader
+pick one, and the method does **not** hold up equally across them. Every number
+here is `pattern_exchange_eval`, same table, same hold-out.
+
+| Figure | Value | Status |
+|---|---|---|
+| Classes where pooling beats a flat average | **18 of 36** | **MEASURED** |
+| Classes where it does not | **18 of 36** | **MEASURED** |
+| Classes scoring above 40% wMAPE | **11 of 36** | **MEASURED** |
+| Best class — Paracetamol / Ibuprofen (N02BE, M01AE) | **11.9%** vs 18.0% flat | **MEASURED** |
+| Worst class — Albendazole (P02CA) | **83.5%** vs 83.4% flat | **MEASURED** |
+| Vitamin A (A11CA) — flat wins by the widest margin | 73.6% vs **46.5%** flat | **MEASURED** |
+
+Albendazole and Vitamin A are campaign-driven — National Deworming Day, and
+Vitamin A dosing rounds. A monthly seasonal multiplier cannot fit a calendar
+campaign, and the page says so on the panel rather than drawing the curve with
+the same confidence as Paracetamol's.
+
+**Do not quote 14.4% as "the" forecast error without saying it is the pooled
+figure across all classes.** For roughly half the classes the honest statement
+is that exchanging shape does not pay.
+
+---
+
+### 5b. `demo_in` / `demo_out` mean in-state and out-of-state
+
+*Last verified against the live deployment: **2026-09-11**.*
+
+Both arms take the **single closest district on demographic profile**. They
+differ only in whether that district may sit in another state:
+
+- `demo_out` — closest twin **anywhere in India, different state required**. 71.2%.
+- `demo_in` — closest twin **inside the same state**. 16.4%.
+
+`demo_out` is not a poor match. Amravati's is Ranga Reddy, Telangana, **0.323**
+away on profile. Borrowing its seasonal shape is nearly four times worse than
+using no seasonality at all.
+
+> ⚠️ The Plan ahead page previously labelled `demo_out` **"a deliberately poor
+> twin"** and headed its donor districts **"Who lends the seasonal shape"** —
+> presenting the losing arm's donors as the source of the gain, and reducing
+> the one genuinely surprising result in the project to a sanity check. Both
+> are corrected. The finding to state is: *two districts can be demographically
+> interchangeable and still have nothing to tell each other about **when**
+> demand arrives, because monthly shape follows monsoon and season, which
+> follow geography.* That is also the argument for pooling rather than pairing.
+
+---
+
+### 5c. The curve is in medicine units, not driver events
+
+*Last verified against the live deployment: **2026-09-11**.*
+
+`pattern_exchange_eval.actual` is the **HMIS demand driver** — outpatient
+attendance, confirmed malaria cases, institutional deliveries — not units of
+medicine. Classes sharing a driver therefore held byte-identical series:
+N02BE matched M01AE on **all 928 rows**, and **9 such groups covered 26 of the
+36 classes**, so a class dropdown offered 36 entries drawing 19 distinct curves
+on an axis reading 33.8 million "tablets" that was really a count of visits.
+
+`items.units_per_driver_event` is the documented conversion and is applied
+before anything leaves the query: **1.2** paracetamol tablets per OPD visit,
+**0.35** ibuprofen, **28** antimalarial tablets per confirmed case (18
+chloroquine + 10 primaquine — a vivax case gets both).
+
+This changes **no accuracy figure**: wMAPE is Σ|error| ÷ Σ|actual|, so a
+constant multiplier cancels. 19.4% → 14.4% is identical before and after.
+
+Two ties survive and both are arithmetic rather than the defect: Haloperidol
+and Fluoxetine are both 7.5 tablets per mental-illness visit, Phenytoin and
+Carbamazepine both 9.0 per epilepsy visit. Same driver and same course size
+genuinely means the same tablet count. **34 distinct volumes across 36 classes.**
+
 ---
 
 ## 6. Driver corrections (Block D+)
