@@ -95,6 +95,9 @@ async def lifespan(_app: FastAPI):
             ("nearest help", lambda: access.nearest_help()),
             ("action queue", lambda: action_queue.triage()),
             ("outlook", lambda: forecast_view.outlook()),
+            # ML.ARIMA_EVALUATE over 2,794 series is not fast, and it is the
+            # first thing on the Evidence page.
+            ("model evidence", forecast.model_evidence),
             # Today v2. These were added as endpoints and never added here,
             # so every deploy left the first visitor to that page watching
             # "Loading…" while three uncached BigQuery jobs ran. The geography
@@ -870,6 +873,17 @@ async def fetch_patterns(district: str = ""):
 async def post_patterns(pattern: PatternNode):
     """Ingest peer coefficients as a prior."""
     return ingest_peer_pattern(pattern)
+
+@app.get("/api/v1/model-evidence")
+async def get_model_evidence():
+    """What the trained ARIMA_PLUS model is, and everything downstream of it.
+
+    Read back out of BigQuery — `ML.ARIMA_EVALUATE` for the model's own
+    description of itself, `reorder_status` and `recommendations` for the
+    chain. No figure here is typed into the page.
+    """
+    return forecast.model_evidence()
+
 
 @app.get("/api/v1/forecast-chart")
 async def get_forecast_chart_endpoint(days: int = 7, state: str = "Telangana",

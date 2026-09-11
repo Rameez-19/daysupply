@@ -140,6 +140,48 @@ grounded in real government data. 4.8M is what runs today; 793.7M is
 
 ---
 
+## 4a. ARIMA_PLUS — what it is, and what rests on it
+
+*Last verified against the live deployment: **2026-09-11**.*
+
+| Figure | Value | Status | Read from |
+|---|---|---|---|
+| Trained series | **2,794** | **MEASURED** | `ML.ARIMA_EVALUATE(demand_forecast)` |
+| Series with a detected weekly cycle | **2,149** (76.9%) | **MEASURED** | same |
+| Distinct (p,d,q) orders auto-ARIMA chose | **12** | **MEASURED** | same |
+| Series with drift | **181** | **MEASURED** | same |
+| Forecast horizon / prediction interval | 30 days / 80% | **CONFIGURED** | `app/forecast.py` |
+
+The model is the most load-bearing thing in the system. The chain, and every
+figure in it, is read back out of BigQuery by `/api/v1/model-evidence`:
+
+```
+ML.FORECAST(demand_forecast)              2,794 series
+  -> demand_baseline.avg_daily_demand     = AVG(forecast_value), 2,794 lines
+    -> reorder_status (VIEW)              200 facilities
+         reorder_point = avg_daily_demand x lead_time_days
+                       + 1.65 x sigma x SQRT(lead_time_days)
+      -> needs_reorder                    597 shortages
+        -> recommendations                527 moves
+```
+
+**Every shortage figure on every page is downstream of ARIMA_PLUS.** The action
+queue's 525/33/39 split, the map arcs, nearest-help, the alerts and both Today
+pages all resolve to `needs_reorder`, which is `on_hand` compared against a
+reorder point whose demand term is `ML.FORECAST` output.
+
+The 12 distinct orders matter: a single order across all 2,794 series would
+mean auto-ARIMA selected nothing. The largest group is (1,1,1) with weekly
+seasonality at 754 series.
+
+> ⚠️ This is **not** the same thing as the Plan ahead forecast. ARIMA_PLUS runs
+> at **facility x item x day** and sets reorder points. The pattern exchange
+> (§5) runs at **district x ATC class x month** and answers "what is coming for
+> this medicine class here". Neither replaces the other, and they must not be
+> presented as two opinions on one question.
+
+---
+
 ## 5. Pattern exchange — the four-arm hold-out
 
 *Last verified against the live deployment: **2026-09-02**.*
@@ -165,6 +207,18 @@ wMAPE = Σ|error| ÷ Σ|actual|.
 > loses catastrophically (71.2% vs 19.4%), restricting to the same state fixes
 > most of it (16.4%), and pooling beats both (14.4%)". That is a *better* story:
 > it shows the mechanism is climate, not demography.
+
+> ⚠️ **This panel was rendering a raw JSON blob until 2026-09-11.**
+> `/api/v1/exchange/evaluation` returns flat keys — `flat_wmape`,
+> `pooled_wmape` and so on — and never an `arms` array, but the Evidence page
+> read `d.arms || d.evaluation || []` and fell through to a debug branch that
+> printed `JSON.stringify(d).slice(0, 400)` into a paragraph. The page carrying
+> the project's central claim showed its own payload. It went unnoticed because
+> the blob contains the correct numbers.
+>
+> It also broke the layout: a JSON string has no spaces, so it cannot wrap, and
+> it forced the whole Evidence view **319px wider than the viewport** — cutting
+> every other panel on that page off at the right edge.
 
 ### 5a. The same four arms, per medicine class
 

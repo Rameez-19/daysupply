@@ -865,6 +865,102 @@ button { font-family: inherit; cursor: pointer; }
 .caption-error.warn { background: #fff7ed; color: #9a3412; }
 .caption-error.bad  { background: #fef2f2; color: #991b1b; }
 
+/* ===== Evidence: the ARIMA_PLUS model and its chain ===== */
+.model-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border: 1px solid #bfdbfe;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+}
+
+/* The chain is the argument: the model is not a chart, it is the thing every
+   shortage count on every other page is computed from. It scrolls rather than
+   wrapping, because a broken line stops reading as a sequence. */
+.model-chain {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin: 14px 0 18px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.chain-step {
+  flex: 1 1 0;
+  min-width: 132px;
+  padding: 11px 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--bg, #f8fafc);
+}
+.chain-figure {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--brand-700, #1e3a8a);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.chain-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-500, #64748b);
+  margin-bottom: 7px;
+}
+.chain-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text, #1e293b);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.chain-detail {
+  font-size: 11px;
+  color: var(--gray-500, #64748b);
+  margin-top: 3px;
+  line-height: 1.35;
+}
+.chain-arrow {
+  align-self: center;
+  color: var(--gray-400, #94a3b8);
+  font-size: 16px;
+  flex: 0 0 auto;
+}
+
+.model-split { display: flex; gap: 18px; flex-wrap: wrap; }
+/* `min-width: 0` is load-bearing. A flex item's automatic minimum size is its
+   content's intrinsic width, and a <canvas> reports the pixel width Chart.js
+   last sized it to — so the column refuses to shrink, and the whole page grows
+   a horizontal scrollbar with the right-hand column cut off at the edge.
+   Chart.js then re-measures the too-wide parent and the two feed each other. */
+.model-col { flex: 1 1 340px; min-width: 0; }
+.model-col .chart-container { width: 100%; min-width: 0; height: 300px; }
+.sub-head {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gray-700, #334155);
+  margin: 0 0 6px;
+}
+.order-season {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--gray-200, #e2e8f0);
+  color: var(--gray-600, #475569);
+}
+.order-season.on { background: #eff6ff; color: #1e40af; }
+
+@media (max-width: 820px) {
+  .model-chain { display: grid; grid-template-columns: 1fr 1fr; }
+  .chain-arrow { display: none; }
+}
+
 @media (max-width: 640px) {
   .step { flex-direction: column; gap: 8px; }
 }

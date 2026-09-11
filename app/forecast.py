@@ -223,3 +223,112 @@ def check_alert(facility_id: str, item_id: str, on_hand: int,
         "status": "active",
         "daily_demand": round(daily_demand, 2),
     }
+
+
+# ===== What the model is, and what rests on it =====
+#
+# ARIMA_PLUS is the most load-bearing thing in this system and the least
+# visible. Every shortage on every page is a consequence of it:
+#
+#   ML.FORECAST(demand_forecast)              2,794 trained series
+#     -> demand_baseline.avg_daily_demand     = AVG(forecast_value)
+#       -> reorder_status (view)
+#            reorder_point = avg_daily_demand x lead_time
+#                          + 1.65 x sigma x SQRT(lead_time)
+#         -> needs_reorder, days_of_cover, shortfall
+#           -> the shortage list, the action queue, the transfer
+#              recommendations, the map arcs, the alerts
+#
+# The Plan ahead page answers "what is coming for this medicine class in this
+# district", which is a different question at a different grain and is served
+# by the pattern exchange. Neither replaces the other, and the danger of
+# showing two forecasts is that they read as competing opinions. This panel
+# therefore leads with the chain rather than with the curve.
+
+CHAIN_SQL = f"""
+SELECT
+  (SELECT AS STRUCT
+     COUNT(*) AS series,
+     COUNTIF(EXISTS(SELECT 1 FROM UNNEST(seasonal_periods) s
+                    WHERE CAST(s AS STRING) != 'NO_SEASONALITY')) AS seasonal,
+     COUNTIF(has_drift) AS drift,
+     COUNT(DISTINCT FORMAT('%d,%d,%d', non_seasonal_p, non_seasonal_d,
+                           non_seasonal_q)) AS distinct_orders
+   FROM ML.ARIMA_EVALUATE(MODEL {MODEL})) AS model,
+
+  -- The orders auto-ARIMA actually settled on. Twelve different ones across
+  -- 2,794 series is the evidence that each was fitted rather than stamped
+  -- with a single global order.
+  ARRAY(SELECT AS STRUCT arima_order, seasonality, n
+        FROM (
+          SELECT FORMAT('(%d,%d,%d)', non_seasonal_p, non_seasonal_d,
+                        non_seasonal_q) AS arima_order,
+                 IF(EXISTS(SELECT 1 FROM UNNEST(seasonal_periods) s
+                           WHERE CAST(s AS STRING) != 'NO_SEASONALITY'),
+                    'Weekly', 'None') AS seasonality,
+                 COUNT(*) AS n
+          FROM ML.ARIMA_EVALUATE(MODEL {MODEL})
+          GROUP BY arima_order, seasonality
+          ORDER BY n DESC
+          LIMIT 6)) AS orders,
+
+  (SELECT AS STRUCT
+     COUNT(*) AS lines,
+     COUNTIF(needs_reorder) AS shortages,
+     COUNT(DISTINCT facility_id) AS facilities
+   FROM `{PROJECT}.{DATASET}.reorder_status`) AS downstream,
+
+  (SELECT COUNT(*) FROM `{PROJECT}.{DATASET}.recommendations`) AS transfers
+"""
+
+
+def model_evidence() -> dict:
+    """The trained model's own description of itself, plus what depends on it.
+
+    Every figure is read back out of BigQuery — `ML.ARIMA_EVALUATE` for the
+    model, `reorder_status` and `recommendations` for the chain. Nothing here
+    is a constant typed into the page.
+    """
+    rows = run_query(CHAIN_SQL, cache_key="model:evidence", ttl=900)
+    if not rows:
+        return {"empty": True}
+
+    r = dict(rows[0])
+    m = dict(r["model"]) if r.get("model") else {}
+    d = dict(r["downstream"]) if r.get("downstream") else {}
+    series = m.get("series") or 0
+    seasonal = m.get("seasonal") or 0
+
+    return {
+        "empty": False,
+        "model": {
+            "name": "BigQuery ML ARIMA_PLUS",
+            "table": f"{PROJECT}.{DATASET}.demand_forecast",
+            "series": series,
+            "seasonal": seasonal,
+            "seasonal_pct": round(100 * seasonal / series, 1) if series else 0,
+            "drift": m.get("drift") or 0,
+            "distinct_orders": m.get("distinct_orders") or 0,
+            "horizon": HORIZON,
+            "confidence": CONFIDENCE,
+        },
+        "orders": [dict(x) for x in (r.get("orders") or [])],
+        "chain": [
+            {"step": "ML.FORECAST",
+             "detail": f"{series:,} series, each fitted on its own",
+             "figure": f"{series:,}", "label": "trained series"},
+            {"step": "demand_baseline",
+             "detail": "AVG(forecast_value) becomes avg_daily_demand",
+             "figure": f"{d.get('lines') or 0:,}", "label": "facility-item lines"},
+            {"step": "reorder_status",
+             "detail": "reorder point = demand \u00d7 lead time "
+                       "+ 1.65 \u00d7 \u03c3 \u00d7 \u221alead time",
+             "figure": f"{d.get('facilities') or 0:,}", "label": "facilities"},
+            {"step": "What needs acting on",
+             "detail": "every shortage on every page is downstream of the model",
+             "figure": f"{d.get('shortages') or 0:,}", "label": "shortages"},
+            {"step": "Transfer recommendations",
+             "detail": "each one sized against the forecast it is covering",
+             "figure": f"{r.get('transfers') or 0:,}", "label": "moves"},
+        ],
+    }

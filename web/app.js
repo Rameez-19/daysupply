@@ -271,6 +271,7 @@ function refreshAll() {
   } else if (view === 'map-view') {
     if (typeof loadMap === 'function') loadMap();
   } else if (view === 'evidence-view') {
+    loadModelEvidence();
     loadLeadTimeContrast();
     if (typeof loadEvidence === 'function') loadEvidence();
   } else if (view === 'capture-view' || view === 'review-view') {
@@ -855,8 +856,10 @@ function showCaptureResult(data) {
 // The old Plan ahead forecast — one facility-item, `#forecastChart`, and the
 // 7/14/30-day `.chart-btn` row — was deleted with the markup it wrote into.
 // `loadOutlook()` below answers the same question at the scope the reader
-// chose. `/api/v1/forecast-chart` is still served: it is the only surface on
-// the trained ARIMA_PLUS model, and it has no page until one is decided on.
+// chose. `/api/v1/forecast-chart` still serves the trained ARIMA_PLUS model —
+// it is drawn on Evidence now, next to the chain of everything downstream of
+// it, which is where a model belongs rather than competing with Plan ahead's
+// district-and-class forecast.
 
 // The single clearest illustration of the lead-time rule: two real PHCs,
 // the same medicine, reorder points that differ only by distance to the
@@ -1087,22 +1090,14 @@ function onScanFailure(error) { /* Silently ignore scan misses */ }
 async function loadEvidence() {
   loadLeadTimeContrast();
 
-  const evalEl = document.getElementById('exchange-eval');
-  if (evalEl) {
-    try {
-      const d = await (await fetch('/api/v1/exchange/evaluation')).json();
-      const arms = d.arms || d.evaluation || [];
-      evalEl.innerHTML = arms.length ? `
-        <div class="table-scroll"><table class="scenario-table">
-          <thead><tr><th>Arm</th><th>Weighted MAPE</th></tr></thead>
-          <tbody>${arms.map(a => `<tr class="${a.is_shipped ? 'row-warn' : ''}">
-            <td>${a.label || a.arm}</td><td><strong>${a.wmape}%</strong></td></tr>`).join('')}
-          </tbody></table></div>`
-        : `<p class="section-note">${JSON.stringify(d).slice(0, 400)}</p>`;
-    } catch (e) {
-      evalEl.innerHTML = '<p class="section-note">Could not load the evaluation.</p>';
-    }
-  }
+  // /api/v1/exchange/evaluation returns flat keys — flat_wmape, pooled_wmape
+  // and so on — never an `arms` array. So this panel always fell through to a
+  // debug branch that printed `JSON.stringify(d).slice(0, 400)` into a <p>:
+  // the page carrying the project's central 19.4 -> 14.4 claim showed a raw
+  // JSON blob, and because that string has no spaces it could not wrap, which
+  // is what forced the whole Evidence page 319px wider than the viewport and
+  // cut every panel off at the right edge.
+  await loadExchangeEval();
 
   const reachEl = document.getElementById('reach-panel');
   if (reachEl) {
@@ -2086,4 +2081,257 @@ function renderDonors() {
 
 function outlookTitleCase(s) {
   return String(s || '').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// ===== Evidence: the ARIMA_PLUS model, and what rests on it =====
+//
+// This model is the most load-bearing thing in the system and was the least
+// visible: no page named it, and the one chart that drew it was deleted along
+// with the markup it wrote into. Every shortage on every page is a consequence
+// of it, which is what the chain below says before the curve is drawn.
+//
+// The curve goes second on purpose. Plan ahead already forecasts, at a
+// different grain and from a different method, and two forecasts side by side
+// read as competing opinions unless the reader is told what each is for. The
+// chain establishes that this one sets reorder points; the curve then shows it
+// is a real fitted model rather than a label.
+
+let arimaChart = null;
+
+async function loadModelEvidence() {
+  const chain = document.getElementById('model-chain');
+  if (!chain) return;
+  chain.innerHTML = panelLoading('Reading the model back out of BigQuery…');
+
+  try {
+    const res = await fetch('/api/v1/model-evidence');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    const m = d.model || {};
+
+    const badge = document.getElementById('model-badge');
+    if (badge) badge.textContent = m.name || 'BigQuery ML ARIMA_PLUS';
+
+    const note = document.getElementById('model-note');
+    if (note) {
+      note.innerHTML = `<code>${esc2(m.table || '')}</code> holds
+        <strong>${(m.series || 0).toLocaleString('en-IN')}</strong>
+        independently fitted series &mdash; one per facility and medicine.
+        <strong>${(m.seasonal || 0).toLocaleString('en-IN')}</strong> of them
+        (${m.seasonal_pct}%) have a weekly cycle the model detected on its own,
+        and ${m.distinct_orders} different ARIMA orders were chosen across
+        them. Forecasts run ${m.horizon} days ahead, with a prediction
+        interval of ${Math.round((m.confidence || 0) * 100)}%.`;
+    }
+
+    chain.innerHTML = (d.chain || []).map((c, i) => `
+      <div class="chain-step">
+        <div class="chain-figure">${esc2(c.figure)}</div>
+        <div class="chain-label">${esc2(c.label)}</div>
+        <div class="chain-name">${esc2(c.step)}</div>
+        <div class="chain-detail">${esc2(c.detail)}</div>
+      </div>
+      ${i < d.chain.length - 1 ? '<div class="chain-arrow">&rarr;</div>' : ''}
+    `).join('');
+
+    renderOrders(d.orders || [], m.series || 0);
+  } catch (e) {
+    chain.innerHTML = panelError(e.message, 'loadModelEvidence');
+  }
+
+  loadArimaSeries();
+}
+
+function renderOrders(rows, total) {
+  const host = document.getElementById('model-orders');
+  if (!host) return;
+  if (!rows.length) {
+    host.innerHTML = panelEmpty('The model reported no fitted orders.');
+    return;
+  }
+  const worst = Math.max(...rows.map(r => r.n));
+  host.innerHTML = rows.map(r => `
+    <div class="ven-row">
+      <div class="ven-head">
+        <span class="ven-name"><code>${esc2(r.arima_order)}</code>
+          <span class="order-season ${r.seasonality === 'Weekly' ? 'on' : ''}">
+            ${r.seasonality === 'Weekly' ? 'weekly' : 'no seasonality'}</span>
+        </span>
+        <span class="ven-figure"><strong>${r.n.toLocaleString('en-IN')}</strong>
+          series</span>
+      </div>
+      <div class="ven-track">
+        <div class="ven-fill ${r.seasonality === 'Weekly' ? '' : 'alt'}"
+             style="width:${Math.max(2, 100 * r.n / worst)}%"></div>
+      </div>
+    </div>`).join('')
+    + `<p class="net-column-note">
+         (p,&nbsp;d,&nbsp;q) is how many past values, differences and past
+         errors each series needed. A single order stamped across all
+         ${total.toLocaleString('en-IN')} series would be one bar here.
+       </p>`;
+}
+
+// The curve is scoped to whatever the page filters are set to, so the series
+// shown is one the reader is actually looking at rather than an arbitrary one.
+async function loadArimaSeries() {
+  const cap = document.getElementById('arima-caption');
+  const note = document.getElementById('arima-note');
+  const ctx = document.getElementById('arimaChart');
+  if (!ctx) return;
+  if (cap) cap.textContent = 'Loading the busiest trained series here…';
+
+  try {
+    const res = await fetch(`/api/v1/forecast-chart?days=14&${getFilterParams()}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+
+    if (cap) {
+      cap.innerHTML = `<strong>${esc2(data.item_name)}</strong> at
+        ${esc2(data.facility_name)} &mdash; the busiest trained series in this
+        scope. Solid is what was dispensed; dashed is
+        <code>ML.FORECAST</code>, with its
+        ${Math.round(data.confidence_level * 100)}% interval.`;
+    }
+
+    if (arimaChart) arimaChart.destroy();
+    arimaChart = new Chart(ctx.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: [
+          { label: 'Dispensed (recorded)', data: data.historical,
+            borderColor: '#475569', backgroundColor: 'rgba(71,85,105,0.08)',
+            fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+          { label: 'ML.FORECAST', data: data.forecast,
+            borderColor: '#1e3a8a', borderDash: [5, 4], fill: false,
+            tension: 0.3, pointRadius: 2, borderWidth: 2 },
+          { label: `${Math.round(data.confidence_level * 100)}% interval`,
+            data: data.upper, borderColor: 'rgba(30,58,138,0.22)',
+            backgroundColor: 'rgba(30,58,138,0.10)',
+            borderWidth: 1, pointRadius: 0, fill: '+1' },
+          { label: '', data: data.lower, borderColor: 'rgba(30,58,138,0.22)',
+            borderWidth: 1, pointRadius: 0, fill: false },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom',
+                    labels: { boxWidth: 12, font: { size: 11 },
+                              usePointStyle: true,
+                              filter: it => it.text !== '' } },
+        },
+        scales: {
+          x: { grid: { display: false },
+               ticks: { font: { size: 10 }, maxTicksLimit: 8 } },
+          y: { beginAtZero: true, grid: { color: '#eef2f7' },
+               title: { display: true, text: data.unit || 'units',
+                        font: { size: 11 } },
+               ticks: { font: { size: 11 } } }
+        }
+      }
+    });
+    if (note) note.textContent = `Source: ${data.source}.`;
+  } catch (e) {
+    // Forecasting is only trained where real HMIS history exists, so a scope
+    // with no trained series is an ordinary outcome rather than a fault. It
+    // says which, instead of leaving an empty canvas.
+    if (arimaChart) { arimaChart.destroy(); arimaChart = null; }
+    if (cap) cap.textContent = '';
+    if (note) note.innerHTML = panelEmpty(esc2(e.message));
+  }
+}
+
+
+// The four-arm hold-out, drawn the same way Plan ahead draws it so the two
+// pages do not describe the same experiment in two different vocabularies.
+//
+// demo_in / demo_out are in-state and out-of-state, NOT similar and dissimilar.
+// Both take the single closest district on demographic profile and differ only
+// in whether it may sit in another state.
+const EXCHANGE_ARMS = [
+  ['pooled_wmape', "Every district's shape, pooled",
+   'The average monthly shape across all 116 districts. This is what ships.'],
+  ['demo_in_wmape', 'Closest twin in the same state',
+   'The most demographically similar district inside the same state.'],
+  ['flat_wmape', 'No seasonality at all',
+   "A flat average from the district's own three observed months."],
+  ['demo_out_wmape', 'Closest twin in another state',
+   'The best match demography can find anywhere in India — and the worst '
+   + 'forecast of the four.'],
+];
+
+async function loadExchangeEval() {
+  const host = document.getElementById('exchange-eval');
+  if (!host) return;
+  try {
+    const res = await fetch('/api/v1/exchange/evaluation');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+
+    const rows = EXCHANGE_ARMS
+      .map(([key, label, note]) => ({ key, label, note, wmape: d[key] }))
+      .filter(r => typeof r.wmape === 'number');
+    if (!rows.length) {
+      host.innerHTML = panelEmpty('The evaluation returned no scored arms.');
+      return;
+    }
+
+    const real = rows.filter(r => r.key !== 'demo_out_wmape');
+    const control = rows.find(r => r.key === 'demo_out_wmape');
+    const realWorst = Math.max(...real.map(r => r.wmape), 0.1);
+    const breakScale = !!control && control.wmape > realWorst * 1.5;
+    const worst = breakScale ? realWorst
+                             : Math.max(realWorst, control ? control.wmape : 0);
+
+    const bar = (r, width, cls) => `
+      <div class="ven-row">
+        <div class="ven-head">
+          <span class="ven-name">${esc2(r.label)}</span>
+          <span class="ven-figure"><strong>${r.wmape.toFixed(1)}%</strong> error</span>
+        </div>
+        <div class="ven-track">
+          <div class="ven-fill ${cls}" style="width:${Math.max(2, width)}%"></div>
+        </div>
+        <div class="ven-note">${esc2(r.note)}</div>
+      </div>`;
+
+    const cls = r => r.key === 'pooled_wmape' ? ''
+                   : (r.key === 'demo_out_wmape' ? 'control' : 'alt');
+    const shown = breakScale ? real : rows;
+    host.innerHTML = shown.map(r => bar(r, 100 * r.wmape / worst, cls(r))).join('')
+      + (breakScale && control ? `
+        <div class="scale-break">
+          <span class="scale-break-label">Shown on its own scale</span>
+          ${bar(control, 100, 'control')}
+          <p class="ven-note">
+            <strong>${(control.wmape / d.pooled_wmape).toFixed(1)}&times;</strong>
+            the error of the pooled shape. Two districts can be demographically
+            interchangeable and still have nothing to tell each other about
+            <em>when</em> demand arrives &mdash; monthly shape follows monsoon
+            and season, which follow geography. That is the argument for
+            pooling rather than pairing.
+          </p>
+        </div>` : '')
+      + `<p class="panel-verdict ok">
+           Pooling cuts forecast error from
+           <strong>${d.flat_wmape}%</strong> to
+           <strong>${d.pooled_wmape}%</strong> &mdash;
+           ${d.improvement_points.toFixed(1)} percentage points,
+           ${d.improvement_relative}% relative.
+           <span class="verdict-basis">
+             ${(d.predictions || 0).toLocaleString('en-IN')} held-out
+             predictions across ${d.districts} districts and
+             ${d.atc_classes} medicine classes. Lower is better.
+           </span>
+         </p>`
+      + (d.note ? `<p class="net-column-note">${esc2(d.note)}</p>` : '');
+  } catch (e) {
+    host.innerHTML = panelError(e.message, 'loadExchangeEval');
+  }
 }

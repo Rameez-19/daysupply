@@ -721,6 +721,37 @@
           </p>
         </div>
 
+        <!-- First, because everything below it is downstream of this. The
+             lead-time contrast is a property of the reorder point, and the
+             reorder point is this model multiplied by a lead time. -->
+        <div class="dashboard-section">
+          <div class="chart-header">
+            <h3>The demand model everything else rests on</h3>
+            <span class="model-badge" id="model-badge">BigQuery ML ARIMA_PLUS</span>
+          </div>
+          <p class="section-note" id="model-note"></p>
+          <div id="model-chain" class="model-chain"></div>
+
+          <div class="model-split">
+            <div class="model-col">
+              <h4 class="sub-head">One series, drawn out</h4>
+              <p class="section-note" id="arima-caption"></p>
+              <div class="chart-container"><canvas id="arimaChart"></canvas></div>
+              <p class="chart-note" id="arima-note"></p>
+            </div>
+            <div class="model-col">
+              <h4 class="sub-head">What the model chose for itself</h4>
+              <p class="section-note">
+                Auto-ARIMA fits each series independently and picks its own
+                (p,&nbsp;d,&nbsp;q) order and seasonality. These are the orders
+                it settled on &mdash; read back from
+                <code>ML.ARIMA_EVALUATE</code>, not configured.
+              </p>
+              <div id="model-orders"></div>
+            </div>
+          </div>
+        </div>
+
         <div class="dashboard-section" id="contrast-section" hidden>
           <div class="chart-header"><h3>Why distance changes the reorder point</h3></div>
           <div id="lead-time-contrast"></div>
