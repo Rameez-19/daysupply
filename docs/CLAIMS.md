@@ -918,7 +918,11 @@ rate because Telangana sanctions no health-assistant posts.
 at the API while `staff_status` was still *built from* it, with real vacancy
 LEFT JOINed on. It is now built from the establishment: no generated column
 exists in it, `staff_reallocation` is dropped, and the generator no longer
-produces personnel.
+produces personnel. On **2026-09-12** the 338,720 generated attendance rows
+were deleted from `resource_events` as well (**1,570,343 → 1,231,623**; bed
+74,240 and medicine 1,157,383 untouched, and no captured personnel row existed
+to lose), so nothing generated about personnel survives anywhere in the
+warehouse. BigQuery time travel keeps a seven-day undo window on that table.
 
 > ⚠️ **"Nurses below the bed norm" was described as per-facility and real. It
 > was computed against generated attendance.** It now uses nurses in position —

@@ -292,16 +292,30 @@ def staff_reallocation(state: str = "", district: str = "",
 
 def coverage() -> dict:
     """What the platform tracks per resource type, for the selector."""
+    # Personnel comes from the establishment, not the event ledger. Its rows in
+    # `resource_events` were generated attendance and were deleted on
+    # 2026-09-12, so a count over that table alone would drop personnel out of
+    # the selector entirely while the note below still described it. Staffing
+    # is a standing establishment rather than a stream of events, and this
+    # reports it as one: no event count, because there are no events.
     rows = run_query(
         f"""
-        SELECT resource_type,
-               COUNT(*) AS events,
-               COUNT(DISTINCT facility_id) AS facilities,
-               COUNT(DISTINCT item_id) AS distinct_resources
-        FROM `{PROJECT}.{DATASET}.resource_events`
-        GROUP BY resource_type ORDER BY resource_type
+        SELECT resource_type, events, facilities, distinct_resources FROM (
+          SELECT resource_type,
+                 COUNT(*) AS events,
+                 COUNT(DISTINCT facility_id) AS facilities,
+                 COUNT(DISTINCT item_id) AS distinct_resources
+          FROM `{PROJECT}.{DATASET}.resource_events`
+          GROUP BY resource_type
+          UNION ALL
+          SELECT 'personnel' AS resource_type,
+                 0 AS events,
+                 COUNT(DISTINCT facility_id) AS facilities,
+                 COUNT(DISTINCT cadre) AS distinct_resources
+          FROM `{PROJECT}.{DATASET}.staff_status`)
+        ORDER BY resource_type
         """,
-        cache_key="resources:coverage",
+        cache_key="resources:coverage2",
     )
     return {
         "resource_types": rows,

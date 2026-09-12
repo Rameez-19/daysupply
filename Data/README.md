@@ -852,9 +852,13 @@ updated. `source_year = 2022` is carried on every row.
 
 **Attendance is not shown, and no longer generated.** It was a fixed-seed
 propensity and was removed from every page on 2026-09-11 (CLAIMS §8a);
-`generate_bed_personnel.py` now has `GENERATE_PERSONNEL = False`. 338,720
-historical generated personnel rows remain in `resource_events` and are read by
-nothing. No public facility-level attendance data exists in India to replace
+`generate_bed_personnel.py` now has `GENERATE_PERSONNEL = False`. The 338,720
+historical generated attendance rows were **deleted** from `resource_events` on
+2026-09-12 — 1,570,343 rows down to 1,231,623, bed and medicine untouched — so
+the ledger holds no generated personnel at all. `resources.coverage()` reports
+personnel from `staff_status` instead of from the ledger, because staffing is a
+standing establishment rather than a stream of events; it would otherwise have
+dropped out of the resource selector while its note still described it. No public facility-level attendance data exists in India to replace
 it: AEBAS, the one real biometric system, releases data only to each
 organisation's nodal officer.
 

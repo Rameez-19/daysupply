@@ -37,13 +37,22 @@ class TestMedicinePathUnchanged:
         assert rows[0]["total"] == typed[0]["medicine"]
 
     def test_view_excludes_beds_and_personnel(self):
-        """A downstream query against the old name must not see new rows."""
+        """A downstream query against the old name must not see new rows.
+
+        Personnel left the ledger entirely on 2026-09-12: 338,720 generated
+        attendance events deleted, nothing reading them. So the only non-
+        medicine rows left are beds, and the assertion that used to prove
+        "beds and personnel were loaded" now proves beds are there and
+        generated attendance has not come back.
+        """
         other = run_query("""
-            SELECT COUNT(*) AS n
+            SELECT COUNTIF(resource_type = 'bed') AS bed,
+                   COUNTIF(resource_type = 'personnel') AS personnel
             FROM `daysupply.daysupply.resource_events`
-            WHERE resource_type != 'medicine'
-        """)
-        assert other[0]["n"] > 0, "beds and personnel were never loaded"
+        """)[0]
+        assert other["bed"] > 0, "bed events were never loaded"
+        assert other["personnel"] == 0, (
+            "generated personnel attendance is back in the ledger")
         rows = run_query("""
             SELECT COUNT(*) AS n FROM `daysupply.daysupply.stock_events`
             WHERE item_id LIKE 'BED-%' OR item_id LIKE 'STAFF-%'
