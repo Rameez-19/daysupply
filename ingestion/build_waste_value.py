@@ -1,4 +1,4 @@
-"""What the avoided waste is worth in rupees — and why no figure is published yet.
+"""What the avoided waste is worth in rupees, at real published ceiling prices.
 
 A ministry reviewer does not think in units. "26,612 units of expiry waste
 avoided" is abstract; "₹X per PHC per year" is a budget line. This module does
@@ -6,34 +6,39 @@ that conversion using **NPPA ceiling prices under DPCO** — published, statutor
 and the correct basis, because a ceiling price is what a government purchaser
 may lawfully be charged.
 
-## It currently refuses to publish a headline, on purpose
+## It refused to publish a headline until 2026-09-13
 
-Two things are wrong with the price data available right now, and either alone
-would be enough to disqualify a headline number in a project whose entire
-differentiator is traceability:
+Two things were wrong with the price data, and either alone would have
+disqualified a headline in a project whose entire differentiator is
+traceability:
 
-1. **Coverage is 26.9%.** Prices are held for items covering only 8,851 of the
-   32,893 expired units. The single largest waste item — Ferrous Salt + Folic
-   acid, **34.5%** of all expiry on its own — has no price at all. Grossing up
-   from a quarter of the units to a total would be an extrapolation dressed as
-   a measurement.
+1. **Coverage was 26.9%.** Prices covered only 8,851 of the 32,893 expired
+   units. The single largest waste item — Ferrous Salt + Folic acid, **34.5%**
+   of all expiry on its own — had no price at all. Grossing up from a quarter
+   of the units would have been an extrapolation dressed as a measurement.
 
-2. **The source is secondary.** The figures were transcribed from a summary of
-   the DPCO schedule, not from the Gazette of India notification itself. That
-   is fine for arithmetic and not fine for a submission claim. `source_tier` is
-   recorded per row so this is visible rather than assumed.
+2. **The source was secondary.** Six rows transcribed from a summary of the
+   DPCO schedule rather than from NPPA itself. `source_tier` is recorded per
+   row so that was visible rather than assumed.
 
-So `COVERAGE_FLOOR` gates the headline. Below it the module computes everything,
-reports the partial figure clearly labelled as partial, and declines to publish
-a national number. This is the same pattern as `substitution_constraint()` and
-staff reallocation: the feature works, states its own limit, and does not invent
-past it.
+Both are fixed. `ingestion/extract_nppa_prices.py` reads the **NPPA Compendium
+of Prices 2022** — ceiling prices notified under S.O. 1499(E) of 30.03.2022 —
+and prices **35 of the 39** tracked items from it at `source_tier: primary`.
+Coverage is **97.9%** (32,192 of 32,893 expired units), above the floor, so the
+figure is computed rather than withheld.
 
-**To publish a real figure**, drop the NPPA gazette PDF for the DPCO ceiling
-price schedule into `Data/India/`, extend `nppa_ceiling_prices.csv` with
-`source_tier=primary` rows covering the forecast items — Ferrous Salt + Folic
-acid first, it is a third of the waste on its own — and re-run. Nothing else
-needs to change.
+**Four items stay unpriced on purpose**, together 701 units — 2.1% of expiry.
+Sodium chloride is notified per 1000 ml glass bottle, Chlorhexidine and Timolol
+per millilitre, Artesunate + Sulphadoxine-Pyrimethamine per co-blistered
+course; stock here is counted in vials, bottles and tablets. Converting any of
+them needs a pack size this project does not hold, and inventing one to raise
+coverage would put a fabricated number inside a rupee claim. They count as
+uncovered instead.
+
+`COVERAGE_FLOOR` still gates the headline and still would if the price list
+regressed. This is the same pattern as `substitution_constraint()` and staff
+reallocation: the feature works, states its own limit, and does not invent past
+it.
 
 ## What the figure will and will not mean
 
@@ -134,7 +139,7 @@ def run() -> None:
     if coverage < COVERAGE_FLOOR:
         print(f"\n  NO HEADLINE FIGURE PUBLISHED.")
         print(f"  Coverage {coverage:.1%} is below the {COVERAGE_FLOOR:.0%} "
-              "floor, and the prices held are from a secondary source.")
+              "floor.")
         print("  Grossing up from here would be an extrapolation presented as "
               "a measurement.")
         print("\n  To publish: add primary-source NPPA gazette prices to "

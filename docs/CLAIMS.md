@@ -347,6 +347,40 @@ genuinely means the same tablet count. **34 distinct volumes across 36 classes.*
 > the limit out loud** — widening the forecast item set, not loosening the ATC
 > level, is what would make it fire more.
 
+### 7f. What the avoided waste is worth — REAL PRICES, MODELLED UNITS
+
+*Last verified against the live deployment: **2026-09-13**.*
+
+| Figure | Value | Status | Computed in |
+|---|---|---|---|
+| Ceiling-price coverage of expired units | **97.9%** (32,192 of 32,893) | **MEASURED** | `ingestion/build_waste_value.py` |
+| Value of priced expiry | **Rs 64,051.77** | **MEASURED on modelled units** | same |
+| Value of waste avoided by FEFO | **Rs 29,268** | **MEASURED on modelled units** | same |
+| Per PHC per year | **Rs 146** | **MEASURED on modelled units** | same |
+| Items priced | **35 of 39** | **MEASURED** | `ingestion/extract_nppa_prices.py` |
+| Price source | NPPA **Compendium of Prices 2022**, S.O. **1499(E)** of 30.03.2022 | **REAL, primary** | same |
+
+> ⚠️ **The prices are real; the units they multiply are not.** Expiry comes
+> from the generated ledger anchored to real HMIS demand. Say this as *"on a
+> modelled year of dispensing across 200 PHCs, at published DPCO ceiling
+> prices"* — never as observed savings.
+
+> ⚠️ **It understates, twice.** Ceiling prices exclude GST, and a ceiling is a
+> maximum rather than a typical procurement price. Where a medicine has several
+> pack sizes the **lowest** qualifying price is taken. A figure that understates
+> can be defended; one that flatters cannot.
+
+Until 2026-09-13 this module **refused to publish**: coverage was 26.9% from
+six secondary-sourced rows, and Ferrous Salt + Folic acid — 34.5% of all expiry
+on its own — had no price. Reading the compendium directly fixed both.
+`COVERAGE_FLOOR` (80%) still gates the headline if the price list regresses.
+
+**Four items are deliberately left unpriced** — 701 units, 2.1% of expiry.
+Sodium chloride is notified per 1000 ml glass bottle; Chlorhexidine and Timolol
+per millilitre; Artesunate + Sulphadoxine-Pyrimethamine per co-blistered
+course. Stock is counted in vials, bottles and tablets, so each would need an
+invented pack size. They count as uncovered instead.
+
 ---
 
 ## 7b. The Today dashboard — what the charts say

@@ -521,6 +521,47 @@ it is not padded to look better.
 
 ---
 
+### 14.1 Ceiling prices — REAL, primary source
+
+| | |
+|---|---|
+| Source | **NPPA Compendium of Prices 2022** — ceiling prices of scheduled formulations notified under S.O. **1499(E)** dated 30.03.2022, DPCO 2013 |
+| Obtained from | `https://nppa.gov.in/storage/uploads/pdf/Compendium-Prices-2022pdf-464b22085495ff4e3f8700c0e00cf45d.pdf` — nppa.gov.in serves this to a plain request, unlike mohfw.gov.in |
+| Extracted by | `ingestion/extract_nppa_prices.py` → `Data/India/nppa_ceiling_prices.csv` |
+| Consumed by | `ingestion/build_waste_value.py` |
+| Coverage | **35 of 39** tracked items; **97.9%** of expired units (32,192 of 32,893) |
+
+A ceiling price is the correct basis for valuing public-sector stock: it is
+what a government purchaser may lawfully be charged. The PDF carries a real
+embedded text layer, so no OCR is involved.
+
+**Why the parser is not line-by-line.** A medicine is listed once under its
+NLEM section number and its formulations follow beneath it without repeating
+the name; both names and formulations wrap across lines. Matching one line at a
+time found 997 prices but attached the wrong medicine to many and lost others
+entirely. The extractor carries the current medicine forward and completes a
+row when a price tail arrives. **Its invariant: every line carrying a price
+must become exactly one row** — 997 of 997. That check caught two regressions
+while it was being written (981 rows, then 994).
+
+**Which price is taken.** Only formulations quoted in the unit the item is
+stocked in, and then the **lowest** such ceiling price. Both are rules rather
+than case-by-case choices, and taking the lowest understates the value of
+avoided waste — the direction this project already errs in deliberately.
+
+**Four items are left unpriced**, together 701 units (2.1% of expiry): Sodium
+chloride (notified per 1000 ml glass bottle), Chlorhexidine and Timolol (per
+millilitre), Artesunate + Sulphadoxine-Pyrimethamine (per co-blistered course).
+Stock is counted in vials, bottles and tablets; converting needs a pack size
+this project does not hold, and inventing one would put a fabricated number
+inside a rupee claim.
+
+**Superseded:** six rows transcribed from a summary of the DPCO schedule,
+`source_tier: secondary`, covering 26.9% of expired units. Those must not be
+quoted again.
+
+---
+
 ## 15. What is real, after Block C
 
 | Component | Status |
