@@ -165,6 +165,111 @@ def supply_map(state: str = "") -> dict:
     }
 
 
+# Facility type codes, sent as integers because the register is the one
+# payload here big enough for the field name to cost more than the value.
+REGISTER_TYPES = {"phc": 0, "chc": 1}
+
+# Three decimal places is about 110 m. The register layer is a national dot
+# map at zoom 4-12; a dot cannot be placed more precisely than it can be seen,
+# and the fourth decimal costs ~15% of the payload for nothing.
+REGISTER_PRECISION = 3
+
+
+def facility_register(state: str = "") -> dict:
+    """Every PHC and CHC in the register, as points.
+
+    The map has been drawing 116 district nodes and, on the access layer, the
+    200 centres that report stock. That is the demonstration set. The register
+    behind it holds **35,122 PHCs and CHCs** — and a map that shows 200 of them
+    invites the reader to think that is the network.
+
+    This layer draws the rest: every centre with coordinates, with the
+    reporting ones marked. It answers the question the other layers cannot —
+    how much of India is *not* yet covered — which is the honest frame for
+    "national scale" and is also the onboarding story: the pattern exchange
+    gives a new district a seasonal shape on day one, so these are reachable
+    rather than hypothetical.
+
+    Sent as bare arrays rather than objects. 35,108 rows of
+    `{"lat": .., "lon": .., "type": .., "reporting": ..}` is roughly 2.5 MB of
+    mostly field names; positional arrays are about a third of that.
+    """
+    # `has_valid_coords` is the register's own flag and the same rule the
+    # district centroids use. It matters: 173 of the 35,108 PHCs and CHCs that
+    # carry coordinates carry impossible ones — a longitude of 75,070,600,009,
+    # a latitude equal to its longitude (which lands in Egypt), points in China
+    # and in the Arctic Ocean. Filtering only for NULL drew every one of them.
+    # Measured, the flag is exactly equivalent to an India bounding box here:
+    # nothing it admits falls outside, nothing it rejects falls inside.
+    where = ["country_code = 'IN'", "facility_type IN ('phc', 'chc')",
+             "has_valid_coords"]
+    params = []
+    if state:
+        where.append("admin_l1 = @state")
+        params.append(bigquery.ScalarQueryParameter("state", "STRING", state))
+
+    # Never SELECT * on facilities — the guard in app/bq.py refuses it, and
+    # this needs four columns out of forty.
+    rows = run_query(f"""
+        SELECT facility_type,
+               ROUND(latitude, {REGISTER_PRECISION}) AS lat,
+               ROUND(longitude, {REGISTER_PRECISION}) AS lon,
+               is_forecast_facility AS reporting
+        FROM `{D}.facilities`
+        WHERE {' AND '.join(where)}
+    """, params, cache_key=f"register:{state}", ttl=3600)
+
+    points = [[r["lat"], r["lon"], REGISTER_TYPES.get(r["facility_type"], 0),
+               1 if r["reporting"] else 0] for r in rows]
+    phc = sum(1 for p in points if p[2] == 0)
+    chc = len(points) - phc
+    reporting = sum(1 for p in points if p[3] == 1)
+
+    # Counted, not hidden: a centre held back by bad coordinates is still a
+    # centre, and the map says how many it cannot place.
+    excluded = run_query(f"""
+        SELECT COUNTIF(NOT has_valid_coords) AS n
+        FROM `{D}.facilities`
+        WHERE country_code = 'IN' AND facility_type IN ('phc', 'chc')
+          AND latitude IS NOT NULL AND longitude IS NOT NULL
+          {'AND admin_l1 = @state' if state else ''}
+    """, params, cache_key=f"register:bad:{state}", ttl=3600)[0]["n"]
+
+    return {
+        "points": points,
+        "counts": {"phc": phc, "chc": chc, "total": len(points),
+                   "reporting": reporting, "unplaceable": excluded},
+        "scope": state or "All India",
+        "summary": _register_summary(phc, chc, reporting, state, excluded),
+    }
+
+
+def _register_summary(phc: int, chc: int, reporting: int, state: str,
+                      excluded: int = 0) -> dict:
+    total = phc + chc
+    share = round(100 * reporting / total, 1) if total else 0
+    return {
+        "total": total,
+        "reporting": reporting,
+        "share": share,
+        "headline": (
+            f"{total:,} primary and community health centres are in the "
+            f"register for {state or 'India'}. {reporting:,} of them "
+            f"({share}%) report stock today; the rest are what the platform "
+            "would onboard."
+            + (f" {excluded} more carry coordinates the register cannot "
+               "place — impossible latitudes and longitudes — and are left "
+               "off rather than drawn somewhere wrong." if excluded else "")
+            if total else "No centre in this scope carries coordinates."),
+        "unplaceable": excluded,
+        "onboarding": (
+            "A district joining brings three months of history, which is not "
+            "enough to find its own seasonality. It borrows the pooled "
+            "seasonal shape instead and is useful on day one — which is why "
+            "the uncovered centres are a queue rather than a gap."),
+    }
+
+
 def _summary(districts: list, flows: list) -> dict:
     """What the map shows, in words, so the legend is not the only guide."""
     if not districts:

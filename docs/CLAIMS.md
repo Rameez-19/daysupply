@@ -835,6 +835,44 @@ fails loudly rather than reading as a calm network.
 a vehicle moved. Distance is straight-line between district centres, which
 understates road distance — so any distance shown is a floor, never a boast.
 
+### 7a-i. The register layer — every centre, not just the reporting ones
+
+*Last verified against the live deployment: **2026-09-13**.*
+
+| Figure | Value | Status | Computed in |
+|---|---|---|---|
+| PHCs and CHCs drawn | **34,935** | **MEASURED** | `app/mapview.py::facility_register` |
+| ...of which primary health centres | **29,564** | **MEASURED** | same |
+| ...of which community health centres | **5,371** | **MEASURED** | same |
+| Reporting stock today | **200** (**0.6%**) | **MEASURED** | same — the forecast set every other view counts |
+| Carry coordinates that cannot be placed | **173** | **MEASURED** | excluded and disclosed, not drawn |
+| Payload | 687 KB, 0.58 s warm | **MEASURED** | fetched only when the layer is selected |
+
+The other three layers draw the demonstration set — 116 district nodes, and on
+Nearest help the 200 centres that report stock. A map showing only those
+invites a reader to believe 200 centres are the network. This layer draws the
+rest, so **national scale is visible rather than asserted**.
+
+> ⚠️ **0.6% is the honest coverage figure and must not be rounded away.** The
+> claim is not that 34,935 centres are live; it is that they are in the
+> register and the platform would onboard them. The onboarding argument is the
+> pattern exchange: a district joining brings three months of history, which is
+> too little to find its own seasonality, so it borrows the pooled seasonal
+> shape and is useful on day one (§5).
+
+**Coordinates are filtered on the register's own `has_valid_coords` flag**, the
+same rule the district centroids use. It matters: 173 of the 35,108 PHCs and
+CHCs that carry coordinates carry impossible ones — a longitude of
+**75,070,600,009**, a latitude equal to its own longitude (which lands in
+Egypt), points in China and in the Arctic Ocean. A first version filtered only
+for NULL and would have drawn every one of them. Measured, the flag is exactly
+equivalent to an India bounding box here: nothing it admits falls outside,
+nothing it rejects falls inside, so the two rules cannot drift apart unnoticed.
+
+Rendered to a canvas with hit-detection off. 35,000 SVG nodes is a frozen tab.
+
+---
+
 ## 8. Beds and personnel
 
 *Last verified against the live deployment: **2026-09-02**.*

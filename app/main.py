@@ -321,6 +321,21 @@ async def nearest_help(state: str = "", district: str = "",
     return _facility_query(access.nearest_help, state, district, vital_only)
 
 
+@app.get("/api/v1/map/register")
+async def supply_map_register(state: str = ""):
+    """Every PHC and CHC in the register, as points.
+
+    The other layers draw the 116 reporting districts and the 200 centres that
+    report stock. That is the demonstration set, and a map showing only it
+    invites the reader to think that is the network. This draws the rest, so
+    "national scale" is something visible rather than asserted.
+
+    Lazily fetched by the front end — only when the layer is selected — because
+    it is the one payload here measured in hundreds of kilobytes.
+    """
+    return _facility_query(mapview.facility_register, state)
+
+
 @app.get("/api/v1/map")
 async def supply_map(state: str = ""):
     """District nodes and redistribution arcs for the map view.

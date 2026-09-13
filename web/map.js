@@ -17,6 +17,8 @@ let districtLayer = null;
 let flowLayer = null;
 let mapData = null;
 let accessLayer = null;
+let registerLayer = null;
+let registerData = null;
 // Drawn features, keyed by the identity their table row carries, so a
 // click on a row can find the thing it refers to on the map.
 let flowFeatures = {};
@@ -97,8 +99,10 @@ async function loadMap() {
     const res = await fetch(`/api/v1/map${scope}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     mapData = await res.json();
-    // Scope changed, so the nearest-help answer is stale too.
+    // Scope changed, so the nearest-help answer and the register are stale
+    // too.
     accessData = null;
+    registerData = null;
     accessShown = PAGE;
     flowShown = PAGE;
 
@@ -253,6 +257,19 @@ function drawLegend() {
     return;
   }
 
+  if (currentLayer === 'register') {
+    const c = (registerData && registerData.counts) || {};
+    host.innerHTML = `
+      <div class="legend-block">
+        <span class="legend-title">Every centre in the register</span>
+        <span class="legend-key"><i style="background:#b91c1c"></i>Reports stock today (${(c.reporting || 0).toLocaleString('en-IN')})</span>
+        <span class="legend-key"><i style="background:#0369a1"></i>Community health centre (${(c.chc || 0).toLocaleString('en-IN')})</span>
+        <span class="legend-key"><i style="background:#94a3b8"></i>Primary health centre (${(c.phc || 0).toLocaleString('en-IN')})</span>
+        <span class="legend-note">One dot per centre, at its own coordinates &mdash; not a district average.</span>
+      </div>`;
+    return;
+  }
+
   const keys = currentLayer === 'risk'
     ? [['#b91c1c', 'Stocked out'], ['#ea580c', 'Vital short'],
        ['#d97706', 'Below reorder'], ['#15803d', 'Holding']]
@@ -315,7 +332,8 @@ async function setMapLayer(layer) {
     `${window.location.pathname}${qs ? '?' + qs : ''}${window.location.hash}`);
   for (const [id, on] of [['layer-risk', layer === 'risk'],
                           ['layer-headroom', layer === 'headroom'],
-                          ['layer-access', layer === 'access']]) {
+                          ['layer-access', layer === 'access'],
+                          ['layer-register', layer === 'register']]) {
     const b = document.getElementById(id);
     if (b) b.classList.toggle('active', on);
   }
@@ -325,6 +343,7 @@ async function setMapLayer(layer) {
   // treated" is not a district-level question — a district average cannot tell
   // anyone which clinic to drive to.
   const isAccess = layer === 'access';
+  const isRegister = layer === 'register';
   // The standing note describes district centroids and arc thickness. The
   // access layer draws neither, so leaving it up would explain the wrong map.
   //
@@ -333,15 +352,38 @@ async function setMapLayer(layer) {
   // accessSummaryCards() replaces a few lines below, throwing the hide away
   // while the note this was meant to hide sat untouched the whole time.
   const prov = document.getElementById('map-provenance');
-  if (prov) prov.hidden = isAccess;
+  if (prov) prov.hidden = isAccess || isRegister;
   for (const [id, show] of [['access-section', isAccess],
-                            ['flow-section', !isAccess]]) {
+                            ['flow-section', !isAccess && !isRegister]]) {
     const el = document.getElementById(id);
     if (el) el.hidden = !show;
   }
   const flowToggle = document.getElementById('show-flows');
   if (flowToggle && flowToggle.parentElement) {
-    flowToggle.parentElement.style.display = isAccess ? 'none' : '';
+    flowToggle.parentElement.style.display =
+      (isAccess || isRegister) ? 'none' : '';
+  }
+
+  // Every centre in the register. Fetched only when the layer is asked
+  // for: it is the one payload here measured in hundreds of kilobytes, and
+  // the other three layers must not pay for it.
+  if (isRegister) {
+    const summary = document.getElementById('map-summary');
+    if (districtLayer) { mapInstance.removeLayer(districtLayer); districtLayer = null; }
+    if (flowLayer) { mapInstance.removeLayer(flowLayer); flowLayer = null; }
+    if (accessLayer) { mapInstance.removeLayer(accessLayer); accessLayer = null; }
+    try {
+      if (summary && !registerData) {
+        summary.innerHTML = panelLoading('Placing every centre in the register...');
+      }
+      await loadRegister();
+      if (summary) summary.innerHTML = registerSummaryCards();
+      drawRegister();
+      drawLegend();
+    } catch (e) {
+      if (summary) summary.innerHTML = panelError(e.message, "setMapLayer('register')");
+    }
+    return;
   }
 
   if (isAccess) {
@@ -365,6 +407,7 @@ async function setMapLayer(layer) {
   }
 
   if (accessLayer) { mapInstance.removeLayer(accessLayer); accessLayer = null; }
+  if (registerLayer) { mapInstance.removeLayer(registerLayer); registerLayer = null; }
   if (mapData) {
     const summary = document.getElementById('map-summary');
     if (summary) summary.innerHTML = mapSummaryCards();
@@ -718,3 +761,92 @@ document.addEventListener('click', event => {
   if (row.dataset.focus === 'flow') focusFlow(key);
   else focusAccess(key);
 });
+
+
+// ===== Every centre in the register =====
+//
+// The other three layers draw the demonstration set: 116 district nodes, and
+// on Nearest help the 200 centres that report stock. A map showing only those
+// invites the reader to believe 200 centres are the network. They are 0.6% of
+// it.
+//
+// This draws the rest - 34,935 PHCs and CHCs at their own coordinates - so
+// "national scale" is something a reader can see rather than a word in a
+// sentence. The 173 centres whose coordinates are impossible (a longitude of
+// 75,070,600,009; a latitude equal to its own longitude, which lands in Egypt)
+// are counted in the summary rather than drawn somewhere wrong.
+//
+// Rendered to a canvas, not to SVG. Thirty-five thousand DOM nodes is a frozen
+// tab; one canvas is a redraw. `interactive: false` matters as much - hit
+// detection across 35,000 paths costs more than painting them.
+
+async function loadRegister() {
+  if (registerData) return registerData;
+  const scope = currentState ? `?state=${encodeURIComponent(currentState)}` : '';
+  const res = await fetch(`/api/v1/map/register${scope}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  registerData = await res.json();
+  return registerData;
+}
+
+function drawRegister() {
+  if (!mapInstance || !registerData) return;
+  if (registerLayer) mapInstance.removeLayer(registerLayer);
+
+  const renderer = L.canvas({ padding: 0.3 });
+  registerLayer = L.layerGroup();
+
+  // Reporting centres drawn last, so the 200 sit on top of the 34,735 rather
+  // than under them.
+  const pts = (registerData.points || []).slice().sort((a, b) => a[3] - b[3]);
+  for (const [lat, lon, type, reporting] of pts) {
+    const colour = reporting ? '#b91c1c' : (type === 1 ? '#0369a1' : '#94a3b8');
+    L.circleMarker([lat, lon], {
+      renderer,
+      radius: reporting ? 3.2 : (type === 1 ? 1.8 : 1.1),
+      stroke: !!reporting,
+      color: colour,
+      weight: reporting ? 1.2 : 0,
+      fillColor: colour,
+      fillOpacity: reporting ? 0.95 : 0.5,
+      interactive: false,
+    }).addTo(registerLayer);
+  }
+  registerLayer.addTo(mapInstance);
+
+  // Frame the country, not the reporting states: the point of this layer is
+  // everything outside them.
+  const lats = pts.map(p => p[0]);
+  const lons = pts.map(p => p[1]);
+  if (lats.length) {
+    mapInstance.fitBounds(L.latLngBounds(
+      [Math.min(...lats), Math.min(...lons)],
+      [Math.max(...lats), Math.max(...lons)]).pad(0.05));
+  }
+}
+
+function registerSummaryCards() {
+  const c = (registerData && registerData.counts) || {};
+  const s = (registerData && registerData.summary) || {};
+  return `
+    <div class="map-summary-row">
+      <div class="map-stat">
+        <div class="map-stat-value">${(c.total || 0).toLocaleString('en-IN')}</div>
+        <div class="map-stat-label">centres in the register</div>
+      </div>
+      <div class="map-stat">
+        <div class="map-stat-value">${(c.reporting || 0).toLocaleString('en-IN')}</div>
+        <div class="map-stat-label">reporting stock today</div>
+      </div>
+      <div class="map-stat">
+        <div class="map-stat-value">${s.share === undefined ? '\u2014' : s.share + '%'}</div>
+        <div class="map-stat-label">of the network covered</div>
+      </div>
+      <div class="map-stat">
+        <div class="map-stat-value">${(c.chc || 0).toLocaleString('en-IN')}</div>
+        <div class="map-stat-label">community health centres</div>
+      </div>
+    </div>
+    <p class="section-note">${esc(s.headline || '')}</p>
+    <p class="section-note">${esc(s.onboarding || '')}</p>`;
+}
