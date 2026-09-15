@@ -54,11 +54,10 @@ than losing the figure. Male and female health assistants remain distinct
 *items* for voice capture — what a worker can report is a different question
 from what the establishment sanctions.
 
-**Vintage.** One edition newer exists: "Health Dynamics of India
-(Infrastructure and Human Resources) 2022-23", as on 31 March 2023. MoHFW
-blocks automated download, so it needs a human with a browser; the extractor
-should take it with only its page map updated. The source year is carried on
-every row so nothing can quote this as current.
+**Vintage.** A newer edition exists and has been obtained: "Health Dynamics
+of India (Infrastructure & Human Resources) 2023-24", as on 31 March 2024,
+saved as Data/India/health-dynamics-2023-24.pdf. It is not used: its tables were converted to vector outlines when the PDF was produced. Every page carries one real text object, the running header, and tens of thousands of drawn paths, so no parser can read the numbers; only rendering plus OCR or hand transcription could. On 2026-09-15 the decision was to stay on 2021-22 rather than transcribe. The 2022-23 edition was never located in a downloadable form. The
+source year is carried on every row so nothing can quote this as current.
 """
 
 from __future__ import annotations

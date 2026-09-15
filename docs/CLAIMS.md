@@ -1076,7 +1076,7 @@ warehouse. BigQuery time travel keeps a seven-day undo window on that table.
 | `Ahmadnagar` (HMIS) vs `Ahmednagar` (facility master) | both spellings kept; reconciled via `district_key`; UI displays one | **REAL** | `parse_hmis.py`, `app/facilities.py` |
 | 2019-20 HMIS = **April 2019 – March 2020** | Feb and Mar 2020 are COVID-affected | **REAL caveat** | `Data/README.md` §4 |
 | **1 duplicated write-off id** in 770 expiry events | `generate_usage.py` builds write-off ids as `seed-x-{facility}-{item}-{date}` with no batch discriminator, so two batches of one item expiring at one facility on one day collide | **REAL, known, deliberately unfixed** | `ingestion/generate_usage.py:461`; pinned by `tests/test_supply_chain.py::TestKnownSeedDefects` |
-| Rural Health Statistics vintage = **2021-22** (as on 31 Mar 2022; refreshed from 2017 on 2026-09-11) | one newer edition, *Health Dynamics of India 2022-23*, needs manual download | **REAL caveat** | `extract_rhs_2122.py`, `load_staffing.py`, `source_year` on every row |
+| Rural Health Statistics vintage = **2021-22** (as on 31 Mar 2022; refreshed from 2017 on 2026-09-11) | a newer edition, *Health Dynamics of India 2023-24* (as on 31 Mar 2024), was obtained on 2026-09-15 and **deliberately not used**: its tables are vector outlines rather than text and cannot be parsed, and staying on 2021-22 was chosen over hand transcription | **REAL caveat** | `extract_rhs_2122.py`, `load_staffing.py`, `source_year` on every row |
 
 ---
 

@@ -24,11 +24,10 @@ state names vanish and the columns collapse into a bare digit stream
 extracts at full fidelity. That difference is the whole reason this script
 reads the PDF rather than the text file sitting next to it.
 
-The one edition newer still — "Health Dynamics of India (Infrastructure and
-Human Resources) 2022-23", as on 31 March 2023 — is the same series under a new
-name and is **not** machine-fetchable. A human with a browser has to download
-it. The table layout is unlikely to have changed between consecutive editions,
-so this extractor should take it with only PAGES updated.
+A newer edition of the same series — "Health Dynamics of India (Infrastructure
+& Human Resources) 2023-24", as on 31 March 2024 — has been obtained and saved as
+Data/India/health-dynamics-2023-24.pdf. **This extractor cannot read it**, and
+changing PAGES would not help: its tables were converted to vector outlines when the PDF was produced. Every page carries one real text object, the running header, and tens of thousands of drawn paths, so no parser can read the numbers; only rendering plus OCR or hand transcription could. On 2026-09-15 the decision was to stay on 2021-22 rather than transcribe. The 2022-23 edition was never located in a downloadable form.
 
 ## What changed between editions, and what it costs
 
