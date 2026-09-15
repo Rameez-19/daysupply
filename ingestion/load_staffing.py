@@ -56,7 +56,13 @@ from what the establishment sanctions.
 
 **Vintage.** A newer edition exists and has been obtained: "Health Dynamics
 of India (Infrastructure & Human Resources) 2023-24", as on 31 March 2024,
-saved as Data/India/health-dynamics-2023-24.pdf. It is not used: its tables were converted to vector outlines when the PDF was produced. Every page carries one real text object, the running header, and tens of thousands of drawn paths, so no parser can read the numbers; only rendering plus OCR or hand transcription could. On 2026-09-15 the decision was to stay on 2021-22 rather than transcribe. The 2022-23 edition was never located in a downloadable form. The
+saved as Data/India/health-dynamics-2023-24.pdf. It is not used: its tables
+were converted to vector outlines when the PDF was produced. Every page carries
+one real text object, the running header, and tens of thousands of drawn paths,
+so no parser can read the numbers; only rendering plus OCR or hand
+transcription could. On 2026-09-15 the decision was to stay on 2021-22 rather
+than transcribe. The 2022-23 edition was never located in a downloadable form.
+The
 source year is carried on every row so nothing can quote this as current.
 """
 

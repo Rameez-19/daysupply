@@ -889,7 +889,12 @@ computed against generated attendance.
 **Vintage.** A newer edition exists and has been obtained: *Health Dynamics
 of India (Infrastructure & Human Resources) 2023-24*, as on 31 March 2024, from
 https://www.mohfw-dohfw.gov.in/static/uploads/2026/08/5b74935d0919e1ff43c1fb35bfc4bfc7.pdf (saved as `Data/India/health-dynamics-2023-24.pdf`). **It is not used:**
-its tables were converted to vector outlines when the PDF was produced. Every page carries one real text object, the running header, and tens of thousands of drawn paths, so no parser can read the numbers; only rendering plus OCR or hand transcription could. On 2026-09-15 the decision was to stay on 2021-22 rather than transcribe. The 2022-23 edition was never located in a downloadable form. `source_year = 2022` is carried on every row.
+its tables were converted to vector outlines when the PDF was produced. Every
+page carries one real text object, the running header, and tens of thousands of
+drawn paths, so no parser can read the numbers; only rendering plus OCR or hand
+transcription could. On 2026-09-15 the decision was to stay on 2021-22 rather
+than transcribe. The 2022-23 edition was never located in a downloadable form.
+`source_year = 2022` is carried on every row.
 
 **Attendance is not shown, and no longer generated.** It was a fixed-seed
 propensity and was removed from every page on 2026-09-11 (CLAIMS §8a);
