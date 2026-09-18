@@ -120,9 +120,16 @@ async function loadSurgeImpact() {
   }
 }
 
+let scenarioOptionsLoading = null;
 async function loadScenarioOptions() {
   const sel = document.getElementById('scenario-combo');
-  if (!sel || sel.options.length) return;
+  if (!sel) return;
+  if (sel.options.length && scenarioCombos.length) return;
+  if (scenarioOptionsLoading) return scenarioOptionsLoading;
+  scenarioOptionsLoading = _loadScenarioOptions(sel);
+  try { await scenarioOptionsLoading; } finally { scenarioOptionsLoading = null; }
+}
+async function _loadScenarioOptions(sel) {
   try {
     const res = await fetch('/api/v1/surge/scenario/options');
     const data = await res.json();
@@ -227,6 +234,40 @@ if (scenarioSlider) {
 const scenarioBtn = document.getElementById('scenario-run');
 if (scenarioBtn) scenarioBtn.addEventListener('click', runScenario);
 
+// The banner on Today names a district and a medicine class. Following it
+// used to land on Plan ahead with the scenario picker still on its first
+// option, so the reader had to find the same district again by hand — and if
+// that district has no stock positions for the class, could not, and did not
+// know why. Scenario mode is deliberately limited to combinations with real
+// stock (see get_scenario_options); when the surge falls outside that set the
+// page now says so in words instead of leaving the picker unrelated to the
+// warning that brought the reader here.
+async function openScenarioFor(districtKey, atcClass) {
+  switchTab('plan-view');
+  await loadScenarioOptions();
+  const sel = document.getElementById('scenario-combo');
+  const out = document.getElementById('scenario-result');
+  if (!sel || !out) return;
+  const want = String(districtKey || '').toUpperCase();
+  const idx = scenarioCombos.findIndex(c =>
+    String(c.district || '').toUpperCase() === want && c.atc_class === atcClass);
+  const section = sel.closest('.dashboard-section') || sel;
+  if (idx >= 0) {
+    sel.value = String(idx);
+    await runScenario();
+  } else {
+    out.innerHTML = `<div class="empty-state"><p>
+      Scenario mode cannot run for <strong>${atcClass}</strong> in
+      <strong>${districtKey}</strong>: the reporting centres in that district
+      hold no stock positions for this class, and a scenario is only computed
+      against real stock. The early warning itself stands &mdash; it comes from
+      HMIS case counts, not from stock. Pick a district and class from the list
+      to run a scenario there.</p></div>`;
+  }
+  if (section.scrollIntoView) section.scrollIntoView({ block: 'start' });
+}
+window.openScenarioFor = openScenarioFor;
+
 
 // ===== Surge banner on Today =====
 // Surge is not a separate mode. During an emergency this IS the daily view, so
@@ -266,7 +307,8 @@ async function loadSurgeBanner(hostId = 'v2-surge-banner') {
           ${s.example_items ? `Affects <strong>${s.example_items}</strong>.` : ''}
           ${others > 0 ? `${others} other signal${others > 1 ? 's' : ''} in this scope.` : ''}
         </p>
-        <button class="btn-primary" onclick="switchTab('plan-view')">
+        <button class="btn-primary"
+                onclick="openScenarioFor(${JSON.stringify(s.district_key || '')}, ${JSON.stringify(s.atc_class || '')})">
           See what it changes
         </button>
       </div>`;
