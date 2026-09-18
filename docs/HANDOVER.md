@@ -31,12 +31,14 @@ difference will overclaim in the submission.
 
 | Component | Status | Notes |
 |---|---|---|
-| Gemini extraction (voice + chat) | **REAL, WORKING IN PROD** | Fixed 2026-09-01 by migrating to `google-genai` and pinning `gemini-3.6-flash`. Verified live: clean Hindi-English extracted correctly at 0.95 confidence. Intermittent 503s under load — see §9b |
+| Gemini extraction (voice + chat + register photo) | **REAL, WORKING IN PROD** | Fixed 2026-09-01 by migrating to `google-genai` and pinning `gemini-3.6-flash`. Verified live: clean Hindi-English extracted correctly at 0.95 confidence. Intermittent 503s under load — see §9b |
 | **Capture persistence** | **BROKEN** | Extraction works; storage does not. The Firestore database does not exist, and nothing reads `pending_events` into BigQuery even if it did. `captures_today` therefore stays 0. See §9c |
-| Offline queue + sync | **REAL** | Service Worker + IndexedDB, genuinely works offline |
+| Offline queue + sync | **REAL** | Service Worker + IndexedDB, genuinely works offline. Queues both recordings and rows the worker already confirmed; the Report page shows the count waiting |
+| Report page (tap / voice / photo / scan / type / staff / beds) | **REAL** | Built 2026-09-18. Preview-then-confirm on every model-read mode; Hindi/English; centre remembered on the phone. See CLAIMS §7g |
+| Escalation note drafting (Gemini) | **REAL** | `app/brief.py`. Grounded on the row, number-checked, flagged if it strays. See CLAIMS §7g |
 | PWA / dashboard UI | **REAL** | Vanilla JS, Chart.js, deployed and functional |
 | Barcode scanning | **REAL** | `html5-qrcode` |
-| Review queue | **REAL** | Confidence-threshold routing. Falls back to three **labelled** worked examples when nothing real is pending (`is_example_data: true`) |
+| Review queue | **REAL** | Confidence-threshold routing. Only real held extractions from Firestore; the three invented "worked examples" and `app/demo_data.py` were removed 2026-09-18, and an empty queue says it is empty |
 | Cloud Run deployment | **REAL** | Live, containerised, `asia-south1` |
 | Haversine distance maths | **REAL** | Correct calculation |
 | **Facility data** | **REAL** | All 200,438 facilities in BigQuery; dashboard queries them directly |
@@ -304,7 +306,8 @@ scalability slide; do not build against it.
 **Deploy:**
 ```
 gcloud run deploy daysupply --source . --region asia-south1 \
-  --min-instances 0 --allow-unauthenticated
+  --min-instances 1 --allow-unauthenticated
+# --min-instances 1 for the submission window; drop to 0 afterwards.
 ```
 
 **Health check — read this before wiring any monitor.**
@@ -370,7 +373,7 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
    (Block C) so it becomes part of the logic rather than decoration.
 3. **Scope items not in the original spec** — barcode scanning, expiry tracking,
    five-state filter — were added during the UI sprint. Barcode is justified
-   (degradation hierarchy: barcode → voice → chat). Expiry needs Block C to earn
+   (degradation hierarchy: tap → barcode → voice → chat → photo → sms). Expiry needs Block C to earn
    its place.
 4. **Deck and video script live outside the repo.** Move to `docs/`.
 5. **"India and the Global South"** copy predates the scope change. Remove.

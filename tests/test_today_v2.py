@@ -430,8 +430,32 @@ class TestBedsAndStaffAreGraded:
         d = fn()
         assert d["resource"] == resource
         assert d["empty"] is False
-        assert len(d["kpis"]) == 5, "the scorecard is five questions"
+        assert len(d["kpis"]) == 6, ("five questions, plus the one tile "
+                                     "that is counted rather than modelled")
         assert d["distribution"] and d["ranking"] and d["quadrant"]
+
+    @pytest.mark.parametrize("fn,noun", [
+        (today_v2.bed_scorecard, "beds"),
+        (today_v2.staff_scorecard, "attendance"),
+    ])
+    def test_the_last_tile_counts_what_centres_reported(self, fn, noun):
+        """The one presence figure the system holds is what a centre
+        reported through the Report page in the last 24 hours, counted from
+        the ledger. It is allowed to read zero and must say so; it is not
+        allowed to be filled in by anything modelled."""
+        d = fn()
+        tile = d["kpis"][-1]
+        assert tile["label"] == f"Centres reporting {noun} today"
+        rep = d["reported_today"]
+        assert tile["value"] == rep["centres"]
+        assert rep["centres"] <= rep["reports"]
+        assert rep["window_hours"] == 24
+        assert "Not modelled" in rep["basis"]
+        if rep["centres"] == 0:
+            assert tile["tone"] == "unknown"
+            assert "No centre has reported" in tile["sub"]
+        else:
+            assert tile["tone"] == "ok"
 
     @pytest.mark.parametrize("fn", [today_v2.bed_scorecard,
                                     today_v2.staff_scorecard])
@@ -460,8 +484,7 @@ class TestBedsAndStaffAreGraded:
     @pytest.mark.parametrize("fn", [today_v2.bed_scorecard])
     def test_a_single_district_withholds_the_spread_metric(self, fn):
         d = fn("Assam", "Kamrup R")
-        spread = d["kpis"][-1]
-        assert spread["label"] == "Districts affected"
+        spread = next(k for k in d["kpis"] if k["label"] == "Districts affected")
         assert spread["value"] is None
         assert "single district" in spread["says"]
 

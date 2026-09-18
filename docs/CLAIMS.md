@@ -912,6 +912,37 @@ Rendered to a canvas with hit-detection off. 35,000 SVG nodes is a frozen tab.
 
 ---
 
+## 7g. The Report page — what a health worker can do, and what is guaranteed
+
+*Built 2026-09-18. Every fact here is checkable in `web/report.js`,
+`app/capture_pipeline.py`, `app/capture.py` and `GET /api/v1/capture-modes`.*
+
+| Claim | Where it is true |
+|---|---|
+| **Six ways in, one pipeline**: tap, barcode, voice, chat, register photo, SMS | `capture_pipeline.SOURCES`; every source ends in `route()` |
+| **Nothing is written until the worker has heard it read back and said yes** — voice, chat and photo all preview first; `preview()` never persists | `capture_pipeline.preview()`; `tests/test_report_flow.py::TestPreviewNeverWrites` |
+| The one exception is the **offline queue**, which syncs with nobody holding the phone and so goes straight through the confidence gate | `app.js syncQueue()`; `TestVoiceAndChatPreview::test_voice_without_preview_still_writes` |
+| A **confirmed row cannot skip the gate**: an unrecognised item, an event type the ledger does not record, or a missing quantity is still held for the pharmacist | `TestConfirmWritesThroughTheGate` |
+| A client-supplied item id is **verified against the catalogue, never trusted** | `route()`; `test_a_client_supplied_id_is_verified_not_trusted` |
+| **A register photo can never write unconfirmed** — `handle_photo()` has no non-preview path | `app/capture.py`; `TestPhotoIsAlwaysAPreview` |
+| **39 tap tiles** — the forecast items; **16 carry a Devanagari name** from the catalogue's `spoken_variants`, the rest show their shortest spoken variant. Nothing is machine-transliterated | `items.quick_list()`; `GET /api/v1/items/quick` |
+| The page reads in **Hindi or English** from one dictionary; both languages carry the same keys, tested | `REPORT_STRINGS`; `TestTheReportPageStrings` |
+| The read-back is **spoken** in the chosen language via the browser's speech synthesis (`hi-IN` / `en-IN`). No cloud TTS call is made | `speakReadback()` |
+| The centre is **chosen once and remembered on the phone**; the old page posted every voice note against a hardcoded facility id | `report.js`; `test_the_page_no_longer_posts_against_a_hardcoded_centre` |
+| **Offline** is a sentence and a count of what the phone still holds | `updateOfflineLine()` |
+| **Staff on duty today** is captured as personnel `count` events through the same pipeline. It is the only attendance figure the system holds | `staffReadback()`; `test_staff_on_duty_goes_through_as_personnel` |
+| **SMS**: `POST /api/v1/sms-note` accepts `sender` and `message`; the message must begin with the centre id; the reply is one plain line per record. **No gateway is connected**, and the docs and the endpoint both say so | `capture.handle_sms()`; `TestSms` |
+| The review queue holds **only real extractions**; the invented worked examples are gone | §12 |
+| **Beds in use right now** is captured the same way, as bed `count` events against the closed bed vocabulary | `bedsReadback()`; `capture_pipeline.BED_VOCABULARY` |
+| Today's staff and bed views each carry a **"Centres reporting … today" tile counted from the ledger** (capture-sourced `count` events in the last 24 hours, in scope). It read **0** on 2026-09-18 and says so; nothing is modelled in its place | `today_v2.reported_today()`; `tests/test_today_v2.py` |
+| **The action queue drafts the escalation note with Gemini**, grounded on the row's own figures. Every number in the draft is checked against the row; a draft that mentions a figure not in the data is returned **flagged with the foreign numbers listed**, never silently | `app/brief.py`; `POST /api/v1/action-queue/brief`; `tests/test_brief.py` |
+| The draft is told not to state a cause (not in the data), not to name anyone or anything not in the facts, and to end by asking for the decision rather than making it | `brief.SYSTEM` |
+
+**Not claimed:** that any ASHA has used it; that speech synthesis is available
+on every handset (it is a browser feature, absent on some); that a photo of a
+handwritten register reads accurately — every row is shown for checking
+precisely because it may not.
+
 ## 8. Beds and personnel
 
 *Last verified against the live deployment: **2026-09-02**.*
@@ -949,6 +980,13 @@ Rendered to a canvas with hit-detection off. 35,000 SVG nodes is a frozen tab.
 > disclosed any more because it is not shown any more — see §8a.
 
 ### 8a. Staff attendance — removed, not disclosed
+
+> **2026-09-18.** One attendance figure now exists again, and it is the only
+> kind this system will hold: **what a centre reports**, through the Report
+> page's *Staff today* form, as personnel `count` events in the ledger. The
+> staff view carries a tile counting centres that reported in the last 24
+> hours. On the day it was built it read 0, which is the truth. Nothing
+> below this note has changed: the generated series is gone and stays gone.
 
 *Last verified against the live deployment: **2026-09-11**.*
 
@@ -1153,10 +1191,10 @@ with the one we can.
 | Figure | Why it is generated |
 |---|---|
 | **1,157,367 daily stock events** | no per-facility daily stock data is published in India by anyone |
-| Bed **occupancy** (2,430 turned away) | derived from real HMIS admission volumes × assumed 1.8-day length of stay |
+| Bed **occupancy** (2,430 turned away) | derived from real HMIS admission volumes × assumed 1.8-day length of stay. Since 2026-09-18 a centre can report **beds in use right now** from the Report page; the bed view's "Centres reporting beds today" tile counts those reports (0 at build) and the tile text says the occupancy figures beside it are modelled |
 | ~~Staff **attendance** (53% of sanctioned)~~ | **REMOVED from the product 2026-09-11 — do not quote it at all.** It was a fixed-seed random draw, and 875 of 928 rows carried its "nobody on duty" flag. See §8a. |
 | `captures_today` | **NOT generated — counted, and the loop is closed.** Reads **9** all-time (9 chat, 0 voice, 0 barcode), written straight into `resource_events` above the confidence gate. `is_generated: false`. It moves within seconds of a capture. |
-| Review-queue items | **Currently 4 REAL held extractions**, `is_example_data: false` — items the model was unsure about, awaiting a human. Three worked examples exist as a fallback *only* when nothing real is pending, and are then labelled `is_example_data: true` with a banner. **Check the flag before describing them.** |
+| Review-queue items | **Only real held extractions** (4 on 2026-09-18: 3 chat, 1 barcode), `is_example_data` is always `false`. The three invented "worked examples" that used to fill an empty queue were removed on 2026-09-18 with `app/demo_data.py`; an empty queue now says it is empty. |
 
 **The one sentence that must accompany any demo figure:**
 

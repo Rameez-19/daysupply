@@ -81,7 +81,18 @@ def normalise_loss_reason(event_type: str, reason) -> str | None:
 # A scanned barcode identifies the product outright.
 BARCODE_CONFIDENCE = 1.0
 
-SOURCES = ("barcode", "voice", "chat")
+# `tap`: a medicine tile was pressed and a number typed. `photo`: a page of
+# the stock register photographed and read by Gemini, then confirmed by the
+# worker before anything is written. `sms`: plain text arriving from a
+# gateway, for a phone with no data connection. Every one of them ends in
+# `route()`; the source only says how the record came in.
+SOURCES = ("barcode", "voice", "chat", "tap", "photo", "sms")
+
+# A record the worker has read back and confirmed, or entered by tapping a
+# named tile, has no extraction left to doubt. Like a barcode, it carries full
+# confidence; unlike a barcode it can still lack a quantity, and then it is
+# reviewed exactly as a spoken record would be.
+CONFIRMED_CONFIDENCE = 1.0
 
 RESOURCE_TYPES = ("medicine", "bed", "personnel")
 
@@ -197,7 +208,14 @@ def route(extractions: list[dict], facility_id: str, source: str,
 
         # Server-side matching, always. The model is never asked for an
         # item_id — a hallucinated drug code is the worst failure available.
-        item_id = match_resource(local_name, resource_type)
+        # A client MAY name one (a tapped tile, a confirmed preview row), and
+        # then it is verified against the catalogue rather than trusted: an id
+        # that is not in the catalogue falls back to matching the name.
+        given = str(raw.get("item_id") or "").strip()
+        if given and resource_type == "medicine" and item_catalog.known(given):
+            item_id = given
+        else:
+            item_id = match_resource(local_name, resource_type)
 
         record = {
             "event_id": str(uuid.uuid4()),
@@ -251,6 +269,63 @@ def route(extractions: list[dict], facility_id: str, source: str,
             result["events"].append(record)
 
     return result
+
+
+def describe(result: dict) -> dict:
+    """Add the catalogue's display name to every record, for a screen or a
+    read-back. Purely additive: the ledger projection ignores it."""
+    for record in result.get("events", []) + result.get("review_queue", []):
+        if record.get("resource_type", "medicine") == "medicine" and record.get("item_id"):
+            record["item_name"] = item_catalog.display_name(record["item_id"])
+    return result
+
+
+def preview(extractions: list[dict], facility_id: str, source: str,
+            raw_transcript: str | None = None,
+            resource_type: str = "medicine") -> dict:
+    """Route without persisting: what WOULD be written, for a read-back.
+
+    A health worker hears "Paracetamol, 200 tablets, received" and says yes or
+    no before a row exists anywhere. Nothing here touches the ledger or the
+    review queue; `confirm()` does, once they have answered.
+    """
+    result = describe(route(extractions, facility_id, source,
+                            raw_transcript=raw_transcript,
+                            resource_type=resource_type))
+    result["preview"] = True
+    result["persisted"] = False
+    return result
+
+
+def confirm(rows: list[dict], facility_id: str, source: str,
+            raw_transcript: str | None = None,
+            resource_type: str = "medicine") -> dict:
+    """Write rows a human has confirmed, through the one pipeline.
+
+    Confidence is set to `CONFIRMED_CONFIDENCE` because the doubt the gate
+    exists for — did the model hear the right drug? — has been answered by
+    the person who said it. The other reasons for review still apply: an item
+    that resolves to nothing, an event type the ledger does not record, a
+    missing quantity. A confirmed row cannot skip those, and must not.
+    """
+    if source not in SOURCES:
+        raise ValueError(f"Unknown capture source: {source}")
+    prepared = []
+    for row in rows or []:
+        prepared.append({
+            "item_id": row.get("item_id"),
+            "local_name": row.get("local_name") or row.get("item_name") or "",
+            "event_type": row.get("event_type") or "count",
+            "quantity": row.get("quantity"),
+            "unit": row.get("unit") or "unknown",
+            "loss_reason": row.get("loss_reason"),
+            "confidence": CONFIRMED_CONFIDENCE,
+        })
+    result = persist(route(prepared, facility_id, source,
+                           raw_transcript=raw_transcript,
+                           resource_type=resource_type))
+    result["confirmed_by"] = "health worker"
+    return describe(result)
 
 
 # Columns of `resource_events`. Records carry more than this — `local_name`,
@@ -443,7 +518,7 @@ def handle_barcode(code: str, facility_id: str, quantity: int | None = None,
     mis-hear. If the code does not resolve to a known medicine it is reviewed,
     never guessed at.
     """
-    return persist(route(
+    return describe(persist(route(
         [{
             "local_name": code,
             "event_type": event_type,
@@ -454,4 +529,4 @@ def handle_barcode(code: str, facility_id: str, quantity: int | None = None,
         facility_id,
         source="barcode",
         raw_transcript=f"barcode:{code}",
-    ))
+    )))

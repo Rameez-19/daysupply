@@ -77,11 +77,24 @@ async function syncQueue() {
       try {
         const fd = new FormData();
         fd.append("facility_id", item.facility_id);
-        fd.append("file", item.audioBlob, "recording.webm");
-        const res = await fetch("/api/v1/voice-note", { method: "POST", body: fd });
+        let url = "/api/v1/voice-note";
+        if (item.kind === 'rows') {
+          // Rows the worker already confirmed before the network went.
+          url = "/api/v1/confirm-note";
+          fd.append("rows", JSON.stringify(item.rows));
+          fd.append("source", item.source || 'tap');
+          fd.append("resource_type", item.resource_type || 'medicine');
+          if (item.raw_transcript) fd.append("raw_transcript", item.raw_transcript);
+        } else {
+          // A recording made offline. Nobody is holding the phone when this
+          // syncs, so it goes through the confidence gate without a read-back.
+          fd.append("file", item.audioBlob, "recording.webm");
+        }
+        const res = await fetch(url, { method: "POST", body: fd });
         if (res.ok) db.transaction(["offline-queue"], "readwrite").objectStore("offline-queue").delete(item.id);
       } catch (e) { console.error(e); }
     }
+    if (typeof updateOfflineLine === 'function') setTimeout(updateOfflineLine, 500);
   };
 }
 
@@ -168,7 +181,8 @@ function refreshAll() {
     loadModelEvidence();
     loadLeadTimeContrast();
     if (typeof loadEvidence === 'function') loadEvidence();
-  } else if (view === 'capture-view' || view === 'review-view') {
+  } else if (view === 'capture-view') {
+    if (typeof initReport === 'function') initReport();
     loadReviewQueue();
   }
 }
@@ -359,24 +373,22 @@ async function loadReviewQueue() {
   try {
     const res = await fetch(`/api/v1/review-queue?${getFilterParams()}`);
     const data = await res.json();
+    const countEl = document.getElementById('review-count');
+    if (countEl) countEl.textContent = data.items && data.items.length ? String(data.items.length) : '';
     if (!data.items || !data.items.length) {
-      reviewList.innerHTML = '<div class="empty-state"><p>No items to review.</p></div>';
+      reviewList.innerHTML = '<div class="empty-state"><p>Nothing is waiting. Every recent report was confident enough to record directly.</p></div>';
       return;
     }
-    // An unlabelled example is indistinguishable from a real pending review.
-    const exampleBanner = data.is_example_data
-      ? `<div class="example-banner"><strong>Worked examples.</strong> ${data.basis}</div>`
-      : '';
-    reviewList.innerHTML = exampleBanner + data.items.map(item => `
+    reviewList.innerHTML = data.items.map(item => `
       <div class="item-card" id="item-${item.event_id}">
         <div class="card-header">
           <span style="font-weight:700; color:var(--gray-900);">${item.item_name || item.item_id}</span>
           <span class="card-badge ${item.confidence < 0.4 ? 'badge-danger' : 'badge-warning'}">${Math.round(item.confidence * 100)}% confident</span>
         </div>
-        <div class="card-facility">${item.facility_name || item.facility_id} · ${timeAgo(item.created_at)}</div>
+        <div class="card-facility">${item.facility_name || item.facility_id} · ${timeAgo(item.created_at || item.event_ts)}</div>
         <div class="card-transcript">"${item.raw_transcript}"</div>
         <div class="card-details">
-          <span class="card-detail-label">Quantity</span><span class="card-detail-value">${item.quantity} ${item.unit}</span>
+          <span class="card-detail-label">Quantity</span><span class="card-detail-value">${item.quantity === null || item.quantity === undefined ? 'not stated' : item.quantity} ${item.unit && item.unit !== 'unknown' ? item.unit : ''}</span>
           <span class="card-detail-label">Type</span><span class="card-detail-value">${item.event_type}</span>
         </div>
         <div class="card-actions">
@@ -462,7 +474,9 @@ function rejectItem(id) {
 }
 
 function timeAgo(iso) {
+  if (!iso) return '';
   const ms = Date.now() - new Date(iso).getTime();
+  if (isNaN(ms)) return '';
   const hrs = ms / 3600000;
   if (hrs < 1) return Math.round(hrs * 60) + 'm ago';
   return Math.floor(hrs / 24) + 'd ago';
@@ -669,6 +683,7 @@ micBtn.addEventListener('touchend',   stopRecording);
 
 async function startRecording(e) {
   e.preventDefault();
+  if (typeof requireCentre === 'function' && !requireCentre()) return;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
@@ -677,9 +692,9 @@ async function startRecording(e) {
     mediaRecorder.onstop = () => processAudio(new Blob(audioChunks, { type: 'audio/webm' }));
     mediaRecorder.start();
     micBtn.classList.add('recording'); micRing.classList.add('recording');
-    micStatus.textContent = 'Listening… Release to submit';
+    micStatus.textContent = typeof t === 'function' ? t('voice.listening') : 'Listening… release when done';
     captureResult.classList.add('hidden');
-  } catch (err) { micStatus.textContent = 'Microphone access denied'; }
+  } catch (err) { micStatus.textContent = typeof t === 'function' ? t('voice.denied') : 'Microphone access was refused'; }
 }
 
 function stopRecording(e) {
@@ -687,41 +702,72 @@ function stopRecording(e) {
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop(); mediaRecorder.stream.getTracks().forEach(t => t.stop());
     micBtn.classList.remove('recording'); micRing.classList.remove('recording');
-    micStatus.textContent = 'Processing…';
+    micStatus.textContent = typeof t === 'function' ? t('voice.working') : 'Understanding…';
   }
 }
 
+// The facility comes from the chooser on the Report page (remembered on the
+// phone), falling back to the Today filters. It used to be a hardcoded id.
+function captureFacilityId() {
+  if (typeof reportFacilityId === 'function') return reportFacilityId();
+  return currentPHC || '';
+}
+
 async function processAudio(blob) {
+  const facility_id = captureFacilityId();
+  const idle = typeof t === 'function' ? t('voice.hold') : 'Press and hold to speak';
   if (!navigator.onLine) {
-    const id = Date.now().toString();
-    const tx = db.transaction(["offline-queue"], "readwrite");
-    tx.objectStore("offline-queue").put({ id, facility_id: "IN-101234", audioBlob: blob });
-    micStatus.textContent = 'Saved offline — will sync when online';
+    // No read-back is possible offline: the recording waits on the phone and
+    // is extracted when the network returns, through the confidence gate.
+    if (typeof queueOffline === 'function') queueOffline({ kind: 'audio', facility_id, audioBlob: blob });
+    micStatus.textContent = typeof t === 'function' ? t('offline.saved') : 'Saved on this phone; sent when the network returns';
+    if (typeof updateOfflineLine === 'function') updateOfflineLine();
     return;
   }
   try {
     const fd = new FormData();
-    fd.append("facility_id", "IN-101234");
+    fd.append("facility_id", facility_id);
     fd.append("file", blob, "recording.webm");
+    fd.append("preview", "true");
     const res = await fetch("/api/v1/voice-note", { method: "POST", body: fd });
     const data = await res.json();
-    micStatus.textContent = 'Press and hold to record';
-    showCaptureResult(data);
-  } catch (e) { micStatus.textContent = 'Error — try again'; }
+    micStatus.textContent = idle;
+    if (typeof handlePreviewResponse === 'function') handlePreviewResponse(data, 'voice', data.raw_transcript || null);
+    else showCaptureResult(data);
+  } catch (e) { micStatus.textContent = typeof t === 'function' ? t('error') : 'Could not reach the server'; }
 }
 
+// What was written, in the worker's words: saved, or held for the
+// pharmacist, and why. The old version printed "Unknown — undefined" for a
+// held row because it only knew about events.
 function showCaptureResult(data) {
   captureResult.classList.remove('hidden');
-  if (data.events && data.events.length) {
-    captureContent.innerHTML = data.events.map(ev => `
-      <div style="padding:8px 0; border-bottom:1px solid var(--gray-200);">
-        <strong>${ev.item_name || 'Unknown'}</strong> — ${ev.quantity} ${ev.unit || ''}<br>
-        <span style="color:var(--gray-500);font-size:0.8rem;">${ev.event_type || 'recorded'}</span>
-      </div>
-    `).join('');
-  } else {
-    captureContent.innerHTML = '<p style="color:var(--gray-500);">No items detected — try again.</p>';
+  const tt = typeof t === 'function' ? t : (k) => k;
+  const unitOf = (u) => (typeof unitWord === 'function' ? unitWord(u) : (u || ''));
+  const evOf = (e) => (typeof t === 'function' ? t('evs.' + e) : e);
+  if (data.error) {
+    captureContent.innerHTML = `<p class="cr-error">${data.error}</p>`;
+    return;
   }
+  const events = data.events || [];
+  const held = data.review_queue || [];
+  if (!events.length && !held.length) {
+    captureContent.innerHTML = `<p class="cr-none">${tt('rb.nothing')}</p>`;
+    return;
+  }
+  const ledgerNote = data.written_to_ledger === 0 && events.length && data.ledger_error
+    ? `<p class="cr-error">${data.ledger_error}</p>` : '';
+  captureContent.innerHTML = events.map(ev => `
+      <div class="cr-row cr-saved">
+        <span class="cr-badge">✓ ${tt('saved')}</span>
+        <strong>${ev.item_name || ev.local_name}</strong> — ${ev.quantity} ${unitOf(ev.unit)}, ${evOf(ev.event_type)}
+        <span class="cr-why">${tt('saved.why')}</span>
+      </div>`).join('') + held.map(ev => `
+      <div class="cr-row cr-held">
+        <span class="cr-badge held">⏸ ${tt('held')}</span>
+        <strong>${ev.item_name || ev.local_name}</strong> — ${ev.quantity === null || ev.quantity === undefined ? '?' : ev.quantity} ${unitOf(ev.unit)}, ${evOf(ev.event_type)}
+        <span class="cr-why">${ev.review_reason || ''}</span>
+      </div>`).join('') + ledgerNote;
 }
 
 // ===== Init =====
@@ -894,20 +940,9 @@ let html5QrcodeScanner = null;
 const CAPTURE_MODES = ['voice', 'scan', 'chat'];
 
 function switchCaptureMode(mode) {
-  CAPTURE_MODES.forEach(m => {
-    const tab = document.getElementById(`tab-${m}`);
-    if (tab) { tab.classList.remove('active'); tab.style.borderBottom = 'none'; }
-    const panel = document.getElementById(`mode-${m}`);
-    if (panel) panel.style.display = 'none';
-  });
-  const tab = document.getElementById(`tab-${mode}`);
-  if (tab) {
-    tab.classList.add('active');
-    tab.style.borderBottom = '2px solid var(--brand-500)';
-  }
-  const panel = document.getElementById(`mode-${mode}`);
-  if (panel) panel.style.display = 'block';
-  if (mode !== 'scan') stopScanner();
+  // The Report page owns the mode buttons now (report.js); this name is
+  // kept for the scanner callback below.
+  if (typeof setReportMode === 'function') setReportMode(mode);
 }
 
 // Chat capture. Same endpoint family as voice and barcode, same
@@ -916,20 +951,22 @@ async function sendChatNote() {
   const box = document.getElementById('chat-input');
   const message = (box.value || '').trim();
   if (!message) return;
-  const status = document.getElementById('mic-status');
-  if (status) status.textContent = 'Extracting…';
+  if (typeof requireCentre === 'function' && !requireCentre()) return;
+  const note = document.getElementById('report-note');
+  if (note) note.textContent = typeof t === 'function' ? t('voice.working') : 'Understanding…';
   try {
     const fd = new FormData();
     fd.append('message', message);
-    fd.append('facility_id', currentPHC || 'IN-155740');
+    fd.append('facility_id', captureFacilityId());
+    fd.append('preview', 'true');
     const res = await fetch('/api/v1/chat-note', { method: 'POST', body: fd });
     const data = await res.json();
-    showCaptureResult(data);
+    if (note) note.textContent = '';
+    if (typeof handlePreviewResponse === 'function') handlePreviewResponse(data, 'chat', message);
+    else showCaptureResult(data);
     if (!data.error) box.value = '';
   } catch (e) {
-    showCaptureResult({ error: e.message, events: [], review_queue: [] });
-  } finally {
-    if (status) status.textContent = 'Press and hold to record';
+    if (note) note.textContent = typeof t === 'function' ? t('error') : 'Could not reach the server.';
   }
 }
 window.sendChatNote = sendChatNote;
@@ -953,23 +990,24 @@ function stopScanner() {
 // unrecognised code has to reach the review queue, not the ledger.
 async function onScanSuccess(decodedText) {
   stopScanner();
-  const status = document.getElementById('mic-status');
+  if (typeof requireCentre === 'function' && !requireCentre()) return;
+  const status = document.getElementById('report-note');
   if (status) status.textContent = `Scanned ${decodedText.substring(0, 24)} — matching…`;
-  switchCaptureMode('voice');
   try {
     const fd = new FormData();
     fd.append('code', decodedText);
-    fd.append('facility_id', currentPHC || 'IN-155740');
+    fd.append('facility_id', captureFacilityId());
     const qty = window.prompt(`Scanned ${decodedText}
 
 How many units?`, '');
     if (qty !== null && qty !== '') fd.append('quantity', parseInt(qty, 10));
     const res = await fetch('/api/v1/barcode-scan', { method: 'POST', body: fd });
     showCaptureResult(await res.json());
+    if (typeof loadReviewQueue === 'function') loadReviewQueue();
   } catch (e) {
     showCaptureResult({ error: e.message, events: [], review_queue: [] });
   } finally {
-    if (status) status.textContent = 'Press and hold to record';
+    if (status) status.textContent = '';
   }
 }
 
@@ -1205,8 +1243,59 @@ function triageRow(r, showDeadline) {
       </td>
       ${showDeadline ? `<td class="net-num">${r.lead_time_days}d</td>` : ''}
       <td class="net-num">${(r.shortfall || 0).toLocaleString('en-IN')} ${esc2(r.unit || '')}</td>
-    </tr>`;
+      ${showDeadline ? `<td class="net-act"><button class="btn btn-secondary btn-brief"
+          onclick="draftBrief('${esc2(r.facility_id)}','${esc2(r.item_id)}',this)">Draft note</button></td>` : ''}
+    </tr>
+    ${showDeadline ? `<tr class="brief-row" id="brief-${esc2(r.facility_id)}-${esc2(r.item_id)}" hidden><td colspan="6"></td></tr>` : ''}`;
 }
+
+// The escalation note, drafted by Gemini from the row's own figures and
+// checked against them: a draft that mentions a number the data does not
+// contain is shown with that number flagged, never silently.
+async function draftBrief(facilityId, itemId, btn) {
+  const row = document.getElementById(`brief-${facilityId}-${itemId}`);
+  if (!row) return;
+  const cell = row.firstElementChild;
+  row.hidden = false;
+  const lang = (typeof reportLang !== 'undefined' && reportLang === 'hi') ? 'hi' : 'en';
+  cell.innerHTML = '<p class="brief-wait">Drafting from this row\'s figures…</p>';
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/v1/action-queue/brief', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ facility_id: facilityId, item_id: itemId, lang }),
+    });
+    const d = await res.json();
+    if (!res.ok || d.error) {
+      cell.innerHTML = `<p class="brief-error">${esc2(d.error || d.detail || 'Could not draft the note.')}</p>`;
+      return;
+    }
+    const flag = d.numbers_checked
+      ? `<span class="brief-ok">Every number checked against the row.</span>`
+      : `<span class="brief-flag">Mentions figures not in the data: ${esc2(d.unverified_numbers.join(', '))}. Treat those as unverified.</span>`;
+    cell.innerHTML = `
+      <div class="brief">
+        <div class="brief-head"><strong>Escalation note</strong> <span class="muted">drafted by ${esc2(d.model)}</span> ${flag}</div>
+        <p class="brief-text">${esc2(d.note).replace(/\n/g, '<br>')}</p>
+        <div class="brief-actions">
+          <button class="btn btn-secondary" onclick="copyBrief(this)">Copy</button>
+          <button class="btn btn-secondary" onclick="draftBrief('${esc2(facilityId)}','${esc2(itemId)}')">${lang === 'hi' ? 'Redraft' : 'Redraft'}</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('brief-${esc2(facilityId)}-${esc2(itemId)}').hidden = true">Close</button>
+        </div>
+      </div>`;
+  } catch (e) {
+    cell.innerHTML = '<p class="brief-error">Could not reach the server.</p>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+window.draftBrief = draftBrief;
+
+function copyBrief(btn) {
+  const text = btn.closest('.brief').querySelector('.brief-text').innerText;
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => { btn.textContent = 'Copied'; });
+}
+window.copyBrief = copyBrief;
 
 function triageTable(rows, showDeadline, emptyMsg) {
   if (!rows.length) return panelEmpty(emptyMsg);
@@ -1217,6 +1306,7 @@ function triageTable(rows, showDeadline, emptyMsg) {
         <th class="net-num" title="Days of stock left at the current rate of use">Days left</th>
         ${showDeadline ? '<th class="net-num">Delivery</th>' : ''}
         <th class="net-num">Short by</th>
+        ${showDeadline ? '<th class="net-act"></th>' : ''}
       </tr></thead>
       <tbody>${rows.map(r => triageRow(r, showDeadline)).join('')}</tbody>
     </table></div>

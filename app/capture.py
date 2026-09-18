@@ -120,12 +120,31 @@ A precise number stated plainly — "do sau" (200), "pachas" (50) — is NOT
 vague and keeps its normal high confidence.
 """
 
-# The extraction prompt is shared by voice and chat: the only difference is
-# whether the model is handed audio or text. Keeping one prompt is what makes
-# the two modes produce comparable records.
+# The extraction prompt is shared by voice, chat and photo: the only
+# difference is whether the model is handed audio, text or an image. Keeping
+# one prompt is what makes the modes produce comparable records.
 CHAT_INSTRUCTION = (
     "The health worker typed this message instead of recording it. "
     "Extract the same JSON array from the text.\n\nMessage: "
+)
+
+# A photograph of the stock register — the ruled ledger book every PHC keeps
+# by hand. Each visible row becomes one object. Handwriting is read, never
+# guessed at: an illegible figure is a null quantity, and a doubtful one is
+# low confidence, so the worker corrects it on the read-back rather than the
+# ledger inheriting a misread "7" for a "1". The model is told which column
+# is which because the stock register's layout is standard across states.
+PHOTO_INSTRUCTION = (
+    "This image is a page of a pharmacy stock register from an Indian primary "
+    "health centre, handwritten or printed. Columns are typically: date, "
+    "item or drug name, received (in), issued or dispensed (out), balance. "
+    "Extract the same JSON array, one object per visible row that names a "
+    "medicine: received -> event_type received, issued/dispensed/out -> "
+    "dispensed, a balance or closing stock -> count. If a row shows several "
+    "of these, return one object per movement. If a figure is illegible, "
+    "return quantity null. If you are not sure a figure is what you read, set "
+    "confidence 0.5 or lower. Do not invent rows. Transcribe drug names as "
+    "written."
 )
 
 
@@ -171,7 +190,7 @@ def _is_retryable(exc: Exception) -> bool:
         or "high demand" in text or "INTERNAL" in text)
 
 
-def _generate(contents) -> str:
+def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
     """One extraction call, retried on transient failure, then degraded.
 
     Exponential backoff with jitter. After `FALLBACK_AFTER_ATTEMPTS` the model
@@ -186,7 +205,7 @@ def _generate(contents) -> str:
     # the first element of `contents`. Done separately from the SDK migration
     # on purpose, so a change in library and a change in prompting could not be
     # confounded if the output shifted.
-    config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT)
+    config = types.GenerateContentConfig(system_instruction=system_instruction)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         model = MODEL if attempt <= FALLBACK_AFTER_ATTEMPTS else FALLBACK_MODEL
         try:
@@ -224,9 +243,23 @@ def process_text(message: str) -> str:
     return _generate(CHAT_INSTRUCTION + message)
 
 
+def process_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> str:
+    """Send a photograph of the stock register through the same rules."""
+    return _generate([
+        PHOTO_INSTRUCTION,
+        types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+    ])
+
+
 def handle_capture(audio_bytes: bytes, facility_id: str,
-                   mime_type: str = "audio/mp3") -> dict:
-    """Voice capture. Audio in, structured records out, via the shared path."""
+                   mime_type: str = "audio/mp3", preview: bool = False) -> dict:
+    """Voice capture. Audio in, structured records out, via the shared path.
+
+    With `preview`, nothing is written: the records come back for the worker
+    to hear read out and confirm, and `capture_pipeline.confirm()` writes
+    them. Without it (the offline queue syncing hours later, with nobody
+    holding the phone) the records go straight through the gate as before.
+    """
     try:
         raw = process_audio(audio_bytes, mime_type)
     except ModelUnavailable as exc:
@@ -239,39 +272,103 @@ def handle_capture(audio_bytes: bytes, facility_id: str,
     except Exception as exc:
         return {"error": str(exc), "retryable": False,
                 "events": [], "review_queue": [], "source": "voice"}
-    return _extract_and_route(raw, facility_id, "voice")
+    return _extract_and_route(raw, facility_id, "voice", preview=preview)
 
 
-def handle_chat(message: str, facility_id: str) -> dict:
+def handle_photo(image_bytes: bytes, facility_id: str,
+                 mime_type: str = "image/jpeg") -> dict:
+    """A photographed register page. Always a preview, never a direct write.
+
+    Reading handwriting is the least certain input this system accepts, so a
+    photo can only ever produce rows for the worker to check. There is no
+    unattended path for it on purpose.
+    """
+    try:
+        raw = process_image(image_bytes, mime_type)
+    except ModelUnavailable as exc:
+        return {"error": str(exc), "retryable": True,
+                "attempts": exc.attempts, "technical_detail": exc.last_error,
+                "events": [], "review_queue": [], "source": "photo"}
+    except Exception as exc:
+        return {"error": str(exc), "retryable": False,
+                "events": [], "review_queue": [], "source": "photo"}
+    return _extract_and_route(raw, facility_id, "photo", preview=True)
+
+
+def handle_sms(sender: str, message: str) -> dict:
+    """A text message, as a gateway would hand it over.
+
+    No gateway is connected in this deployment; this is the endpoint one would
+    post to. The first word of the message must be the facility id, because
+    there is no phone-number register to look the sender up in and inventing
+    one would be worse than asking. The reply is plain text a gateway can send
+    straight back.
+    """
+    text = (message or "").strip()
+    parts = text.split(None, 1)
+    if not parts or not parts[0].upper().startswith("IN-") or len(parts) < 2:
+        return {"error": "no facility id", "events": [], "review_queue": [],
+                "source": "sms", "sender": sender,
+                "reply": ("Start your message with your centre id, e.g. "
+                          "IN-155740 paracetamol 200 tablet aaye")}
+    facility_id, body = parts[0].upper(), parts[1]
+    result = handle_chat(body, facility_id, source="sms")
+    result["sender"] = sender
+    result["reply"] = sms_reply(result)
+    return result
+
+
+def sms_reply(result: dict) -> str:
+    """One line per record, short enough for a single SMS segment each."""
+    if result.get("error"):
+        return f"Not recorded: {result['error']}"
+    lines = []
+    for r in result.get("events", []):
+        lines.append(f"OK {r.get('item_name') or r['local_name']} "
+                     f"{r['quantity']} {r['unit']} {r['event_type']}")
+    for r in result.get("review_queue", []):
+        lines.append(f"HELD {r.get('item_name') or r['local_name']}: "
+                     f"{r.get('review_reason')}")
+    return "\n".join(lines) or "Nothing recognised as a stock update."
+
+
+def handle_chat(message: str, facility_id: str, preview: bool = False,
+                source: str = "chat") -> dict:
     """Chat capture. Same prompt, same matcher, same review queue."""
     if not (message or "").strip():
         return {"error": "Empty message", "events": [], "review_queue": [],
-                "source": "chat"}
+                "source": source}
     try:
         raw = process_text(message)
     except ModelUnavailable as exc:
         return {"error": str(exc), "retryable": True,
                 "attempts": exc.attempts, "technical_detail": exc.last_error,
-                "events": [], "review_queue": [], "source": "chat",
+                "events": [], "review_queue": [], "source": source,
                 "raw_transcript": message}
     except Exception as exc:
         return {"error": str(exc), "retryable": False,
-                "events": [], "review_queue": [], "source": "chat"}
-    return _extract_and_route(raw, facility_id, "chat",
-                              raw_transcript=message)
+                "events": [], "review_queue": [], "source": source}
+    return _extract_and_route(raw, facility_id, source,
+                              raw_transcript=message, preview=preview)
 
 
 def _extract_and_route(raw_reply: str, facility_id: str, source: str,
-                       raw_transcript: str | None = None) -> dict:
+                       raw_transcript: str | None = None,
+                       preview: bool = False) -> dict:
     try:
         extractions = capture_pipeline.parse_model_json(raw_reply)
     except capture_pipeline.ExtractionError as exc:
         return {"error": str(exc), "events": [], "review_queue": [],
                 "source": source, "raw_reply": raw_reply[:500]}
-    return capture_pipeline.persist(capture_pipeline.route(
-        extractions, facility_id, source,
-        raw_transcript=raw_transcript or raw_reply,
-    ))
+    if preview:
+        return capture_pipeline.preview(
+            extractions, facility_id, source,
+            raw_transcript=raw_transcript or raw_reply)
+    return capture_pipeline.describe(capture_pipeline.persist(
+        capture_pipeline.route(
+            extractions, facility_id, source,
+            raw_transcript=raw_transcript or raw_reply,
+        )))
 
 
 def match_item(local_name: str) -> str | None:

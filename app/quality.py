@@ -142,8 +142,8 @@ def data_quality() -> dict:
 def captures_today() -> dict:
     """Real capture counts from the ledger — no fabricated figure.
 
-    Counts events whose source is one of the three capture modes, as opposed
-    to `seed`. Before any real capture has happened this is legitimately zero,
+    Counts events whose source is one of the capture modes, as opposed to
+    `seed`. Before any real capture has happened this is legitimately zero,
     and zero is what it reports.
     """
     rows = run_query(
@@ -156,9 +156,12 @@ def captures_today() -> dict:
           COUNT(DISTINCT facility_id) AS facilities,
           COUNTIF(source = 'voice')   AS voice,
           COUNTIF(source = 'chat')    AS chat,
-          COUNTIF(source = 'barcode') AS barcode
+          COUNTIF(source = 'barcode') AS barcode,
+          COUNTIF(source = 'tap')     AS tap,
+          COUNTIF(source = 'photo')   AS photo,
+          COUNTIF(source = 'sms')     AS sms
         FROM {STOCK_EVENTS}
-        WHERE source IN ('voice', 'chat', 'barcode')
+        WHERE source IN ('voice', 'chat', 'barcode', 'tap', 'photo', 'sms')
         """,
         cache_key="quality:captures",
         ttl=60,
@@ -173,6 +176,9 @@ def captures_today() -> dict:
             "voice": int(row.get("voice") or 0),
             "chat": int(row.get("chat") or 0),
             "barcode": int(row.get("barcode") or 0),
+            "tap": int(row.get("tap") or 0),
+            "photo": int(row.get("photo") or 0),
+            "sms": int(row.get("sms") or 0),
         },
         "is_generated": False,
         "basis": "Counted from stock_events where source is a capture mode "

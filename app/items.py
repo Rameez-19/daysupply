@@ -145,6 +145,56 @@ def match(local_name: str, threshold: int = MATCH_THRESHOLD) -> str | None:
     return None
 
 
+# Devanagari, so a tile can show the name the way it is written on the
+# register in most northern states. Only the variants that carry it are used;
+# nothing is transliterated by machine.
+_DEVANAGARI = re.compile(r"[\u0900-\u097F]")
+
+
+def known(item_id: str) -> bool:
+    """Whether an item id is in the catalogue. Used when a client names the
+    item outright (a tile was tapped) so the id is verified, never trusted."""
+    return any(i["item_id"] == item_id for i in catalog())
+
+
+def display_name(item_id: str) -> str | None:
+    for i in catalog():
+        if i["item_id"] == item_id:
+            return i["display_name"]
+    return None
+
+
+def quick_list() -> list[dict]:
+    """The forecast items, shaped for a tile grid.
+
+    These are the medicines the system forecasts and reorders, so they are the
+    ones a report most changes. Each carries a Hindi spelling where the
+    catalogue has one and the shortest spoken variant otherwise, so the tile
+    can say "PCM" or "sugar ki goli" under "Paracetamol" or "Metformin".
+    """
+    out = []
+    for i in catalog():
+        if not i.get("is_forecast_item"):
+            continue
+        variants = [v for v in (i.get("spoken_variants") or []) if v]
+        hindi = next((v for v in variants if _DEVANAGARI.search(v)), None)
+        spoken = [v for v in variants
+                  if not _DEVANAGARI.search(v)
+                  and _key(v) != _key(i["display_name"])]
+        out.append({
+            "item_id": i["item_id"],
+            "display_name": i["display_name"],
+            "hindi_name": hindi,
+            # A folk phrase ("sugar ki goli") beats an abbreviation ("asa"):
+            # it is what the tile is for.
+            "spoken": (max((v for v in spoken if " " in v), key=len, default=None)
+                       or (spoken[0] if spoken else None)),
+            "unit": i["unit"],
+            "ven_class": i["ven_class"],
+        })
+    return out
+
+
 def reset() -> None:
     """Drop the cached catalogue — used by tests."""
     global _catalog, _names, _name_index

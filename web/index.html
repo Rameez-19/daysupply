@@ -387,85 +387,120 @@
 
       <!-- ═══ Voice Capture ═══ -->
       <section id="capture-view" class="view hidden-view">
-        <div class="view-header">
-          <h2>Stock Capture</h2>
-          <p class="view-subtitle">Record a stock update via Voice or Barcode Scan</p>
-        </div>
-        
-        <div class="capture-tabs" style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 1px solid var(--border);">
-          <button class="capture-tab-btn active" id="tab-voice" onclick="switchCaptureMode('voice')" style="padding: 12px 24px; background: none; border: none; border-bottom: 2px solid var(--brand-500); color: var(--brand-500); font-weight: 600; cursor: pointer;">🎙️ Voice</button>
-          <button class="capture-tab-btn" id="tab-scan" onclick="switchCaptureMode('scan')" style="padding: 12px 24px; background: none; border: none; color: var(--gray-400); font-weight: 500; cursor: pointer;">📷 Scan Barcode</button>
-          <button class="capture-tab-btn" id="tab-chat" onclick="switchCaptureMode('chat')" style="padding: 12px 24px; background: none; border: none; color: var(--gray-400); font-weight: 500; cursor: pointer;">⌨️ Chat</button>
+        <div class="view-header report-header">
+          <div>
+            <h2 data-i18n="report.title">Report stock</h2>
+            <p class="view-subtitle" data-i18n="report.sub">Tap, speak, photograph or type. Every report is read back to you before it is saved.</p>
+          </div>
+          <button class="btn btn-secondary lang-toggle" id="lang-toggle" onclick="toggleLang()" data-i18n="lang.other">हिंदी</button>
         </div>
 
-        <div class="capture-card" id="mode-voice">
+        <!-- Offline in a sentence, with the count of what this phone still
+             holds. A coloured dot in the sidebar told a worker nothing. -->
+        <div id="report-offline" class="report-offline" hidden></div>
+
+        <!-- Chosen once, remembered on the phone. -->
+        <div id="report-centre" class="report-centre"></div>
+
+        <div class="report-modes" role="tablist">
+          <button class="report-mode active" id="rm-tap" onclick="setReportMode('tap')"><span class="rm-ico">👆</span><span data-i18n="mode.tap">Tap</span></button>
+          <button class="report-mode" id="rm-voice" onclick="setReportMode('voice')"><span class="rm-ico">🎙️</span><span data-i18n="mode.voice">Speak</span></button>
+          <button class="report-mode" id="rm-photo" onclick="setReportMode('photo')"><span class="rm-ico">📷</span><span data-i18n="mode.photo">Photo</span></button>
+          <button class="report-mode" id="rm-scan" onclick="setReportMode('scan')"><span class="rm-ico">▦</span><span data-i18n="mode.scan">Scan</span></button>
+          <button class="report-mode" id="rm-chat" onclick="setReportMode('chat')"><span class="rm-ico">⌨️</span><span data-i18n="mode.chat">Type</span></button>
+          <button class="report-mode" id="rm-staff" onclick="setReportMode('staff')"><span class="rm-ico">🧑‍⚕️</span><span data-i18n="mode.staff">Staff today</span></button>
+          <button class="report-mode" id="rm-beds" onclick="setReportMode('beds')"><span class="rm-ico">🛏️</span><span data-i18n="mode.beds">Beds today</span></button>
+        </div>
+
+        <p class="report-note" id="report-note"></p>
+
+        <div class="capture-card report-card" id="mode-tap">
+          <div id="tap-flow"></div>
+        </div>
+
+        <div class="capture-card report-card" id="mode-voice" hidden>
           <div class="capture-visual">
             <div class="mic-ring" id="mic-ring">
               <button id="mic-btn" class="mic-btn" aria-label="Hold to record">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
               </button>
             </div>
-            <p class="mic-instruction" id="mic-status">Press and hold to record</p>
-            <p class="mic-hint">Speak naturally in Hindi or English.<br>Example: <em>"Paracetamol ke 200 tablet aaye hain"</em></p>
-          </div>
-          <div class="capture-result hidden" id="capture-result">
-            <h4>✅ Extracted Data</h4>
-            <div id="capture-result-content"></div>
-          </div>
-        </div>
-        
-        <div class="capture-card hidden" id="mode-scan" style="display: none;">
-          <div style="text-align: center; margin-bottom: 16px;">
-            <p class="mic-hint">Scan a medicine's QR code or Barcode to instantly log it.</p>
-          </div>
-          <div id="reader" style="width: 100%; max-width: 500px; margin: 0 auto; border-radius: 12px; overflow: hidden; border: 2px solid var(--border);"></div>
-          <div style="text-align: center; margin-top: 16px;">
-             <button onclick="startScanner()" style="padding: 12px 24px; background: var(--brand-500); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">Start Camera</button>
-             <button onclick="stopScanner()" style="padding: 12px 24px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-left: 8px;">Stop</button>
+            <p class="mic-instruction" id="mic-status" data-i18n="voice.hold">Press and hold to speak</p>
+            <p class="mic-hint" data-i18n="voice.hint">Hindi, English or both. Example: “Paracetamol ke 200 tablet aaye hain”</p>
           </div>
         </div>
 
-        <div class="capture-card hidden" id="mode-chat" style="display: none;">
-          <p class="capture-hint">
-            For when audio is impractical — a shared room, a night shift, a
-            noisy clinic. Type it the way you would say it.
-          </p>
+        <div class="capture-card report-card" id="mode-photo" hidden>
+          <p class="capture-hint" data-i18n="photo.hint">Photograph the stock register page. Each row is shown for you to check; nothing is saved until you say yes.</p>
+          <label class="photo-take btn btn-primary btn-full">
+            <span data-i18n="photo.take">Take photo</span>
+            <input type="file" accept="image/*" capture="environment" id="photo-input" onchange="onPhotoChosen(this)" hidden>
+          </label>
+          <img id="photo-preview" class="photo-preview" alt="" hidden>
+        </div>
+
+        <div class="capture-card report-card" id="mode-scan" hidden>
+          <p class="capture-hint" data-i18n="scan.hint">Point the camera at the barcode on the pack.</p>
+          <div id="reader" class="scan-reader"></div>
+          <div class="scan-actions">
+            <button class="btn btn-primary" onclick="startScanner()" data-i18n="scan.start">Start camera</button>
+            <button class="btn btn-danger" onclick="stopScanner()" data-i18n="scan.stop">Stop</button>
+          </div>
+        </div>
+
+        <div class="capture-card report-card" id="mode-chat" hidden>
+          <p class="capture-hint" data-i18n="chat.hint">Type it the way you would say it.</p>
           <textarea id="chat-input" rows="3" class="chat-input"
-            placeholder="e.g. paracetamol ke do sau tablet aaye hain, ORS ka packet khatam ho gaya"></textarea>
-          <button class="btn btn-primary btn-full" onclick="sendChatNote()">Send</button>
-          <p class="chart-note">
-            Same extraction, same catalogue matcher, same review queue as
-            voice — only the input differs.
-          </p>
+            placeholder="paracetamol ke do sau tablet aaye hain, ORS ka packet khatam ho gaya"></textarea>
+          <button class="btn btn-primary btn-full" onclick="sendChatNote()" data-i18n="chat.send">Send</button>
         </div>
 
-        <div class="how-it-works">
-          <h3>How it works</h3>
+        <div class="capture-card report-card" id="mode-staff" hidden>
+          <div id="staff-form"></div>
+        </div>
+
+        <div class="capture-card report-card" id="mode-beds" hidden>
+          <div id="beds-form"></div>
+        </div>
+
+        <!-- The read-back. Every mode ends here before anything is written. -->
+        <div id="report-readback" class="report-readback" hidden></div>
+
+        <div class="capture-result hidden" id="capture-result">
+          <div id="capture-result-content"></div>
+        </div>
+
+        <!-- The pharmacist's half of the page: what the model held back. -->
+        <div class="dashboard-section review-section">
+          <div class="section-head-row">
+            <h3 data-i18n="review.title">For the pharmacist: waiting for a check</h3>
+            <span class="section-count" id="review-count"></span>
+          </div>
+          <p class="section-note" data-i18n="review.sub">What the model was not sure about. Nothing here is in the stock position yet.</p>
+          <div id="review-list" class="card-list"></div>
+        </div>
+
+        <details class="how-it-works">
+          <summary>How it works</summary>
           <div class="steps">
             <div class="step">
               <div class="step-num">1</div>
-              <div class="step-text"><strong>Hold the button</strong> and speak your stock update</div>
+              <div class="step-text"><strong>Tap, speak, photograph, scan or type.</strong> Six ways in, one pipeline.</div>
             </div>
             <div class="step">
               <div class="step-num">2</div>
-              <div class="step-text"><strong>Gemini AI</strong> extracts item names, quantities & event type</div>
+              <div class="step-text"><strong>Gemini</strong> turns speech, text or a photographed register page into item, quantity and event type. Tapped tiles and barcodes need no model.</div>
             </div>
             <div class="step">
               <div class="step-num">3</div>
-              <div class="step-text"><strong>Auto-matched</strong> to your facility's item catalog</div>
+              <div class="step-text"><strong>Matched server-side</strong> against the full National List of Essential Medicines. The model is never asked for a drug code.</div>
+            </div>
+            <div class="step">
+              <div class="step-num">4</div>
+              <div class="step-text"><strong>Read back and confirmed</strong> in Hindi or English. Confident, confirmed rows go straight into the stock position; anything doubtful waits for the pharmacist.</div>
             </div>
           </div>
-        </div>
-      </section>
-
-      <!-- Review folds into the capture view: it is the same person,
-           checking what the model was unsure about. -->
-      <section id="review-view" class="view hidden-view">
-        <div class="view-header">
-          <h2>Review queue</h2>
-          <p class="view-subtitle">Extractions the model was not confident about, waiting for a human</p>
-        </div>
-        <div id="review-list" class="card-list"></div>
+        </details>
       </section>
 
       <!-- Evidence: the methodology a judge wants and an officer does not. -->
@@ -691,6 +726,7 @@
   <script src="map.js"></script>
   <script src="today2.js"></script>
   <script src="network.js"></script>
+  <script src="report.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(reg => {

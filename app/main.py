@@ -13,6 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException, UploadFile, Form
+from pydantic import BaseModel
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -43,15 +44,15 @@ from app import quality
 from app import resources
 from app import surge
 from app import transfers
-from app import mapview, today_v2, access, action_queue
+from app import mapview, today_v2, access, action_queue, brief
 from app import forecast_view
 from app import network as network_view
 from app.bq import QueryTooExpensive
 from app import capture_pipeline
-from app.capture import handle_capture, handle_chat
+from app.capture import (handle_capture, handle_chat, handle_photo,
+                         handle_sms)
 from app.forecast import get_forecast_daily_demand
 from app.patterns import get_local_patterns, ingest_peer_pattern, PatternNode
-from app.demo_data import get_demo_review_queue
 
 log = logging.getLogger(__name__)
 
@@ -391,24 +392,116 @@ async def get_stats(state: str = DEFAULT_STATE, district: str = "",
 @app.post("/api/v1/voice-note")
 async def post_voice_note(
     file: UploadFile,
-    facility_id: str = Form(...)
+    facility_id: str = Form(...),
+    preview: bool = Form(False),
 ):
-    """Processes a voice note using Gemini and stores structured data."""
+    """Processes a voice note using Gemini and stores structured data.
+
+    `preview=true` extracts and matches but writes nothing; the client reads
+    the result back to the worker and posts what they confirm to
+    `/api/v1/confirm-note`. The offline queue syncs without `preview`, since
+    nobody is there to confirm hours later.
+    """
     audio_bytes = await file.read()
     content_type = file.content_type or "audio/mp3"
-    results = handle_capture(audio_bytes, facility_id, content_type)
-    return results
+    return handle_capture(audio_bytes, facility_id, content_type,
+                          preview=preview)
 
 
 @app.post("/api/v1/chat-note")
 async def post_chat_note(message: str = Form(...),
-                         facility_id: str = Form(...)):
+                         facility_id: str = Form(...),
+                         preview: bool = Form(False)):
     """Chat capture — for a shared room, a night shift, a noisy clinic.
 
     Same extraction prompt, same catalogue matcher, same confidence gate and
     same review queue as voice. Only the input differs.
     """
-    return handle_chat(message, facility_id)
+    return handle_chat(message, facility_id, preview=preview)
+
+
+@app.post("/api/v1/photo-note")
+async def post_photo_note(file: UploadFile, facility_id: str = Form(...)):
+    """A photograph of the stock register page. Gemini reads the rows.
+
+    Always a preview: handwriting is the least certain input the system
+    accepts, so a photo can only produce rows for the worker to check and
+    confirm, never a direct write.
+    """
+    image_bytes = await file.read()
+    return handle_photo(image_bytes, facility_id,
+                        file.content_type or "image/jpeg")
+
+
+@app.post("/api/v1/confirm-note")
+async def post_confirm_note(rows: str = Form(...),
+                            facility_id: str = Form(...),
+                            source: str = Form("tap"),
+                            raw_transcript: str = Form(None),
+                            resource_type: str = Form("medicine")):
+    """Write what a health worker has confirmed.
+
+    `rows` is a JSON array of {item_id, local_name, event_type, quantity,
+    unit, loss_reason}. This is where a tapped tile, a read-back voice note
+    and a checked register photo all land, through the one pipeline: the
+    event type is still validated, the item id is still verified against the
+    catalogue, and a row without a quantity still goes to review.
+    """
+    import json as _json
+    try:
+        parsed = _json.loads(rows)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"rows is not JSON: {exc}")
+    if not isinstance(parsed, list) or not parsed:
+        raise HTTPException(status_code=400, detail="rows must be a non-empty array")
+    if source not in capture_pipeline.SOURCES:
+        raise HTTPException(status_code=400, detail=f"unknown source {source}")
+    if resource_type not in capture_pipeline.RESOURCE_TYPES:
+        raise HTTPException(status_code=400,
+                            detail=f"unknown resource type {resource_type}")
+    return capture_pipeline.confirm(parsed, facility_id, source,
+                                    raw_transcript=raw_transcript,
+                                    resource_type=resource_type)
+
+
+@app.post("/api/v1/sms-note")
+async def post_sms_note(sender: str = Form(""), message: str = Form(...)):
+    """The endpoint an SMS or IVR gateway would post to.
+
+    No gateway is connected in this deployment. The message must begin with
+    the centre id ("IN-155740 paracetamol 200 tablet aaye"); the reply is one
+    plain line per record, short enough to send back as a text.
+    """
+    return handle_sms(sender, message)
+
+
+class BriefRequest(BaseModel):
+    facility_id: str
+    item_id: str
+    lang: str = "en"
+
+
+@app.post("/api/v1/action-queue/brief")
+async def action_queue_brief(req: BriefRequest):
+    """Draft the escalation note for one shortage, with Gemini.
+
+    Grounded on the row's own figures and checked afterwards: a draft that
+    mentions a number not in the data comes back flagged, never silently.
+    """
+    result = await asyncio.to_thread(brief.draft, req.facility_id,
+                                     req.item_id, req.lang)
+    if result.get("error") and "no open shortage" in result["error"]:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@app.get("/api/v1/items/quick")
+async def quick_items():
+    """The forecast medicines as tiles: name, Hindi spelling where the
+    catalogue has one, the shortest spoken variant, unit and VEN class."""
+    return {"items": _facility_query(items.quick_list),
+            "event_types": sorted(capture_pipeline.EVENT_TYPES),
+            "loss_reasons": sorted(capture_pipeline.LOSS_REASONS)}
 
 
 @app.post("/api/v1/barcode-scan")
@@ -440,6 +533,16 @@ async def capture_modes():
         ],
         "modes": [
             {
+                "mode": "tap",
+                "rank": 0,
+                "accuracy": "highest",
+                "requires": "a thumb — no reading, no typing beyond a number",
+                "extraction_confidence": capture_pipeline.CONFIRMED_CONFIDENCE,
+                "why": "a named tile and a typed number leave nothing to "
+                       "extract; the worker hears it read back before it is "
+                       "written",
+            },
+            {
                 "mode": "barcode",
                 "rank": 1,
                 "accuracy": "highest",
@@ -466,6 +569,26 @@ async def capture_modes():
                 "why": "when audio is impractical: a shared room, a night "
                        "shift, a noisy clinic",
             },
+            {
+                "mode": "photo",
+                "rank": 4,
+                "accuracy": "preview only — always confirmed by the worker",
+                "requires": "a camera and the stock register",
+                "extraction_confidence": "returned by the model per row; "
+                                         "never written unconfirmed",
+                "why": "a whole page of the register in one shot, for the "
+                       "end-of-day entry",
+            },
+            {
+                "mode": "sms",
+                "rank": 5,
+                "accuracy": "as chat",
+                "requires": "any phone; a gateway posting to /api/v1/sms-note",
+                "extraction_confidence": "returned by the model per item",
+                "why": "no data connection at all; no gateway is connected "
+                       "in this deployment, the endpoint is what one would "
+                       "call",
+            },
         ],
     }
 
@@ -476,11 +599,10 @@ async def get_review_queue(state: str = DEFAULT_STATE, district: str = "",
                            phc: str = ""):
     """Low-confidence extractions awaiting a human decision.
 
-    Real extractions live in Firestore and always take precedence. When the
-    queue is genuinely empty, three worked examples are returned so the screen
-    is demonstrable — and they are **labelled as examples in the payload**,
-    because an unlabelled example is indistinguishable from a real pending
-    review and that is exactly the kind of thing this project does not do.
+    Only real extractions, from Firestore. This used to fall back to three
+    invented "worked examples" when the queue was empty; they were labelled,
+    but a labelled invention is still an invention on a screen that claims
+    to show what the model held back. An empty queue now says it is empty.
     """
     from google.cloud import firestore
     try:
@@ -488,23 +610,15 @@ async def get_review_queue(state: str = DEFAULT_STATE, district: str = "",
             project=os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply"))
         docs = list(db.collection("review_queue")
                     .where("status", "==", "pending").stream())
-        if docs:
-            return {
-                "items": [doc.to_dict() for doc in docs],
-                "is_example_data": False,
-                "basis": "Real low-confidence extractions from Firestore.",
-            }
-    except Exception:
-        pass
-    scope = _facility_query(facility_repo.scope_facilities, state, district, phc)
+    except Exception as exc:
+        raise HTTPException(status_code=503,
+                            detail=f"Review queue is unavailable: {exc}")
+    items_ = [capture_pipeline.describe({"events": [], "review_queue": [d]})
+              ["review_queue"][0] for d in (doc.to_dict() for doc in docs)]
     return {
-        "items": [{**item, "is_example": True}
-                  for item in get_demo_review_queue(scope)],
-        "is_example_data": True,
-        "basis": (
-            "No real extraction is pending, so three worked examples are shown "
-            "to demonstrate the confidence gate. They are illustrative, not "
-            "captured. Real extractions replace them as soon as any exist."),
+        "items": items_,
+        "is_example_data": False,
+        "basis": "Real low-confidence extractions from Firestore.",
     }
 
 

@@ -27,19 +27,40 @@ at the person holding the register and works upward.
 
 ## Capture degrades gracefully
 
-Three ways in, **one pipeline**. The modes differ only in how the text is
+Six ways in, **one pipeline**. The modes differ only in how the rows are
 obtained; everything after that is the same code path, in `app/capture_pipeline.py`:
 
 ```
-extract  →  match against all 385 NLEM medicines  →  confidence gate  →  write
-            (two-stage, thresholds 85 / 90)          (below 0.6)         or review
+extract  →  match against all 385 NLEM medicines  →  read back  →  confidence gate  →  write
+            (two-stage, thresholds 85 / 90)         (worker says yes)  (below 0.6)      or review
 ```
+
+The Report page is built for the person holding the phone at the end of a
+shift, not for an analyst: it reads in Hindi or English from one toggle, the
+default mode needs no typing beyond a number, and **nothing is written until
+the worker has heard it read back and said yes** (the offline queue is the one
+exception, because nobody is holding the phone when it syncs).
 
 | Rank | Mode | When it wins | Needs | Extraction confidence |
 |---|---|---|---|---|
+| 0 | **Tap** | The default. What happened → which medicine (39 tiles, Hindi names where the catalogue has them) → how many, on a keypad | A thumb | 1.0 — nothing to extract |
 | 1 | **Barcode** | Most accurate — the code names the product, there is no speech to mis-hear | Labelled stock, working camera | 1.0 |
 | 2 | **Voice** | **Works when nothing else does.** No labels, no keyboard, no connectivity | 30 seconds, any language | Per item, from the model |
 | 3 | **Chat** | When audio is impractical — shared room, night shift, noisy clinic | A keyboard | Per item, from the model |
+| 4 | **Photo** | A whole page of the stock register in one shot, read by Gemini. **Preview only** — every row is shown for the worker to check; a photo can never write unconfirmed | A camera and the register | Per row, from the model |
+| 5 | **SMS** | No data connection at all. `POST /api/v1/sms-note` is what a gateway would call; the reply is one plain line per record. **No gateway is connected in this deployment** | Any phone, plus a gateway | Per item, from the model |
+
+The same page takes **staff on duty today** and **beds in use right now**,
+as personnel and bed `count` events through the same pipeline. Those are the
+only attendance and occupancy counts the system holds as fact: what centres
+report. Today's staff and bed views count the centres that reported in the
+last 24 hours.
+
+**Gemini also writes, where writing is the work.** Each shortage nothing
+routine will fix carries a *Draft note* button: an escalation note for the
+district officer, drafted from the row's own figures and then checked against
+them. A draft that mentions a number the data does not contain comes back
+flagged, with the numbers listed, never silently.
 
 The hierarchy is only meaningful because a worse input mode yields a
 *lower-confidence record*, not a differently-shaped one. Below 0.6 confidence,

@@ -533,6 +533,51 @@ def _say_resilience(pct: float | None) -> str:
 # titles travel with the data instead of living in a branch per resource.
 
 
+# What a centre has reported through the Report page in the last day, for
+# beds and for staff. This is the only presence figure the system holds, and
+# it is counted from the ledger rather than modelled — so on a day nobody has
+# reported it reads zero, and zero is what the tile says.
+CAPTURE_SOURCES = ("voice", "chat", "barcode", "tap", "photo", "sms")
+
+
+def reported_today(resource_type: str, where: str, params: list,
+                   scope_table: str) -> dict:
+    """Personnel or bed `count` events captured in the last 24 hours, in scope.
+
+    Scope is applied through the resource's own status table, which carries
+    state, district and facility_id, so the same geography predicate the
+    scorecard uses applies here without a join to the facility master.
+    """
+    from google.cloud import bigquery as _bq
+    sources = ", ".join(f"'{x}'" for x in CAPTURE_SOURCES)
+    rows = run_query(f"""
+        SELECT COUNT(DISTINCT facility_id) AS centres,
+               COUNT(*) AS reports,
+               MAX(event_ts) AS latest,
+               ARRAY_AGG(STRUCT(facility_id, item_id, quantity, event_ts)
+                         ORDER BY event_ts DESC LIMIT 20) AS latest_rows
+        FROM `{D}.resource_events`
+        WHERE resource_type = @rt
+          AND event_type = 'count'
+          AND source IN ({sources})
+          AND event_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+          AND facility_id IN (SELECT facility_id FROM `{D}.{scope_table}`
+                              WHERE {where})
+    """, params + [_bq.ScalarQueryParameter("rt", "STRING", resource_type)],
+        cache_key=f"reported:{resource_type}:{where}:{params!r}", ttl=60)
+    r = dict(rows[0]) if rows else {}
+    return {
+        "centres": int(r.get("centres") or 0),
+        "reports": int(r.get("reports") or 0),
+        "latest": r["latest"].isoformat() if r.get("latest") else None,
+        "latest_rows": [{**dict(x), "event_ts": dict(x)["event_ts"].isoformat()}
+                        for x in (r.get("latest_rows") or [])],
+        "window_hours": 24,
+        "basis": "Counted from resource_events: count events whose source is a "
+                 "capture mode, in the last 24 hours. Not modelled.",
+    }
+
+
 def _kpi(value, unit, label, sub, tone, says) -> dict:
     return {"value": value, "unit": unit, "label": label, "sub": sub,
             "tone": tone, "says": says}
@@ -719,6 +764,7 @@ def bed_scorecard(state: str = "", district: str = "", phc: str = "") -> dict:
         return {"resource": "bed", "empty": True, "scorecard": s, "kpis": [],
                 "labels": BED_LABELS}
 
+    reported = reported_today("bed", where, params, "bed_status")
     occ = 100 * (s.get("mean_occupancy") or 0)
     free = round(100 - occ, 1)
     over = _rate(s.get("over_capacity") or 0, centres)
@@ -762,7 +808,17 @@ def bed_scorecard(state: str = "", district: str = "", phc: str = "") -> dict:
                  _say_spread(spread) if spread is not None
                  else "Not meaningful for a single district - widen the area "
                       "to compare districts against each other."),
+            _kpi(reported["centres"], "", "Centres reporting beds today",
+                 (f"{reported['reports']:,} bed counts in the last 24 hours"
+                  if reported["reports"] else
+                  "No centre has reported a bed count in the last 24 hours"),
+                 "ok" if reported["centres"] else "unknown",
+                 "Occupancy above is modelled from real admission volumes. "
+                 "This is the one figure that is not: a count of beds in use, "
+                 "reported from the ward through the Report page. Where a "
+                 "centre reports, that count is in the ledger as fact."),
         ],
+        "reported_today": reported,
         "distribution": [dict(x) for x in (r.get("distribution") or [])],
         "ranking": [dict(x) for x in (r.get("ranking") or [])],
         "quadrant": [dict(x) for x in (r.get("quadrant") or [])],
@@ -892,6 +948,7 @@ def staff_scorecard(state: str = "", district: str = "",
     # 2021-22 (47 under 2017) but reported elsewhere in the source,
     # which is a real RHS outcome and not an error. Capped for display, because
     # "103% of posts filled" invites the reader to think a post is missing.
+    reported = reported_today("personnel", where, params, "staff_status")
     filled = min(100.0, round(100 - 100 * (s.get("mean_vacancy") or 0), 1))
     badly_short = _rate(ra.get("roles_badly_short") or 0, roles_scored)         if roles_scored else None
     districts = s.get("districts") or 0
@@ -952,7 +1009,18 @@ def staff_scorecard(state: str = "", district: str = "",
                     "at PHCs against 1,156 required)."
                     if (s.get("no_rhs_figure") or 0) else
                     "Every centre-role in scope carries an RHS 2021-22 figure.")),
+            _kpi(reported["centres"], "", "Centres reporting attendance today",
+                 (f"{reported['reports']:,} role counts in the last 24 hours"
+                  if reported["reports"] else
+                  "No centre has reported who is on duty in the last 24 hours"),
+                 "ok" if reported["centres"] else "unknown",
+                 "Everything above is establishment: posts sanctioned and "
+                 "filled, from Rural Health Statistics. Who actually came in "
+                 "today is known only where a centre reports it through the "
+                 "Report page, and this counts those reports. Nothing is "
+                 "modelled in its place."),
         ],
+        "reported_today": reported,
         "distribution": [dict(x) for x in (r.get("distribution") or [])],
         "ranking": [dict(x) for x in (r.get("ranking") or [])],
         "quadrant": [dict(x) for x in (r.get("quadrant") or [])],
