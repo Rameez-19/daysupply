@@ -36,7 +36,6 @@ load_dotenv()
 
 from app import facilities as facility_repo  # noqa: E402
 from app import forecast
-from app import stock_health
 from app import supply
 from app import exchange
 from app import items
@@ -916,15 +915,6 @@ async def get_forecast_chart_endpoint(days: int = 7, state: str = "Telangana",
     })
     return payload
 
-
-@app.get("/api/v1/stock-health")
-async def get_stock_health(state: str = "Telangana", district: str = "",
-                           phc: str = ""):
-    """Days-of-cover distribution and the largest deficits, from the model.
-
-    Replaces two charts that were previously arrays hardcoded in the browser.
-    """
-    return _facility_query(stock_health.network_health, state, district, phc)
 
 # The expiry chart used to be served here from `random.randint`. There is no
 # batch-expiry data source anywhere in the stack, so it has been removed rather
