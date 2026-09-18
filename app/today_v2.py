@@ -61,7 +61,7 @@ DATASET = os.getenv("BQ_DATASET", "daysupply")
 D = f"{PROJECT}.{DATASET}"
 
 # The spike a district is asked to absorb from stock it already holds. Same 3x
-# used by the executive view and the map, so the three cannot disagree.
+# used by the map as well, so the two cannot disagree.
 ABSORPTION_MULTIPLIER = 3.0
 
 # Below this share of positions holding, a district is "could not cope".
@@ -183,19 +183,38 @@ def scorecard(state: str = "", district: str = "", phc: str = "",
               ORDER BY centres DESC, districts DESC
               LIMIT {TOP_N})) AS worst_medicines,
 
+      -- HOW SERIOUS. Criticality, not just count: a fifth of Desirable lines
+      -- short is a different problem from a fifth of Vital lines short. This
+      -- is the one panel Today v1 had that nothing else in the product does,
+      -- and it carries the counter-intuitive finding that Desirable is
+      -- proportionally worst.
+      ARRAY(SELECT AS STRUCT ven_class, tracked, short, pct
+            FROM (
+              SELECT ven_class,
+                     COUNT(*) AS tracked,
+                     COUNTIF(needs_reorder) AS short,
+                     ROUND(100 * SAFE_DIVIDE(COUNTIF(needs_reorder), COUNT(*)), 1) AS pct
+              FROM `{D}.reorder_status`
+              WHERE {rs}
+              GROUP BY ven_class
+              ORDER BY CASE ven_class WHEN 'Vital' THEN 1
+                                      WHEN 'Essential' THEN 2 ELSE 3 END)) AS ven_breakdown,
+
       -- WHERE. Exposure against ability to cope. Read separately these two
       -- mislead; together they separate the districts that are both badly
       -- short and unable to help themselves.
       ARRAY(SELECT AS STRUCT district, state, pct_short, pct_cope, tracked,
-                             vital_short
+                             vital_short, stocked_out
             FROM (
               SELECT s.district, s.state, s.tracked, s.vital_short,
+                     s.stocked_out,
                      ROUND(100 * SAFE_DIVIDE(s.short, s.tracked), 1) AS pct_short,
                      ROUND(100 * SAFE_DIVIDE(c.holds, c.positions), 1) AS pct_cope
               FROM (
                 SELECT district, ANY_VALUE(state) AS state,
                        COUNT(*) AS tracked, COUNTIF(needs_reorder) AS short,
-                       COUNTIF(ven_class = 'Vital' AND needs_reorder) AS vital_short
+                       COUNTIF(ven_class = 'Vital' AND needs_reorder) AS vital_short,
+                       COUNTIF(status = 'stocked_out') AS stocked_out
                 FROM `{D}.reorder_status` WHERE {rs}
                 GROUP BY district
                 HAVING tracked >= {MIN_LINES_FOR_RATE}) s
@@ -247,6 +266,27 @@ def scorecard(state: str = "", district: str = "", phc: str = "",
     # as one.
     r["empty"] = (sc.get("tracked") or 0) == 0 if (sc := r.get("scorecard")) else True
     r["labels"] = MEDICINE_LABELS
+
+    # --- the three panels inherited from Today v1 -----------------------
+    # `verdictBar`, `renderNextSteps` and `renderVen` are reused unchanged, so
+    # the payload carries the key names they already read. Nothing here costs
+    # a query: `scorecard`, `queue`, `transfer_only` and `absorption` are
+    # already in the row above, and the district rows now carry stocked_out.
+    sc0 = r.get("scorecard") or {}
+    r["medicines"] = {
+        "tracked": sc0.get("tracked"),
+        "below_reorder": sc0.get("short"),
+        "vital_short": sc0.get("vital_short"),
+        "stocked_out": sc0.get("stocked_out"),
+    }
+    r["action_queue"] = r.get("queue") or {}
+    # Worst first, by the same ordering the executive view used: life-saving
+    # shortages, then stock-outs, then total lines short.
+    r["worst_districts"] = sorted(
+        (dict(x) for x in (r.get("districts_plot") or [])),
+        key=lambda x: (-(x.get("vital_short") or 0),
+                       -(x.get("stocked_out") or 0),
+                       -(x.get("tracked") or 0)))
     # The same `kpis` list beds and staff return, so the front end renders any
     # resource through one path instead of a branch per resource.
     g = r["grades"]

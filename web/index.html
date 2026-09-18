@@ -30,13 +30,9 @@
       </div>
       <nav class="sidebar-nav">
         <div class="nav-group-label">District officer</div>
-        <button class="nav-item active" data-tab="today-view">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Today</span>
+        <button class="nav-item active" data-tab="today2-view">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg><span>Today</span>
           <span class="nav-badge danger" id="alert-badge"></span>
-        </button>
-        <button class="nav-item" data-tab="today2-view">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg><span>Today v2</span>
-          <span class="nav-badge new">new</span>
         </button>
         <button class="nav-item" data-tab="network-view">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Network</span>
@@ -90,154 +86,11 @@
       </header>
 
       <!-- ═══ Dashboard ═══ -->
-      <section id="today-view" class="view active-view">
-        <div class="view-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
-          <div>
-            <h2>National picture</h2>
-            <p class="view-subtitle" id="dashboard-subtitle">
-              Medicines, beds and staff across India&rsquo;s primary health
-              network &mdash; what is holding, what is not, and what is coming
-            </p>
-          </div>
-          <div class="last-synced" id="last-synced">Loading…</div>
-        </div>
+      <section id="today2-view" class="view active-view">
+        <!-- Surge banner: "something is happening right now", above everything
+             else. The early warnings themselves live on Plan ahead. -->
+        <div id="v2-surge-banner"></div>
 
-        <div class="filter-bar">
-          <div class="filter-group">
-            <label class="filter-label">Resource</label>
-            <select id="resource-filter" onchange="onResourceChange()">
-              <option value="medicine">Medicines</option>
-              <option value="bed">Beds</option>
-              <option value="personnel">Personnel</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <label class="filter-label">State</label>
-            <select id="state-filter" onchange="onStateChange()">
-              <option value="">Loading states…</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <label class="filter-label">District</label>
-            <select id="district-filter" onchange="onDistrictChange()">
-              <option value="">All Districts</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <label class="filter-label">PHC</label>
-            <select id="phc-filter" onchange="onPHCChange()">
-              <option value="">All PHCs</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Surge leads, when there is one. During an emergency this IS the
-             national picture. -->
-        <div id="surge-banner"></div>
-
-        <!-- The answer, before the evidence. -->
-        <div id="verdict-bar"></div>
-
-        <!-- ── The numbers, as numbers. All three resources, because the brief
-             names all three. -->
-        <div id="kpi-row" class="kpi-row"></div>
-
-        <!-- The answer to "so what". Everything below this is the evidence
-             for it; a reader in a hurry can stop here and still have done the
-             right thing today. -->
-        <h3 class="section-heading">What should we do first?</h3>
-        <div id="next-steps" class="next-steps"></div>
-
-        <!-- All three resources the brief names, in sentences rather than in
-             more tiles. Kept high on the page so beds and staff are visible
-             without scrolling, now that the tiles are medicines-led. -->
-        <h3 class="section-heading">How are medicines, beds and staff holding up?</h3>
-        <div id="posture-grid" class="posture-grid"></div>
-
-        <!-- ── The numbers, as shape. -->
-        <div class="dashboard-row">
-          <div class="dashboard-section flex-1">
-            <h3>When does it run out?</h3>
-            <p class="section-note">
-              Every medicine we track, grouped by how many days of supply is
-              left at the current rate of use. A count of shortages is a
-              number; this is a timetable.
-            </p>
-            <div class="chart-box"><canvas id="cover-chart"></canvas></div>
-            <div id="cover-caption" class="chart-caption"></div>
-          </div>
-          <div class="dashboard-section flex-1">
-            <h3>Where the risk sits</h3>
-            <p class="section-note">
-              The ten districts with the most medicines running low. Red is
-              life-saving medicines.
-            </p>
-            <div class="chart-box"><canvas id="district-chart"></canvas></div>
-            <div id="district-caption" class="chart-caption"></div>
-          </div>
-        </div>
-
-        <div class="dashboard-row">
-          <div class="dashboard-section flex-1">
-            <h3>Could we absorb a shock?</h3>
-            <p class="section-note">
-              If demand suddenly rose, how much of a district&rsquo;s medicine
-              stock could cope using supplies already nearby &mdash; before any
-              new order could physically arrive.
-            </p>
-            <div id="absorption-panel"></div>
-          </div>
-          <div class="dashboard-section flex-1">
-            <h3>How serious are the shortages?</h3>
-            <p class="section-note">
-              Running out of a life-saving medicine matters more than running
-              out of an optional one. These are India&rsquo;s official VEN
-              categories.
-            </p>
-            <div id="ven-panel"></div>
-          </div>
-        </div>
-
-        <!-- What is coming? -->
-        <h3 class="section-heading">What is coming next?</h3>
-        <p class="section-note">
-          Each one is labelled, because an outbreak and a planned campaign
-          need different responses. We do not predict outbreaks &mdash; we
-          detect that one has already begun, earlier than the standard
-          3-sigma alarm can.
-        </p>
-        <div id="early-warnings" class="card-list"></div>
-
-        <!-- The top of each queue only. The full queues are the Action queue
-             view, which is where the work actually happens. -->
-        <div class="dashboard-row balanced-row">
-          <div class="dashboard-section flex-1">
-            <div class="section-head-row">
-              <h3>What is failing</h3>
-              <button class="link-button" onclick="switchTab('action-view')">
-                View all &rarr;
-              </button>
-            </div>
-            <p class="section-note">Life-saving medicines first, then whatever has the fewest days left.</p>
-            <div id="alerts-list" class="card-list preview-list"></div>
-            <div id="alerts-more"></div>
-          </div>
-          <div class="dashboard-section flex-1">
-            <div class="section-head-row">
-              <h3>What to do about it</h3>
-              <button class="link-button" onclick="switchTab('action-view')">
-                View all &rarr;
-              </button>
-            </div>
-            <p class="section-note">Stock that already exists, moved to where it is short.</p>
-            <div id="transfer-list" class="card-list preview-list"></div>
-            <div id="transfers-more"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Network -->
-      <section id="today2-view" class="view hidden-view">
         <div class="view-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
           <div>
             <h2>How is the network doing?</h2>
@@ -305,7 +158,20 @@
           </div>
         </div>
 
+        <!-- One graded verdict for the whole network, before the tiles that
+             break it down. Medicines only; hidden for beds and staff. -->
+        <div id="v2-verdict" hidden></div>
+
         <div id="v2-kpis" class="v2-kpi-row"></div>
+
+        <!-- The only ranked list of actions in the product, each step linking
+             to the page that performs it. Medicines only. -->
+        <div class="dashboard-section" id="v2-next-steps-section" hidden>
+          <h3>What should we do first?</h3>
+          <p class="section-note">In order. Each step opens the page where it
+            is done.</p>
+          <div id="v2-next-steps" class="steps"></div>
+        </div>
 
         <div class="dashboard-row">
           <div class="dashboard-section flex-1">
@@ -342,6 +208,16 @@
             <div class="chart-box"><canvas id="v2-shock"></canvas></div>
             <div id="v2-shock-note" class="chart-caption"></div>
           </div>
+        </div>
+
+        <!-- Criticality, not just count. The one place the three classes are
+             shown with what running out of each one means. Medicines only. -->
+        <div class="dashboard-section" id="v2-ven-section" hidden>
+          <h3>How serious are the shortages?</h3>
+          <p class="section-note">Every medicine we track is Vital, Essential
+            or Desirable. A fifth of Desirable lines short is a different
+            problem from a fifth of Vital lines short.</p>
+          <div id="v2-ven"></div>
         </div>
       </section>
 
@@ -791,7 +667,7 @@
 
     <!-- Bottom Nav (mobile) -->
     <nav class="bottom-nav">
-      <button class="bottom-nav-item active" data-tab="today-view">
+      <button class="bottom-nav-item active" data-tab="today2-view">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Today</span>
       </button>
       <button class="bottom-nav-item" data-tab="network-view">

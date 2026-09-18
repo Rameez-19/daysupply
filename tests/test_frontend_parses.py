@@ -160,6 +160,55 @@ class TestTheDomTheCodeExpectsActuallyExists:
                 f"index.html calls {h}() inline but it is never defined")
 
 
+class TestTheLandingViewInitialisesOnFirstLoad:
+    """app.js loads first and used to dispatch the landing view at once. That
+    was fine while the landing view's loaders lived in app.js. When Today v2
+    became the landing view its initialiser lived in today2.js, which has not
+    run when app.js executes — and refreshAll() reaches it through
+    `typeof initToday2 === 'function'`, a guard that is silently false at that
+    moment. A real reader saw "Loading…" until they navigated away and back.
+
+    A deterministic browser probe found it: the geography promise had
+    resolved, the server had answered the scorecard, and the page still held
+    zero tiles. This pins the fix rather than the symptom.
+    """
+
+    def _landing_view(self):
+        import re
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        m = re.search(r'<section id="([a-z0-9-]+)" class="view active-view"', html)
+        assert m, "no landing view is marked active-view"
+        return m.group(1)
+
+    def test_boot_waits_for_every_script(self):
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        assert "document.addEventListener('DOMContentLoaded', boot)" in app, (
+            "the initial dispatch must wait for DOMContentLoaded, which fires "
+            "only after the last classic script has executed")
+        assert "document.readyState === 'loading'" in app
+
+    def test_the_landing_view_is_dispatched_by_refresh_all(self):
+        """The view marked active in the markup must be one refreshAll knows,
+        or first load renders nothing at all."""
+        import re
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        body = app[app.index("function refreshAll()"):]
+        body = body[:body.index(chr(10) + "}" + chr(10))]
+        assert f"'{self._landing_view()}'" in body
+
+    def test_the_landing_view_is_today_v2(self):
+        """Today v1 was retired on 2026-09-18. If this ever points elsewhere,
+        the nav, the bottom nav and activeViewId's default all need to move."""
+        landing = self._landing_view()
+        assert landing == "today2-view"
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        assert "return el ? el.id : 'today2-view';" in app
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        assert 'class="nav-item active" data-tab="today2-view"' in html
+        assert 'class="bottom-nav-item active" data-tab="today2-view"' in html
+        assert 'id="today-view"' not in html
+
+
 class TestAppJsDoesNotDependOnAFileThatHasNotRunYet:
     """`app.js` loads first and its init IIFE runs immediately. Anything it
     calls on that path must already exist.

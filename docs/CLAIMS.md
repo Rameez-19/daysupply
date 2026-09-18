@@ -387,10 +387,13 @@ invented pack size. They count as uncovered instead.
 
 *Last verified against the live deployment: **2026-09-04**.*
 
-The landing view was ninety stacked text cards; it is now eight stat tiles,
-two charts and two meters, with the prose kept underneath as the explanation
-rather than the interface. Every figure below is served by `/api/v1/executive`
-in the same single round trip.
+The landing view was ninety stacked text cards; it became eight stat tiles,
+two charts and two meters, and on 2026-09-18 it was retired in favour of Today
+v2 (§7c), which now *is* Today. Every figure below is served by `/api/v1/today2`
+in one round trip — `/api/v1/executive` and `app/executive.py` are gone. The
+four panels only this view had (the network verdict, "What should we do
+first?", the Vital/Essential/Desirable split and the surge banner) moved into
+Today v2 with their renderers unchanged; the figures are the same.
 
 | Figure | Derived from | Status | Computed in |
 |---|---|---|---|
@@ -403,7 +406,8 @@ in the same single round trip.
 **Two cross-checks are asserted, not assumed.** The "Already out" bucket must
 equal `medicines.stocked_out`, and the VEN rows must sum to `tracked` and
 `below_reorder`. Both reach the page by different SQL paths, so if they ever
-disagree one of the headline numbers is wrong; `test_executive.py` fails first.
+disagree one of the headline numbers is wrong; `test_today_v2.py` fails first
+(`TestItAgreesWithTheOtherViews`).
 
 **Desirable is the worst class proportionally (42.2%), not Vital.** That is a
 real result and it is left visible rather than buried, because it is the
@@ -712,9 +716,10 @@ quadrant** (`MIN_LINES_FOR_RATE`). A district with three lines reads 100% short
 on one bad line, and a rate with no floor under its denominator shows noise as
 crisis. 110 of 116 districts qualify.
 
-**The three views must agree.** `test_today_v2.py` asserts that tracked, short,
-stocked-out and vital-short match `/api/v1/executive` exactly, that absorption
-matches it multiplier for multiplier, and that the 3x shock and the 35%
+**The views must agree.** With Today v1 gone the cross-check runs inside one
+payload: `test_today_v2.py` asserts that the `medicines` block feeding the
+verdict bar equals the `scorecard` struct feeding the tiles, that the VEN split
+sums to the same totals by a second SQL path, and that the 3x shock and the 35%
 fragility threshold are the same constants the map uses. Three pages showing
 the same figures differently is a credibility risk, not a feature, unless they
 provably agree.
@@ -852,8 +857,8 @@ BigQuery round trip, 0.162 GB scanned on a dry run, ~0.22 s warm.
 | **144 cross-district moves**, **35,905 units**, longest **148 km** | `recommendations` joined to the donor facility's district | **MEASURED — LIVE** | `flows` CTE |
 | **362 of 527** recommendations cross a district boundary | the remaining 165 are intra-district and are not drawn — the arc would be a dot on the node | **MEASURED** | `flows` CTE |
 
-**The 35% threshold is deliberately the same one the executive view's
-absorption bars use.** If the map had picked its own, the two views would
+**The 35% threshold is deliberately the same one Today's absorption bars
+use.** If the map had picked its own, the two views would
 disagree about the same district; `test_mapview.py` pins them together.
 
 **A correction worth recording.** The flow layer first shipped empty. The query

@@ -199,7 +199,7 @@ Speech-to-Text + Translation chain (three failure points instead of one).
 daysupply/
 ├── app/
 │   ├── main.py          FastAPI, all /api/v1/... endpoints
-│   ├── executive.py     the national picture, one round trip
+│   ├── today_v2.py      Today: the scorecard, one round trip (executive.py retired 2026-09-18)
 │   ├── mapview.py       district nodes + redistribution arcs, one round trip
 │   ├── capture.py       Gemini audio → structured JSON
 │   ├── demo_data.py     ⚠️ seeded generator — TO BE REPLACED by BigQuery

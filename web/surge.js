@@ -237,8 +237,8 @@ if (scenarioBtn) scenarioBtn.addEventListener('click', runScenario);
 // is 14.11x expected" (early warning) and "Albendazole is 22.64x expected"
 // (National Deworming Day) demand completely different responses, and a banner
 // that showed only a multiplier would flatten that distinction.
-async function loadSurgeBanner() {
-  const el = document.getElementById('surge-banner');
+async function loadSurgeBanner(hostId = 'v2-surge-banner') {
+  const el = document.getElementById(hostId);
   if (!el) return;
   try {
     const res = await fetch(`/api/v1/surge/signals?limit=5&${getFilterParams()}`);

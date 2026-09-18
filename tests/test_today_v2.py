@@ -9,7 +9,7 @@ and the two views that show the same underlying figures.
 
 import pytest
 
-from app import executive, today_v2
+from app import today_v2
 
 
 @pytest.fixture(scope="module")
@@ -180,19 +180,36 @@ class TestItAgreesWithTheOtherViews:
     least one is wrong, and a judge checking two screens will find it before
     we do."""
 
-    def test_tracked_and_short_match_the_executive_view(self, national):
-        e = executive.national_picture("")["medicines"]
+    def test_the_verdict_figures_agree_with_the_scorecard(self, national):
+        """These used to be checked against /api/v1/executive, which served
+        Today v1. That page is gone, and the same guard now runs inside one
+        payload: the `medicines` block that feeds the verdict bar must equal
+        the `scorecard` struct that feeds the tiles. They are built from one
+        query, so a mismatch means the derivation is wrong, not the data."""
+        m = national["medicines"]
         s = national["scorecard"]
-        assert s["tracked"] == e["tracked"]
-        assert s["short"] == e["below_reorder"]
-        assert s["stocked_out"] == e["stocked_out"]
-        assert s["vital_short"] == e["vital_short"]
+        assert m["tracked"] == s["tracked"]
+        assert m["below_reorder"] == s["short"]
+        assert m["stocked_out"] == s["stocked_out"]
+        assert m["vital_short"] == s["vital_short"]
 
-    def test_absorption_matches_the_executive_view(self, national):
-        e = executive.national_picture("")["absorption"]
-        mine = {a["multiplier"]: a["pct"] for a in national["absorption"]}
-        theirs = {a["multiplier"]: a["pct"] for a in e}
-        assert mine == theirs
+    def test_the_ven_split_sums_to_the_scorecard(self, national):
+        """Two SQL paths to the same totals. If the class breakdown ever
+        disagrees with the headline counts, one of them is wrong."""
+        rows = national["ven_breakdown"]
+        s = national["scorecard"]
+        assert {r["ven_class"] for r in rows} == {"Vital", "Essential", "Desirable"}
+        assert sum(r["tracked"] for r in rows) == s["tracked"]
+        assert sum(r["short"] for r in rows) == s["short"]
+        vital = next(r for r in rows if r["ven_class"] == "Vital")
+        assert vital["short"] == s["vital_short"]
+
+    def test_the_next_steps_read_the_queue_the_page_already_had(self, national):
+        """`action_queue` is the existing `queue` struct under the name the
+        renderer expects — not a second count of recommendations."""
+        assert national["action_queue"] == national["queue"]
+        assert national["worst_districts"][0]["vital_short"] >= \
+            national["worst_districts"][-1]["vital_short"]
 
     def test_the_shock_multiplier_is_the_one_used_everywhere_else(self):
         from app import mapview
@@ -603,8 +620,7 @@ class TestTheViewIsWarmedAtStartup:
                / "app" / "main.py").read_text(encoding="utf-8")
         warm = src[src.index("for label, fn in ("):]
         warm = warm[:warm.index("):")]
-        for module in ("executive.national_picture", "mapview.supply_map",
-                       "today_v2.scorecard"):
+        for module in ("mapview.supply_map", "today_v2.scorecard"):
             assert module in warm, f"{module} backs a view and is not warmed"
 
 

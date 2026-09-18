@@ -30,7 +30,7 @@ personnel at all.
 
 import pytest
 
-from app import executive, resources, today_v2
+from app import resources, today_v2
 from app.bq import run_query
 
 
@@ -123,11 +123,17 @@ class TestNoGeneratedFigureReachesAReader:
                 assert "on duty" not in value.lower(), (path, value)
                 assert "nobody came" not in value.lower(), (path, value)
 
-    def test_the_national_summary_is_clean(self):
-        text = executive.national_picture()["headline"]["personnel"]
-        for phrase in ("nobody on duty", "day with nobody", "on duty at all"):
-            assert phrase not in text.lower(), text
-        assert "sanctioned posts are unfilled" in text, text
+    def test_the_staffing_summary_is_clean(self):
+        """The old national summary sentence lived on Today v1, which is
+        gone. What a reader sees now is the staffing scorecard's own words:
+        its provenance line and the `says` text under every tile."""
+        d = today_v2.staff_scorecard()
+        texts = [d["labels"]["provenance"]] + [k.get("says", "") for k in d["kpis"]]
+        for text in texts:
+            for phrase in ("nobody on duty", "day with nobody", "on duty at all",
+                           "attendance is modelled"):
+                assert phrase not in text.lower(), text
+        assert "Rural Health Statistics" in d["labels"]["provenance"]
 
     @pytest.mark.parametrize("fn", [
         lambda: resources.staff_summary(),

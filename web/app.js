@@ -102,116 +102,14 @@ let currentResource = "medicine";
 
 // Geography comes from BigQuery — the real 200,438-facility national master.
 // Nothing here is hardcoded; the dropdowns list what is actually in the data.
-function setOptions(select, placeholder, rows, valueKey, labelFn) {
-  select.innerHTML = "";
-  const first = document.createElement("option");
-  first.value = ""; first.textContent = placeholder;
-  select.appendChild(first);
-  rows.forEach(r => {
-    const opt = document.createElement("option");
-    opt.value = r[valueKey];
-    opt.textContent = labelFn(r);
-    select.appendChild(opt);
-  });
-}
 
-function setDropdownError(select, message) {
-  select.innerHTML = `<option value="">${message}</option>`;
-}
 
-async function loadStates() {
-  const sel = document.getElementById('state-filter');
-  try {
-    const res = await fetch('/api/v1/states');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { states } = await res.json();
-    setOptions(sel, `All States (${states.length})`, states, 'state',
-      r => `${r.state} — ${r.facility_count.toLocaleString('en-IN')} facilities`);
-    // No auto-selection: All India is the default and the dropdown says so.
-    sel.value = currentState;
-    await loadDistricts();
-  } catch (e) {
-    console.error('Failed to load states', e);
-    setDropdownError(sel, 'States unavailable');
-    // Geography failing means nothing below it can be scoped, so the header
-    // must not go on claiming a successful sync.
-    setSyncState(false, 'geography unavailable');
-    throw e;
-  }
-}
 
-async function loadDistricts() {
-  const sel = document.getElementById('district-filter');
-  currentDistrict = ""; currentPHC = ""; currentPHCName = "";
-  if (!currentState) { setOptions(sel, 'All Districts', [], 'district', r => r); return; }
-  try {
-    const res = await fetch(`/api/v1/districts?state=${encodeURIComponent(currentState)}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { districts } = await res.json();
-    // display_name differs from district only where two government sources
-    // spell it differently; the value posted back is always the stored one.
-    setOptions(sel, `All Districts (${districts.length})`, districts, 'district',
-      r => `${r.display_name || r.district} — ${r.phc_count} PHCs`);
-  } catch (e) {
-    console.error('Failed to load districts', e);
-    setDropdownError(sel, 'Districts unavailable');
-  }
-  await loadPHCs();
-}
 
-async function loadPHCs() {
-  const sel = document.getElementById('phc-filter');
-  currentPHC = ""; currentPHCName = "";
-  if (!currentState || !currentDistrict) {
-    setOptions(sel, 'All PHCs', [], 'facility_id', r => r.name);
-    return;
-  }
-  try {
-    const url = `/api/v1/facilities?state=${encodeURIComponent(currentState)}`
-      + `&district=${encodeURIComponent(currentDistrict)}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { facilities } = await res.json();
-    setOptions(sel, `All PHCs (${facilities.length})`, facilities, 'facility_id',
-      r => r.name);
-  } catch (e) {
-    console.error('Failed to load facilities', e);
-    setDropdownError(sel, 'Facilities unavailable');
-  }
-}
 
-async function onStateChange() {
-  currentState = document.getElementById('state-filter').value;
-  await loadDistricts();
-  updateSubtitle();
-  refreshAll();
-}
 
-async function onDistrictChange() {
-  currentDistrict = document.getElementById('district-filter').value;
-  await loadPHCs();
-  updateSubtitle();
-  refreshAll();
-}
 
-function onPHCChange() {
-  const sel = document.getElementById('phc-filter');
-  currentPHC = sel.value;
-  currentPHCName = currentPHC ? sel.options[sel.selectedIndex].textContent : "";
-  updateSubtitle();
-  refreshAll();
-}
 
-function updateSubtitle() {
-  const el = document.getElementById('dashboard-subtitle');
-  if (!el) return;
-  const scope = currentPHCName || currentDistrict || currentState || 'All India';
-  // States what the page is, then what it is scoped to. The old version
-  // replaced the whole line with "<scope> Network — Real-time overview", which
-  // told a first-time reader the state and nothing about the product.
-  el.innerHTML = 'Medicines, beds and staff across India&rsquo;s primary '
-    + `health network &mdash; <strong>${scope}</strong>`;
-}
 
 function getFilterParams() {
   let params = `state=${encodeURIComponent(currentState)}`;
@@ -231,7 +129,7 @@ const QUEUE_LIMIT = 1000;
 // refreshing it costs a BigQuery round trip the reader will never see.
 function activeViewId() {
   const el = document.querySelector('.view.active-view');
-  return el ? el.id : 'today-view';
+  return el ? el.id : 'today2-view';
 }
 
 // Refresh only what is on screen.
@@ -246,12 +144,7 @@ function activeViewId() {
 // loads four views early.
 function refreshAll() {
   const view = activeViewId();
-  if (view === 'today-view') {
-    loadExecutive();
-    loadAlerts();
-    loadTransfers();
-    if (typeof loadSurgeBanner === 'function') loadSurgeBanner();
-  } else if (view === 'network-view') {
+  if (view === 'network-view') {
     // Network changed job: it used to repeat the resource panel and the two
     // stock-health charts that Today v2 now does better. It ranks and compares
     // instead, which is the one thing no other page does.
@@ -260,7 +153,8 @@ function refreshAll() {
     loadOutlook();
     if (typeof loadSurge === 'function') loadSurge();
   } else if (view === 'today2-view') {
-    // Self-contained: its own filters and its own fetch, so v1 is untouched.
+    // Today. Its own filters and its own fetch; the surge banner is drawn by
+    // initToday2 so the two never race.
     if (typeof initToday2 === 'function') initToday2();
   } else if (view === 'action-view') {
     loadTriage();
@@ -285,9 +179,6 @@ function refreshAll() {
 // that assignment REPLACES the binding, and the identifier inside the
 // arrow then resolves to the arrow itself — infinite recursion. It cost
 // the whole landing view. See the guard test.
-window.onStateChange = onStateChange;
-window.onDistrictChange = onDistrictChange;
-window.onPHCChange = onPHCChange;
 
 // ===== Honest panel states =====
 // A blank card is the worst outcome: the reader cannot tell whether there is
@@ -404,7 +295,7 @@ function renderStats(s) {
         <span class="stat-delta">${(s.phcs ?? 0).toLocaleString('en-IN')} PHCs</span>
       </div>
     </div>
-    <div class="stat-card clickable" onclick="switchTab('today-view')">
+    <div class="stat-card clickable" onclick="switchTab('today2-view')">
       <div class="stat-icon" style="background:linear-gradient(135deg,#f97316,#fb923c);">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
       </div>
@@ -414,7 +305,7 @@ function renderStats(s) {
         ${deltaHtml(s.delta_alerts)}
       </div>
     </div>
-    <div class="stat-card clickable" onclick="switchTab('today-view')">
+    <div class="stat-card clickable" onclick="switchTab('today2-view')">
       <div class="stat-icon" style="background:linear-gradient(135deg,#ef4444,#f87171);">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
       </div>
@@ -637,7 +528,7 @@ async function loadAlerts() {
     // One fetch, two audiences: the top of the queue on Today, the whole
     // queue on Action queue.
     if (alertsList) {
-      alertsList.innerHTML = cards.slice(0, TODAY_PREVIEW).join('');
+      if (alertsList) alertsList.innerHTML = cards.slice(0, TODAY_PREVIEW).join('');
       setMore('alerts-more', cards.length, 'shortage');
     }
     if (full) full.innerHTML = cards.join('');
@@ -836,22 +727,37 @@ function showCaptureResult(data) {
 // ===== Init =====
 // Geography loads first so the dashboard queries a state that actually exists
 // in the facility master rather than a hardcoded default.
-(async () => {
-  // Geography first: everything below is scoped by it. Its own catch already
-  // shows "States unavailable" in the dropdown, so a failure here must not
-  // stop the panels rendering their own error states.
-  try {
-    await loadStates();
-  } catch (e) {
-    console.error('Geography failed; panels will show their own errors', e);
-  }
-  updateSubtitle();
+// Boot runs after every script has executed, not when app.js finishes.
+//
+// This file loads first. When Today v1 was the landing view its loaders lived
+// here, so dispatching immediately worked. Today v2's initialiser lives in
+// today2.js, which has not run yet at this point — and refreshAll() reaches it
+// through `typeof initToday2 === 'function'`, a guard that is silently false
+// during this file's execution. The result was a landing page that fetched
+// nothing and showed "Loading…" until the reader navigated away and back. A
+// deterministic probe found it: the geography promise had resolved, the
+// server had answered the scorecard, and the page still held zero tiles.
+//
+// DOMContentLoaded fires only after the last classic script in the document
+// has executed, so by then every initialiser exists.
+//
+// The state/district/PHC scope used to be loaded here for Today v1's filter
+// bar. Today v2 owns the filters now and writes the same globals
+// (currentState, currentDistrict, currentPHC) that every other view reads, so
+// choosing a scope on Today still carries into Plan ahead, the map and the
+// queue exactly as before.
+function boot() {
   // One dispatcher, shared with switchTab and every filter change. This used
   // to name five loaders directly — the old single-dashboard list — which is
   // how it ended up calling a function that wrote into a deleted element.
   const wanted = viewFromHash();
   if (wanted) switchTab(wanted); else refreshAll();
-})();
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
 
 // The old Plan ahead forecast — one facility-item, `#forecastChart`, and the
 // 7/14/30-day `.chart-btn` row — was deleted with the markup it wrote into.
@@ -967,21 +873,7 @@ async function loadReporting() {
 // landing view. Two controls now exist — a dropdown beside the geography
 // filters and the segmented control on Network — and this keeps them in step
 // so they can never disagree about what is selected.
-function setResource(resource) {
-  if (resource === currentResource) return;
-  currentResource = resource;
-  document.querySelectorAll('#resource-segmented .segment').forEach(b =>
-    b.classList.toggle('active', b.dataset.resource === resource));
-  const sel = document.getElementById('resource-filter');
-  if (sel && sel.value !== resource) sel.value = resource;
-  refreshAll();
-}
 
-function onResourceChange() {
-  const sel = document.getElementById('resource-filter');
-  if (sel) setResource(sel.value);
-}
-window.onResourceChange = onResourceChange;
 
 // `window.onResourceSegment = onResourceSegment` stood here twice, and both
 // lines referenced a function deleted with the old Network markup. Assigning
@@ -1150,158 +1042,8 @@ async function loadEvidence() {
 // A consultant leads with the answer, then supports it. Without this the page
 // opens with three cards and leaves the reader to decide whether that is a
 // good state of affairs or a bad one.
-function verdictBar(d) {
-  const m = d.medicines || {};
-  const tracked = m.tracked || 0, short = m.below_reorder || 0;
-  const vital = m.vital_short || 0, out = m.stocked_out || 0;
-  const pct = tracked ? Math.round(100 * short / tracked) : 0;
-  const absorb3 = (d.absorption || []).find(a => a.multiplier === 3.0);
 
-  // Graded from the numbers, not chosen. Vital lines at zero is the line
-  // between "gaps" and "under strain", because a Vital stock-out is the one a
-  // patient feels the same day.
-  let level, label;
-  if (out > 0 && vital > 0) { level = 'bad';  label = 'Under strain'; }
-  else if (short > 0)       { level = 'warn'; label = 'Holding, with gaps'; }
-  else                      { level = 'ok';   label = 'Holding'; }
 
-  return `
-    <div class="verdict ${level}">
-      <div class="verdict-main">
-        <span class="verdict-label">${label}</span>
-        <p class="verdict-line">
-          <strong>${pct}%</strong> of the medicines we track are running low
-          &mdash; <strong>${vital}</strong> of them life-saving, and
-          <strong>${out}</strong> already completely out.
-          ${absorb3 ? `If demand suddenly tripled, only <strong>${absorb3.pct}%</strong> of district medicine stocks could cope.` : ''}
-        </p>
-      </div>
-      <div class="verdict-aside">
-        <span class="verdict-figure">${d.transfer_only || 0}</span>
-        <span class="verdict-caption">medicines would run out before a new
-          order could reach the health centre.<br>
-          Ordering cannot fix these &mdash; only moving stock that already exists.</span>
-      </div>
-    </div>`;
-}
-
-function postureCard(title, headline, figures, tone, provenance) {
-  return `
-    <div class="posture-card ${tone || ''}">
-      <div class="posture-title">${title}</div>
-      <p class="posture-headline">${headline}</p>
-      <div class="posture-figures">
-        ${figures.map(f => `<span><strong>${f[1]}</strong> ${f[0]}</span>`).join('')}
-      </div>
-      ${provenance ? `<p class="posture-provenance">${provenance}</p>` : ''}
-    </div>`;
-}
-
-async function loadExecutive() {
-  const grid = document.getElementById('posture-grid');
-  const absorb = document.getElementById('absorption-panel');
-  const warn = document.getElementById('early-warnings');
-  if (grid) grid.innerHTML = panelLoading('Reading the national position…');
-
-  try {
-    const scope = currentState ? `?state=${encodeURIComponent(currentState)}` : '';
-    const res = await fetch(`/api/v1/executive${scope}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const d = await res.json();
-    const h = d.headline || {};
-    const m = d.medicines || {}, b = d.beds || {}, s = d.personnel || {};
-
-    // Tone is driven by the numbers, not chosen: a fifth of stock lines short
-    // is not a green state and must not be coloured like one.
-    const medTone = (m.vital_short > 0) ? 'bad' : (m.below_reorder > 0 ? 'warn' : 'ok');
-
-    const verdict = document.getElementById('verdict-bar');
-    if (verdict) verdict.innerHTML = verdictBar(d);
-
-    renderKpis(d);
-    renderNextSteps(d);
-    renderCoverChart(d);
-    renderDistrictChart(d);
-    renderVen(d);
-
-    grid.innerHTML =
-      postureCard('Medicines', h.medicines, [
-        ['tracked', (m.tracked || 0).toLocaleString('en-IN')],
-        ['running low', (m.below_reorder || 0).toLocaleString('en-IN')],
-        ['completely out', (m.stocked_out || 0).toLocaleString('en-IN')],
-        ['life-saving, low', (m.vital_short || 0).toLocaleString('en-IN')],
-      ], medTone, 'Stock counts come from the ledger; expected demand from the trained model.')
-      + postureCard('Beds', h.beds, [
-        ['health centres', (b.facilities || 0).toLocaleString('en-IN')],
-        ['beds', (b.capacity || 0).toLocaleString('en-IN')],
-        ['turned away', (b.turned_away || 0).toLocaleString('en-IN')],
-      ], b.turned_away > 0 ? 'warn' : 'ok', 'Bed numbers are the IPHS 2022 government norm. How full they are is modelled from real HMIS admissions.')
-      // 'roles with a gap' read cadres_with_a_gap, a count of random draws
-      // that left the payload with the generated attendance — so this card
-      // showed a confident 0. Sanctioned posts is real and says how large the
-      // establishment the vacancy rate is a share of.
-      + postureCard('Staff', h.personnel, [
-        ['health centres', (s.facilities || 0).toLocaleString('en-IN')],
-        ['sanctioned posts', (s.posts || 0).toLocaleString('en-IN')],
-        ['posts unfilled', `${Math.round(100 * (s.mean_vacancy || 0))}%`],
-      ], (s.mean_vacancy || 0) > 0.15 ? 'bad' : 'warn', 'Vacancy and sanctioned posts are from Rural Health Statistics 2021-22, by state and cadre. No facility-level attendance is published anywhere in India, so none is shown.');
-
-    if (absorb) {
-      const rows = d.absorption || [];
-      const said = {
-        2: 'If demand doubled',
-        3: 'If demand tripled',
-        5: 'If demand went five times higher'
-      };
-      const three = rows.find(a => a.multiplier === 3);
-      absorb.innerHTML = rows.length ? `
-        ${rows.map(a => `
-          <div class="absorb-row">
-            <span class="absorb-label">${said[a.multiplier] || `If demand rose ${a.multiplier} times`}</span>
-            <div class="absorb-bar"><div class="absorb-fill ${a.pct < 35 ? 'bad' : a.pct < 70 ? 'warn' : 'ok'}" style="width:${a.pct}%"></div></div>
-            <span class="absorb-pct">${a.pct}% could cope</span>
-          </div>`).join('')}
-        ${three ? `<p class="panel-verdict ${three.pct < 35 ? 'bad' : three.pct < 70 ? 'warn' : 'ok'}">
-          ${three.pct < 35
-            ? `This is low. Most district medicine stocks could not cope if demand tripled.`
-            : three.pct < 70
-              ? `This is mixed. Many district medicine stocks could not cope if demand tripled.`
-              : `This is healthy. Most district medicine stocks could cope if demand tripled.`}
-        </p>` : ''}
-        <p class="section-note">${h.transfer_only || ''}</p>`
-        : panelEmpty('Not enough data here to work this out.');
-    }
-
-    if (warn) {
-      const rows = d.early_warnings || [];
-      warn.innerHTML = rows.length ? rows.map(w => `
-        <div class="alert-card severity-${w.signal_class === 'leading' ? 'critical' : 'warning'}">
-          <div class="alert-body">
-            <div class="alert-title">${signalBadge(w.signal_class)} ${w.signal_indicator || w.atc_classes}</div>
-            <div class="alert-detail">
-              <strong>${w.signal_means || w.atc_classes} is ${w.surge_multiplier}&times; expected</strong>
-              in ${w.district_key}, ${w.month}.
-            </div>
-            <div class="alert-detail muted">
-              ${w.medicines
-                ? `Medicines affected: ${w.medicines}`
-                : `Affects ${w.class_count} medicine `
-                  + `${w.class_count === 1 ? 'group' : 'groups'} (${w.atc_classes})`}
-            </div>
-          </div>
-          <div class="alert-days ${w.signal_class === 'leading' ? 'critical' : 'warning'}">
-            ${w.surge_multiplier}&times;<span class="alert-days-label">vs expected</span>
-          </div>
-        </div>`).join('')
-        : panelEmpty('No signal in this scope departs from the pooled seasonal pattern.');
-    }
-
-    setSyncState(true);
-  } catch (e) {
-    if (grid) grid.innerHTML = panelError(e.message, 'loadExecutive');
-    setSyncState(false, e.message);
-  }
-}
 
 // ===== The visual layer =====
 //
@@ -1353,186 +1095,17 @@ function kpiTile(value, label, note, tone) {
 //
 // `transfer_only` also left the row because it was already the large red figure
 // in the verdict bar immediately above, and saying it twice bought nothing.
-function renderKpis(d) {
-  const host = document.getElementById('kpi-row');
-  if (!host) return;
-  const m = d.medicines || {};
-  const n = v => (v || 0).toLocaleString('en-IN');
-  const absorb3 = (d.absorption || []).find(a => a.multiplier === 3);
-
-  host.innerHTML =
-      kpiTile(n(m.stocked_out), 'Completely out of stock',
-              'Nothing on the shelf right now',
-              m.stocked_out > 0 ? 'bad' : 'ok')
-    + kpiTile(n(m.vital_short), 'Life-saving medicines running low',
-              'Death or serious harm if these run out',
-              m.vital_short > 0 ? 'bad' : 'ok')
-    + kpiTile(n(m.below_reorder), 'Medicines running low in total',
-              `Out of ${n(m.tracked)} being tracked`,
-              m.below_reorder > 0 ? 'warn' : 'ok')
-    + kpiTile(`${n(m.districts_short)}<span class="kpi-of"> of ${n(m.districts)}</span>`,
-              'Districts affected',
-              'Have at least one medicine running low',
-              (m.districts_short || 0) > 0 ? 'warn' : 'ok')
-    // Deliberately the share of district–medicine stocks, not of districts.
-    // Saying "districts" would read better and be false.
-    + kpiTile(absorb3 ? `${absorb3.pct}%` : '&mdash;',
-              'Ready for a sudden surge',
-              'Share of district medicine stocks that could cope if demand '
-              + 'tripled, using supplies already nearby',
-              absorb3 && absorb3.pct < 35 ? 'bad' : 'warn');
-}
 
 // A count of shortages is a number. A timetable is a plan. Emphasis, not a
 // five-hue ramp: the two buckets that need action this week are red, the rest
 // recede.
-function renderCoverChart(d) {
-  const el = document.getElementById('cover-chart');
-  if (!el || typeof Chart === 'undefined') return;
-  const rows = d.cover_buckets || [];
-  const cap = document.getElementById('cover-caption');
-
-  if (!rows.length) {
-    if (cap) cap.innerHTML = 'No medicine here has enough usage history to project yet.';
-    return;
-  }
-
-  const urgent = rows.filter(r => r.sort_order <= 2).reduce((a, r) => a + r.n, 0);
-  const total = rows.reduce((a, r) => a + r.n, 0);
-
-  if (coverChart) coverChart.destroy();
-  coverChart = new Chart(el.getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: rows.map(r => r.bucket),
-      datasets: [{
-        label: 'Medicines',
-        data: rows.map(r => r.n),
-        backgroundColor: rows.map(r => r.sort_order <= 2 ? URGENT : CALM),
-        borderRadius: 4,
-        borderSkipped: 'bottom',
-        maxBarThickness: 64
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },   // one series; the heading names it
-        tooltip: {
-          callbacks: {
-            label: c => `${c.parsed.y.toLocaleString('en-IN')} medicines`
-                        + ` (${Math.round(100 * c.parsed.y / total)}%)`
-          }
-        }
-      },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: INK, font: { size: 11 } } },
-        y: { beginAtZero: true, grid: { color: GRID },
-             ticks: { color: INK, font: { size: 11 },
-                      callback: v => v.toLocaleString('en-IN') } }
-      }
-    }
-  });
-
-  if (cap) {
-    cap.innerHTML = `<strong>${urgent.toLocaleString('en-IN')} medicines run out `
-      + `within a week</strong> &mdash; ${Math.round(100 * urgent / total)}% of `
-      + `everything we track. Medicines with no usage history yet are left out `
-      + `rather than counted as healthy.`;
-  }
-}
 
 // Districts are nominal, so a value-ramp across them would burn the colour
 // channel on information the bar length already carries. The split that DOES
 // carry information is Vital against the rest.
-function renderDistrictChart(d) {
-  const el = document.getElementById('district-chart');
-  if (!el || typeof Chart === 'undefined') return;
-  const rows = d.worst_districts || [];
-  const cap = document.getElementById('district-caption');
-
-  if (!rows.length) {
-    if (cap) cap.innerHTML = 'No district here has a medicine running low.';
-    return;
-  }
-
-  if (districtChart) districtChart.destroy();
-  districtChart = new Chart(el.getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: rows.map(r => r.district),
-      datasets: [
-        { label: 'Life-saving', data: rows.map(r => r.vital_short),
-          backgroundColor: VITAL, borderRadius: 3, maxBarThickness: 22 },
-        { label: 'Other medicines',
-          data: rows.map(r => Math.max(0, (r.short || 0) - (r.vital_short || 0))),
-          backgroundColor: OTHER, borderRadius: 3, maxBarThickness: 22 }
-      ]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'top', align: 'end',
-                  labels: { color: INK, boxWidth: 10, boxHeight: 10,
-                            usePointStyle: true, pointStyle: 'rectRounded',
-                            font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            afterBody: items => {
-              const r = rows[items[0].dataIndex];
-              return r.stocked_out
-                ? `${r.stocked_out} completely out of stock` : '';
-            }
-          }
-        }
-      },
-      scales: {
-        x: { stacked: true, beginAtZero: true, grid: { color: GRID },
-             ticks: { color: INK, font: { size: 11 }, precision: 0 } },
-        y: { stacked: true, grid: { display: false },
-             ticks: { color: INK, font: { size: 11 } } }
-      }
-    }
-  });
-
-  const worst = rows[0];
-  if (cap) {
-    cap.innerHTML = `<strong>${worst.district}</strong> needs attention first: `
-      + `${worst.vital_short} life-saving `
-      + `${worst.vital_short === 1 ? 'medicine' : 'medicines'} running low`
-      + `${worst.stocked_out ? `, and ${worst.stocked_out} already completely out` : ''}.`;
-  }
-}
 
 // Three ordered classes and a share each: a meter reads this better than a pie,
 // and the label carries the identity so colour need not.
-function renderVen(d) {
-  const host = document.getElementById('ven-panel');
-  if (!host) return;
-  const rows = d.ven_breakdown || [];
-  if (!rows.length) {
-    host.innerHTML = panelEmpty('No medicines are being tracked here yet.');
-    return;
-  }
-  const why = {
-    Vital: 'Life-saving &mdash; death or serious harm if these run out',
-    Essential: 'Significant harm if these run out',
-    Desirable: 'Useful, but not life-threatening if short'
-  };
-  host.innerHTML = rows.map(r => `
-    <div class="ven-row">
-      <div class="ven-head">
-        <span class="ven-name">${r.ven_class}</span>
-        <span class="ven-figure"><strong>${r.short}</strong> of ${r.tracked} running low</span>
-      </div>
-      <div class="ven-track">
-        <div class="ven-fill ${r.ven_class === 'Vital' ? 'vital' : ''}"
-             style="width:${Math.min(100, r.pct)}%"></div>
-      </div>
-      <div class="ven-note">${r.pct}% &middot; ${why[r.ven_class] || ''}</div>
-    </div>`).join('');
-}
 
 // ===== Am I running the build the server is serving? =====
 //
@@ -1595,67 +1168,7 @@ checkBuild();
 // transfer engine's own queue, step two is the lead-time finding, step three is
 // the district ranking. The page is just saying them as instructions instead of
 // as statistics.
-function stepCard(n, title, body, action) {
-  return `
-    <div class="step">
-      <div class="step-number">${n}</div>
-      <div class="step-body">
-        <div class="step-title">${title}</div>
-        <p class="step-text">${body}</p>
-        ${action || ''}
-      </div>
-    </div>`;
-}
 
-function renderNextSteps(d) {
-  const host = document.getElementById('next-steps');
-  if (!host) return;
-
-  const q = d.action_queue || {};
-  const worst = (d.worst_districts || [])[0];
-  const n = v => (v || 0).toLocaleString('en-IN');
-  const steps = [];
-
-  if ((q.recommended || 0) > 0) {
-    steps.push(stepCard(steps.length + 1,
-      'Approve the transfers that are already worked out',
-      `<strong>${n(q.recommended)} transfers</strong> would move `
-      + `<strong>${n(q.units)} units</strong> of medicine from places that have `
-      + `spare stock to places that have run short &mdash; ${n(q.vital)} of them `
-      + `life-saving. Nothing has to be bought, and the stock already exists.`,
-      `<button class="btn btn-primary" onclick="switchTab('action-view')">
-         Open the queue</button>`));
-  }
-
-  if ((d.transfer_only || 0) > 0) {
-    steps.push(stepCard(steps.length + 1,
-      `${n(d.transfer_only)} of them cannot wait for an order`,
-      `These would run out <strong>before a delivery could physically reach the `
-      + `health centre</strong>. Placing an order will not save them. Moving `
-      + `stock that already exists is the only thing that works, which is why `
-      + `they are at the top of the queue.`));
-  }
-
-  if (worst) {
-    steps.push(stepCard(steps.length + 1,
-      `Start with ${worst.district}, ${worst.state}`,
-      `<strong>${worst.vital_short} life-saving `
-      + `${worst.vital_short === 1 ? 'medicine is' : 'medicines are'} running low</strong>`
-      + `${worst.stocked_out
-          ? ` and ${worst.stocked_out} ${worst.stocked_out === 1 ? 'is' : 'are'} `
-            + `completely out`
-          : ''}`
-      + ` &mdash; more than any other district. The map shows which neighbours `
-      + `are close enough to help.`,
-      `<button class="btn btn-secondary" onclick="switchTab('map-view')">
-         See it on the map</button>`));
-  }
-
-  host.innerHTML = steps.length
-    ? steps.join('')
-    : panelEmpty('Nothing needs a decision right now. No medicine in this area '
-                 + 'is below the level where it should be reordered.');
-}
 
 // ===== The action queue, triaged =====
 //

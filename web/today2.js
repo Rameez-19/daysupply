@@ -399,6 +399,7 @@ async function v2Fetch() {
     if (d.empty || !(d.kpis || []).length) {
       host.innerHTML = panelEmpty(v2EmptyMessage());
       v2ClearCharts();
+      v2InheritedPanels(d);
       if (synced) {
         synced.className = 'last-synced';
         synced.textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
@@ -416,6 +417,7 @@ async function v2Fetch() {
     v2Ranking(d);
     v2Quadrant(d);
     v2FourthPanel(d);
+    v2InheritedPanels(d);
 
     if (synced) {
       synced.className = 'last-synced';
@@ -800,6 +802,7 @@ function v2ReadUrl() {
 
 function v2WriteUrl() {
   v2SyncReset();
+  v2SyncGlobals();
   const q = new URLSearchParams();
   if (v2State) q.set('state', v2State);
   if (v2District) q.set('district', v2District);
@@ -815,9 +818,15 @@ function v2WriteUrl() {
 // Initialise once, when the view is first opened.
 let v2Ready = false;
 async function initToday2() {
-  if (v2Ready) { loadToday2(); return; }
+  if (v2Ready) {
+    loadToday2();
+    if (typeof loadSurgeBanner === 'function') loadSurgeBanner('v2-surge-banner');
+    return;
+  }
   v2Ready = true;
   v2ReadUrl();
+  v2SyncGlobals();
+  if (typeof loadSurgeBanner === 'function') loadSurgeBanner('v2-surge-banner');
   // Arriving on a shared filtered link is a change of state too, even though
   // nothing was clicked — without this the button stayed hidden on exactly the
   // page most likely to need it.
@@ -859,4 +868,165 @@ async function initToday2() {
       if (sel) sel.innerHTML = '<option value="">Geography unavailable</option>';
     }
   }
+}
+
+
+// ===== Inherited from Today v1 =====
+//
+// Four panels lived only on the old Today and nowhere else in the product: a
+// single graded verdict for the whole network, a ranked "what should we do
+// first", the Vital / Essential / Desirable split, and the surge banner. They
+// moved here when that page was retired, renderers unchanged, reading the
+// same payload keys — scorecard() now supplies them from the query it already
+// ran. All four are medicine questions (the verdict grades on Vital
+// stock-outs, the steps are transfers, VEN is a medicine classification), so
+// they show for medicines and hide for beds and staff, exactly as the
+// life-saving toggle does.
+
+function verdictBar(d) {
+  const m = d.medicines || {};
+  const tracked = m.tracked || 0, short = m.below_reorder || 0;
+  const vital = m.vital_short || 0, out = m.stocked_out || 0;
+  const pct = tracked ? Math.round(100 * short / tracked) : 0;
+  const absorb3 = (d.absorption || []).find(a => a.multiplier === 3.0);
+
+  // Graded from the numbers, not chosen. Vital lines at zero is the line
+  // between "gaps" and "under strain", because a Vital stock-out is the one a
+  // patient feels the same day.
+  let level, label;
+  if (out > 0 && vital > 0) { level = 'bad';  label = 'Under strain'; }
+  else if (short > 0)       { level = 'warn'; label = 'Holding, with gaps'; }
+  else                      { level = 'ok';   label = 'Holding'; }
+
+  return `
+    <div class="verdict ${level}">
+      <div class="verdict-main">
+        <span class="verdict-label">${label}</span>
+        <p class="verdict-line">
+          <strong>${pct}%</strong> of the medicines we track are running low
+          &mdash; <strong>${vital}</strong> of them life-saving, and
+          <strong>${out}</strong> already completely out.
+          ${absorb3 ? `If demand suddenly tripled, only <strong>${absorb3.pct}%</strong> of district medicine stocks could cope.` : ''}
+        </p>
+      </div>
+      <div class="verdict-aside">
+        <span class="verdict-figure">${d.transfer_only || 0}</span>
+        <span class="verdict-caption">medicines would run out before a new
+          order could reach the health centre.<br>
+          Ordering cannot fix these &mdash; only moving stock that already exists.</span>
+      </div>
+    </div>`;
+}
+
+function stepCard(n, title, body, action) {
+  return `
+    <div class="step">
+      <div class="step-number">${n}</div>
+      <div class="step-body">
+        <div class="step-title">${title}</div>
+        <p class="step-text">${body}</p>
+        ${action || ''}
+      </div>
+    </div>`;
+}
+
+function renderNextSteps(d, hostId = 'v2-next-steps') {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+
+  const q = d.action_queue || {};
+  const worst = (d.worst_districts || [])[0];
+  const n = v => (v || 0).toLocaleString('en-IN');
+  const steps = [];
+
+  if ((q.recommended || 0) > 0) {
+    steps.push(stepCard(steps.length + 1,
+      'Approve the transfers that are already worked out',
+      `<strong>${n(q.recommended)} transfers</strong> would move `
+      + `<strong>${n(q.units)} units</strong> of medicine from places that have `
+      + `spare stock to places that have run short &mdash; ${n(q.vital)} of them `
+      + `life-saving. Nothing has to be bought, and the stock already exists.`,
+      `<button class="btn btn-primary" onclick="switchTab('action-view')">
+         Open the queue</button>`));
+  }
+
+  if ((d.transfer_only || 0) > 0) {
+    steps.push(stepCard(steps.length + 1,
+      `${n(d.transfer_only)} of them cannot wait for an order`,
+      `These would run out <strong>before a delivery could physically reach the `
+      + `health centre</strong>. Placing an order will not save them. Moving `
+      + `stock that already exists is the only thing that works, which is why `
+      + `they are at the top of the queue.`));
+  }
+
+  if (worst) {
+    steps.push(stepCard(steps.length + 1,
+      `Start with ${worst.district}, ${worst.state}`,
+      `<strong>${worst.vital_short} life-saving `
+      + `${worst.vital_short === 1 ? 'medicine is' : 'medicines are'} running low</strong>`
+      + `${worst.stocked_out
+          ? ` and ${worst.stocked_out} ${worst.stocked_out === 1 ? 'is' : 'are'} `
+            + `completely out`
+          : ''}`
+      + ` &mdash; more than any other district. The map shows which neighbours `
+      + `are close enough to help.`,
+      `<button class="btn btn-secondary" onclick="switchTab('map-view')">
+         See it on the map</button>`));
+  }
+
+  host.innerHTML = steps.length
+    ? steps.join('')
+    : panelEmpty('Nothing needs a decision right now. No medicine in this area '
+                 + 'is below the level where it should be reordered.');
+}
+
+function renderVen(d, hostId = 'v2-ven') {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  const rows = d.ven_breakdown || [];
+  if (!rows.length) {
+    host.innerHTML = panelEmpty('No medicines are being tracked here yet.');
+    return;
+  }
+  const why = {
+    Vital: 'Life-saving &mdash; death or serious harm if these run out',
+    Essential: 'Significant harm if these run out',
+    Desirable: 'Useful, but not life-threatening if short'
+  };
+  host.innerHTML = rows.map(r => `
+    <div class="ven-row">
+      <div class="ven-head">
+        <span class="ven-name">${r.ven_class}</span>
+        <span class="ven-figure"><strong>${r.short}</strong> of ${r.tracked} running low</span>
+      </div>
+      <div class="ven-track">
+        <div class="ven-fill ${r.ven_class === 'Vital' ? 'vital' : ''}"
+             style="width:${Math.min(100, r.pct)}%"></div>
+      </div>
+      <div class="ven-note">${r.pct}% &middot; ${why[r.ven_class] || ''}</div>
+    </div>`).join('');
+}
+
+const V2_INHERITED = ['v2-verdict', 'v2-next-steps-section', 'v2-ven-section'];
+
+function v2InheritedPanels(d) {
+  const medicine = d && d.resource === 'medicine' && !d.empty;
+  for (const id of V2_INHERITED) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = !medicine;
+  }
+  if (!medicine) return;
+  const v = document.getElementById('v2-verdict');
+  if (v) v.innerHTML = verdictBar(d);
+  renderNextSteps(d, 'v2-next-steps');
+  renderVen(d, 'v2-ven');
+}
+
+// Today v2 owns the scope now. Every other view still reads the globals the
+// old filter bar used to set, so they are kept in step here.
+function v2SyncGlobals() {
+  currentState = v2State;
+  currentDistrict = v2District;
+  currentPHC = v2Phc;
+  currentPHCName = v2PhcName;
 }
