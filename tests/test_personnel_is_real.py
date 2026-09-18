@@ -116,12 +116,31 @@ class TestGeneratedPresenceIsGoneFromTheDataLayer:
 
 class TestNoGeneratedFigureReachesAReader:
     def test_the_personnel_scorecard_is_clean(self):
-        for path, value in _leaves(today_v2.staff_scorecard()):
+        """No generated figure, and no wording that implies one.
+
+        One tile is allowed to say "on duty": the count of centres that
+        reported who came in today through the Report page, because that
+        is a captured count, not a modelled one. It is checked below for
+        the sentence that says so; everything else keeps the old rule.
+        """
+        d = today_v2.staff_scorecard()
+        reported = [k for k in d["kpis"]
+                    if k["label"] == "Centres reporting attendance today"]
+        assert len(reported) == 1
+        assert "Nothing is modelled" in reported[0]["says"]
+        rest = {**d, "kpis": [k for k in d["kpis"] if k not in reported]}
+        rest.pop("reported_today", None)
+        for path, value in _leaves(rest):
             low = path.lower()
             assert not any(g in low for g in GENERATED), (path, value)
             if isinstance(value, str):
                 assert "on duty" not in value.lower(), (path, value)
                 assert "nobody came" not in value.lower(), (path, value)
+
+    def test_the_reported_attendance_is_counted_not_modelled(self):
+        rep = today_v2.staff_scorecard()["reported_today"]
+        assert "Not modelled" in rep["basis"]
+        assert rep["centres"] <= rep["reports"]
 
     def test_the_staffing_summary_is_clean(self):
         """The old national summary sentence lived on Today v1, which is
