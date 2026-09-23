@@ -1257,7 +1257,7 @@ async function draftBrief(facilityId, itemId, btn) {
   if (!row) return;
   const cell = row.firstElementChild;
   row.hidden = false;
-  const lang = (typeof reportLang !== 'undefined' && reportLang === 'hi') ? 'hi' : 'en';
+  const lang = (typeof reportLang !== 'undefined') ? reportLang : 'en';
   cell.innerHTML = '<p class="brief-wait">Drafting from this row\'s figures…</p>';
   if (btn) btn.disabled = true;
   try {
@@ -1279,7 +1279,7 @@ async function draftBrief(facilityId, itemId, btn) {
         <p class="brief-text">${esc2(d.note).replace(/\n/g, '<br>')}</p>
         <div class="brief-actions">
           <button class="btn btn-secondary" onclick="copyBrief(this)">Copy</button>
-          <button class="btn btn-secondary" onclick="draftBrief('${esc2(facilityId)}','${esc2(itemId)}')">${lang === 'hi' ? 'Redraft' : 'Redraft'}</button>
+          <button class="btn btn-secondary" onclick="draftBrief('${esc2(facilityId)}','${esc2(itemId)}')">Redraft</button>
           <button class="btn btn-secondary" onclick="document.getElementById('brief-${esc2(facilityId)}-${esc2(itemId)}').hidden = true">Close</button>
         </div>
       </div>`;

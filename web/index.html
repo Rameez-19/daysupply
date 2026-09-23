@@ -392,7 +392,8 @@
             <h2 data-i18n="report.title">Report stock</h2>
             <p class="view-subtitle" data-i18n="report.sub">Tap, speak, photograph or type. Every report is read back to you before it is saved.</p>
           </div>
-          <button class="btn btn-secondary lang-toggle" id="lang-toggle" onclick="toggleLang()" data-i18n="lang.other">हिंदी</button>
+          <label class="lang-picker"><span data-i18n="lang.other">Language</span>
+            <select id="lang-select" onchange="setLang(this.value)" aria-label="Language"></select></label>
         </div>
 
         <!-- Offline in a sentence, with the count of what this phone still

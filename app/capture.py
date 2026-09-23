@@ -70,8 +70,10 @@ def _get_client() -> genai.Client:
 
 SYSTEM_PROMPT = """
 You extract pharmacy stock updates from reports by health workers at
-primary health centres in India. The speaker may use Hindi, English, or a
-mix, with local drug names and informal quantities.
+primary health centres in India. The speaker may use Hindi, Marathi, Telugu,
+Bengali, Assamese, English or any other Indian language, or a mix of them,
+with local drug names and informal quantities. Numbers may be spoken in any
+of these languages ("do sau", "दोनशे", "రెండు వందలు", "দুশো" are all 200).
 
 Return ONLY a JSON array, no prose, no markdown fences. One object per
 item mentioned:

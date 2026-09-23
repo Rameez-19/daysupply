@@ -25,7 +25,7 @@ const REPORT_STRINGS = {
   en: {
     'report.title': 'Report stock',
     'report.sub': 'Tap, speak, photograph or type. Every report is read back to you before it is saved.',
-    'lang.other': 'हिंदी',
+    'lang.other': 'Language',
     'centre.which': 'Which centre are you reporting for?',
     'centre.state': 'State', 'centre.district': 'District', 'centre.phc': 'Centre',
     'centre.pick': 'Choose…', 'centre.change': 'Change',
@@ -86,7 +86,7 @@ const REPORT_STRINGS = {
   hi: {
     'report.title': 'स्टॉक बताएँ',
     'report.sub': 'दबाएँ, बोलें, फ़ोटो लें या लिखें। सेव करने से पहले हर रिपोर्ट आपको पढ़कर सुनाई जाएगी।',
-    'lang.other': 'English',
+    'lang.other': 'भाषा',
     'centre.which': 'आप किस केंद्र के लिए रिपोर्ट कर रहे हैं?',
     'centre.state': 'राज्य', 'centre.district': 'ज़िला', 'centre.phc': 'केंद्र',
     'centre.pick': 'चुनें…', 'centre.change': 'बदलें',
@@ -144,10 +144,322 @@ const REPORT_STRINGS = {
     'beds.inpatient': 'भर्ती बेड जिन पर मरीज़ हैं', 'beds.daycare': 'डे-केयर बेड जिन पर मरीज़ हैं',
     'beds.save': 'बेड गिनती सेव करें', 'unit.bed': 'बेड', 'beds.inuse': 'पर मरीज़',
   },
+  mr: {
+    'report.title': 'साठा नोंदवा',
+    'report.sub': 'दाबा, बोला, फोटो काढा किंवा लिहा. जतन करण्यापूर्वी प्रत्येक नोंद तुम्हाला वाचून दाखवली जाते.',
+    'lang.other': 'भाषा',
+    'centre.which': 'तुम्ही कोणत्या केंद्रासाठी नोंद करत आहात?',
+    'centre.state': 'राज्य',
+    'centre.district': 'जिल्हा',
+    'centre.phc': 'केंद्र',
+    'centre.pick': 'निवडा…',
+    'centre.change': 'बदला',
+    'centre.remembered': 'या फोनवर लक्षात ठेवले आहे.',
+    'centre.needed': 'आधी तुमचे केंद्र निवडा.',
+    'mode.tap': 'दाबा',
+    'mode.voice': 'बोला',
+    'mode.photo': 'फोटो',
+    'mode.scan': 'स्कॅन',
+    'mode.chat': 'लिहा',
+    'mode.staff': 'आजचे कर्मचारी',
+    'step.what': 'काय झाले?',
+    'ev.received': 'औषध आले',
+    'ev.dispensed': 'रुग्णांना दिले',
+    'ev.count': 'साठा मोजला',
+    'ev.lost': 'तुटले, मुदत संपली किंवा हरवले',
+    'step.which': 'कोणते औषध?',
+    'tile.other': 'दुसरे औषध',
+    'tile.other.sub': 'नाव बोला किंवा लिहा',
+    'step.howmany': 'किती?',
+    'step.why': 'का?',
+    'loss.broken': 'तुटले',
+    'loss.damaged': 'खराब झाले',
+    'loss.expired': 'मुदत संपली',
+    'loss.spilled': 'सांडले',
+    'loss.stolen': 'चोरी',
+    'loss.unknown': 'माहीत नाही',
+    'kp.clear': 'पुसा',
+    'kp.back': 'मागे',
+    'kp.next': 'पुढे',
+    'rb.title': 'हे बरोबर आहे का?',
+    'rb.yes': 'हो, जतन करा',
+    'rb.no': 'नाही, पुन्हा करा',
+    'rb.listen': 'ऐका',
+    'rb.nothing': 'साठ्याची कोणतीही नोंद ओळखता आली नाही. पुन्हा प्रयत्न करा, किंवा औषध दाबून निवडा.',
+    'rb.remove': 'काढा',
+    'saving': 'जतन होत आहे…',
+    'saved': 'जतन झाले',
+    'held': 'फार्मासिस्टच्या तपासणीसाठी थांबवले',
+    'saved.why': 'आता साठ्याच्या हिशोबात धरले आहे.',
+    'offline.saved': 'नेटवर्क नाही. या फोनवर जतन केले; नेटवर्क आल्यावर पाठवले जाईल.',
+    'offline.now': 'आत्ता नेटवर्क नाही.',
+    'offline.unsent': 'नोंदी या फोनवरून पाठवायच्या बाकी.',
+    'online.unsent': 'नोंदी अजून पाठवायच्या बाकी.',
+    'voice.hold': 'दाबून धरा आणि बोला',
+    'voice.listening': 'ऐकत आहे… बोलून झाल्यावर सोडा',
+    'voice.working': 'समजून घेत आहे…',
+    'voice.hint': 'मराठी, हिंदी, इंग्रजी किंवा मिसळून. उदा.: “पॅरासिटामॉलच्या २०० गोळ्या आल्या”',
+    'voice.denied': 'मायक्रोफोनची परवानगी मिळाली नाही',
+    'photo.hint': 'साठा रजिस्टरच्या पानाचा फोटो काढा. प्रत्येक ओळ तुम्हाला तपासायला दिसेल; तुम्ही हो म्हणेपर्यंत काहीही जतन होणार नाही.',
+    'photo.take': 'फोटो काढा',
+    'photo.reading': 'पान वाचत आहे…',
+    'scan.hint': 'पाकिटावरील बारकोडकडे कॅमेरा धरा.',
+    'scan.start': 'कॅमेरा सुरू करा',
+    'scan.stop': 'थांबवा',
+    'chat.hint': 'जसे बोलता तसेच लिहा.',
+    'chat.send': 'पाठवा',
+    'staff.title': 'आज कामावर कोण आहे?',
+    'staff.sub': 'प्रत्येक पदासाठी उपस्थित लोकांची संख्या लिहा. प्रणालीकडे उपस्थितीचा हाच एक आकडा आहे: केंद्रे जे कळवतात.',
+    'staff.doctor': 'डॉक्टर',
+    'staff.nurse': 'परिचारिका / ANM',
+    'staff.pharmacist': 'फार्मासिस्ट',
+    'staff.hamale': 'आरोग्य सहाय्यक (पुरुष)',
+    'staff.hafemale': 'आरोग्य सहाय्यक (स्त्री)',
+    'staff.save': 'उपस्थिती जतन करा',
+    'review.title': 'फार्मासिस्टसाठी: तपासणी बाकी',
+    'review.sub': 'ज्याबद्दल मॉडेलला खात्री नव्हती. हे अजून साठ्याच्या हिशोबात नाही.',
+    'error': 'सर्व्हरशी संपर्क झाला नाही. काहीही जतन झाले नाही.',
+    'unit.tablet': 'गोळ्या',
+    'unit.capsule': 'कॅप्सूल',
+    'unit.vial': 'व्हायल',
+    'unit.bottle': 'बाटल्या',
+    'unit.strip': 'पट्ट्या',
+    'unit.unit': 'युनिट',
+    'unit.unknown': '',
+    'unit.person': 'जण',
+    'evs.received': 'आले',
+    'evs.dispensed': 'दिले',
+    'evs.count': 'साठ्यात',
+    'evs.lost': 'हरवले किंवा खराब',
+    'evs.dispatched': 'पाठवले',
+    'evs.expired': 'मुदत संपली',
+    'staff.present': 'कामावर',
+    'mode.beds': 'आजचे बेड',
+    'beds.title': 'आत्ता किती बेडवर रुग्ण आहेत?',
+    'beds.sub': 'ज्या बेडवर रुग्ण आहे ते मोजा. प्रणालीकडे बेडचा हाच एक आकडा आहे जो अंदाजावर आधारित नाही.',
+    'beds.inpatient': 'दाखल रुग्णांचे वापरातील बेड',
+    'beds.daycare': 'डे-केअरचे वापरातील बेड',
+    'beds.save': 'बेडची संख्या जतन करा',
+    'unit.bed': 'बेड',
+    'beds.inuse': 'वापरात',
+  },
+  te: {
+    'report.title': 'స్టాక్ నమోదు చేయండి',
+    'report.sub': 'నొక్కండి, మాట్లాడండి, ఫోటో తీయండి లేదా టైప్ చేయండి. సేవ్ చేసే ముందు ప్రతి నమోదు మీకు చదివి వినిపిస్తుంది.',
+    'lang.other': 'భాష',
+    'centre.which': 'మీరు ఏ కేంద్రం కోసం నమోదు చేస్తున్నారు?',
+    'centre.state': 'రాష్ట్రం',
+    'centre.district': 'జిల్లా',
+    'centre.phc': 'కేంద్రం',
+    'centre.pick': 'ఎంచుకోండి…',
+    'centre.change': 'మార్చండి',
+    'centre.remembered': 'ఈ ఫోన్‌లో గుర్తుంచుకోబడింది.',
+    'centre.needed': 'ముందుగా మీ కేంద్రాన్ని ఎంచుకోండి.',
+    'mode.tap': 'నొక్కండి',
+    'mode.voice': 'మాట్లాడండి',
+    'mode.photo': 'ఫోటో',
+    'mode.scan': 'స్కాన్',
+    'mode.chat': 'టైప్',
+    'mode.staff': 'నేటి సిబ్బంది',
+    'step.what': 'ఏమి జరిగింది?',
+    'ev.received': 'మందులు వచ్చాయి',
+    'ev.dispensed': 'రోగులకు ఇచ్చాము',
+    'ev.count': 'షెల్ఫ్ లెక్కించాము',
+    'ev.lost': 'పగిలినవి, గడువు ముగిసినవి లేదా పోయినవి',
+    'step.which': 'ఏ మందు?',
+    'tile.other': 'వేరే మందు',
+    'tile.other.sub': 'పేరు చెప్పండి లేదా టైప్ చేయండి',
+    'step.howmany': 'ఎన్ని?',
+    'step.why': 'ఎందుకు?',
+    'loss.broken': 'పగిలింది',
+    'loss.damaged': 'పాడైంది',
+    'loss.expired': 'గడువు ముగిసింది',
+    'loss.spilled': 'ఒలికిపోయింది',
+    'loss.stolen': 'దొంగిలించబడింది',
+    'loss.unknown': 'తెలియదు',
+    'kp.clear': 'తుడిచివేయి',
+    'kp.back': 'వెనుకకు',
+    'kp.next': 'తదుపరి',
+    'rb.title': 'ఇది సరైనదేనా?',
+    'rb.yes': 'అవును, సేవ్ చేయండి',
+    'rb.no': 'కాదు, మళ్ళీ మొదలుపెట్టండి',
+    'rb.listen': 'వినండి',
+    'rb.nothing': 'స్టాక్ సమాచారం ఏదీ గుర్తించబడలేదు. మళ్ళీ ప్రయత్నించండి, లేదా మందును నొక్కి ఎంచుకోండి.',
+    'rb.remove': 'తొలగించు',
+    'saving': 'సేవ్ అవుతోంది…',
+    'saved': 'సేవ్ అయింది',
+    'held': 'ఫార్మసిస్ట్ తనిఖీ కోసం ఆపబడింది',
+    'saved.why': 'ఇప్పుడు స్టాక్ లెక్కలో చేరింది.',
+    'offline.saved': 'నెట్‌వర్క్ లేదు. ఈ ఫోన్‌లో సేవ్ అయింది; నెట్‌వర్క్ వచ్చాక పంపబడుతుంది.',
+    'offline.now': 'ప్రస్తుతం నెట్‌వర్క్ లేదు.',
+    'offline.unsent': 'నమోదులు ఈ ఫోన్ నుండి పంపవలసి ఉంది.',
+    'online.unsent': 'నమోదులు ఇంకా పంపవలసి ఉంది.',
+    'voice.hold': 'నొక్కి పట్టుకొని మాట్లాడండి',
+    'voice.listening': 'వింటోంది… పూర్తయ్యాక వదలండి',
+    'voice.working': 'అర్థం చేసుకుంటోంది…',
+    'voice.hint': 'తెలుగు, హిందీ, ఇంగ్లీష్ లేదా కలిపి. ఉదా: “పారాసిటమాల్ 200 మాత్రలు వచ్చాయి”',
+    'voice.denied': 'మైక్రోఫోన్ అనుమతి లభించలేదు',
+    'photo.hint': 'స్టాక్ రిజిస్టర్ పేజీని ఫోటో తీయండి. ప్రతి వరుస మీరు తనిఖీ చేయడానికి చూపబడుతుంది; మీరు అవును అనే వరకు ఏదీ సేవ్ కాదు.',
+    'photo.take': 'ఫోటో తీయండి',
+    'photo.reading': 'పేజీని చదువుతోంది…',
+    'scan.hint': 'ప్యాక్‌పై ఉన్న బార్‌కోడ్ వైపు కెమెరా పెట్టండి.',
+    'scan.start': 'కెమెరా ప్రారంభించండి',
+    'scan.stop': 'ఆపండి',
+    'chat.hint': 'మాట్లాడినట్లే టైప్ చేయండి.',
+    'chat.send': 'పంపండి',
+    'staff.title': 'ఈ రోజు డ్యూటీలో ఎవరు ఉన్నారు?',
+    'staff.sub': 'ప్రతి పదవికి హాజరైన వారి సంఖ్య నమోదు చేయండి. వ్యవస్థ వద్ద ఉన్న హాజరు సంఖ్య ఇదొక్కటే: కేంద్రాలు తెలిపేది.',
+    'staff.doctor': 'డాక్టర్',
+    'staff.nurse': 'నర్సు / ANM',
+    'staff.pharmacist': 'ఫార్మసిస్ట్',
+    'staff.hamale': 'ఆరోగ్య సహాయకుడు (పురుషుడు)',
+    'staff.hafemale': 'ఆరోగ్య సహాయకురాలు (స్త్రీ)',
+    'staff.save': 'హాజరు సేవ్ చేయండి',
+    'review.title': 'ఫార్మసిస్ట్ కోసం: తనిఖీ మిగిలి ఉంది',
+    'review.sub': 'మోడల్‌కు ఖచ్చితంగా తెలియనివి. ఇవి ఇంకా స్టాక్ లెక్కలో లేవు.',
+    'error': 'సర్వర్‌ను చేరుకోలేకపోయాము. ఏదీ సేవ్ కాలేదు.',
+    'unit.tablet': 'మాత్రలు',
+    'unit.capsule': 'క్యాప్సూల్స్',
+    'unit.vial': 'వయల్స్',
+    'unit.bottle': 'సీసాలు',
+    'unit.strip': 'స్ట్రిప్స్',
+    'unit.unit': 'యూనిట్లు',
+    'unit.unknown': '',
+    'unit.person': 'మంది',
+    'evs.received': 'వచ్చాయి',
+    'evs.dispensed': 'ఇచ్చాము',
+    'evs.count': 'షెల్ఫ్‌లో ఉన్నాయి',
+    'evs.lost': 'పోయాయి లేదా పాడయ్యాయి',
+    'evs.dispatched': 'పంపాము',
+    'evs.expired': 'గడువు ముగిసింది',
+    'staff.present': 'డ్యూటీలో',
+    'mode.beds': 'నేటి పడకలు',
+    'beds.title': 'ఇప్పుడు ఎన్ని పడకలపై రోగులు ఉన్నారు?',
+    'beds.sub': 'రోగి ఉన్న పడకలను లెక్కించండి. వ్యవస్థ వద్ద అంచనా కాని పడకల సంఖ్య ఇదొక్కటే.',
+    'beds.inpatient': 'వాడుకలో ఉన్న ఇన్‌పేషెంట్ పడకలు',
+    'beds.daycare': 'వాడుకలో ఉన్న డే-కేర్ పడకలు',
+    'beds.save': 'పడకల సంఖ్య సేవ్ చేయండి',
+    'unit.bed': 'పడకలు',
+    'beds.inuse': 'వాడుకలో',
+  },
+  bn: {
+    'report.title': 'স্টক জানান',
+    'report.sub': 'চাপুন, বলুন, ছবি তুলুন বা লিখুন। সেভ করার আগে প্রতিটি রিপোর্ট আপনাকে পড়ে শোনানো হবে।',
+    'lang.other': 'ভাষা',
+    'centre.which': 'আপনি কোন কেন্দ্রের জন্য রিপোর্ট করছেন?',
+    'centre.state': 'রাজ্য',
+    'centre.district': 'জেলা',
+    'centre.phc': 'কেন্দ্র',
+    'centre.pick': 'বেছে নিন…',
+    'centre.change': 'বদলান',
+    'centre.remembered': 'এই ফোনে মনে রাখা হয়েছে।',
+    'centre.needed': 'আগে আপনার কেন্দ্র বেছে নিন।',
+    'mode.tap': 'চাপুন',
+    'mode.voice': 'বলুন',
+    'mode.photo': 'ছবি',
+    'mode.scan': 'স্ক্যান',
+    'mode.chat': 'লিখুন',
+    'mode.staff': 'আজকের কর্মী',
+    'step.what': 'কী হয়েছে?',
+    'ev.received': 'ওষুধ এসেছে',
+    'ev.dispensed': 'রোগীদের দেওয়া হয়েছে',
+    'ev.count': 'তাক গুনেছি',
+    'ev.lost': 'ভাঙা, মেয়াদোত্তীর্ণ বা হারানো',
+    'step.which': 'কোন ওষুধ?',
+    'tile.other': 'অন্য ওষুধ',
+    'tile.other.sub': 'নাম বলুন বা লিখুন',
+    'step.howmany': 'কতগুলো?',
+    'step.why': 'কেন?',
+    'loss.broken': 'ভেঙে গেছে',
+    'loss.damaged': 'নষ্ট হয়েছে',
+    'loss.expired': 'মেয়াদ শেষ',
+    'loss.spilled': 'পড়ে গেছে',
+    'loss.stolen': 'চুরি',
+    'loss.unknown': 'জানি না',
+    'kp.clear': 'মুছুন',
+    'kp.back': 'পিছনে',
+    'kp.next': 'পরের',
+    'rb.title': 'এটা কি ঠিক?',
+    'rb.yes': 'হ্যাঁ, সেভ করুন',
+    'rb.no': 'না, আবার শুরু করুন',
+    'rb.listen': 'শুনুন',
+    'rb.nothing': 'কোনো স্টকের তথ্য চেনা যায়নি। আবার চেষ্টা করুন, অথবা ওষুধে চেপে বেছে নিন।',
+    'rb.remove': 'সরান',
+    'saving': 'সেভ হচ্ছে…',
+    'saved': 'সেভ হয়েছে',
+    'held': 'ফার্মাসিস্টের যাচাইয়ের জন্য রাখা হয়েছে',
+    'saved.why': 'এখন স্টকের হিসাবে যোগ হয়েছে।',
+    'offline.saved': 'নেটওয়ার্ক নেই। এই ফোনে সেভ হয়েছে; নেটওয়ার্ক এলে পাঠানো হবে।',
+    'offline.now': 'এখন নেটওয়ার্ক নেই।',
+    'offline.unsent': 'রিপোর্ট এই ফোন থেকে পাঠানো বাকি।',
+    'online.unsent': 'রিপোর্ট এখনও পাঠানো বাকি।',
+    'voice.hold': 'চেপে ধরে বলুন',
+    'voice.listening': 'শুনছি… বলা হলে ছেড়ে দিন',
+    'voice.working': 'বুঝছি…',
+    'voice.hint': 'বাংলা, হিন্দি, ইংরেজি বা মিশিয়ে। যেমন: “প্যারাসিটামল ২০০টা ট্যাবলেট এসেছে”',
+    'voice.denied': 'মাইক্রোফোনের অনুমতি পাওয়া যায়নি',
+    'photo.hint': 'স্টক রেজিস্টারের পাতার ছবি তুলুন। প্রতিটি সারি আপনাকে যাচাই করতে দেখানো হবে; আপনি হ্যাঁ না বলা পর্যন্ত কিছুই সেভ হবে না।',
+    'photo.take': 'ছবি তুলুন',
+    'photo.reading': 'পাতা পড়ছি…',
+    'scan.hint': 'প্যাকেটের বারকোডের দিকে ক্যামেরা ধরুন।',
+    'scan.start': 'ক্যামেরা চালু করুন',
+    'scan.stop': 'থামান',
+    'chat.hint': 'যেভাবে বলেন সেভাবেই লিখুন।',
+    'chat.send': 'পাঠান',
+    'staff.title': 'আজ ডিউটিতে কে আছেন?',
+    'staff.sub': 'প্রতিটি পদের জন্য উপস্থিত লোকের সংখ্যা লিখুন। সিস্টেমের কাছে উপস্থিতির এই একটিই সংখ্যা আছে: কেন্দ্রগুলো যা জানায়।',
+    'staff.doctor': 'ডাক্তার',
+    'staff.nurse': 'নার্স / ANM',
+    'staff.pharmacist': 'ফার্মাসিস্ট',
+    'staff.hamale': 'স্বাস্থ্য সহকারী (পুরুষ)',
+    'staff.hafemale': 'স্বাস্থ্য সহকারী (মহিলা)',
+    'staff.save': 'উপস্থিতি সেভ করুন',
+    'review.title': 'ফার্মাসিস্টের জন্য: যাচাই বাকি',
+    'review.sub': 'যেগুলো নিয়ে মডেল নিশ্চিত ছিল না। এগুলো এখনও স্টকের হিসাবে নেই।',
+    'error': 'সার্ভারে পৌঁছানো যায়নি। কিছুই সেভ হয়নি।',
+    'unit.tablet': 'ট্যাবলেট',
+    'unit.capsule': 'ক্যাপসুল',
+    'unit.vial': 'ভায়াল',
+    'unit.bottle': 'বোতল',
+    'unit.strip': 'স্ট্রিপ',
+    'unit.unit': 'ইউনিট',
+    'unit.unknown': '',
+    'unit.person': 'জন',
+    'evs.received': 'এসেছে',
+    'evs.dispensed': 'দেওয়া হয়েছে',
+    'evs.count': 'তাকে আছে',
+    'evs.lost': 'হারিয়েছে বা নষ্ট',
+    'evs.dispatched': 'পাঠানো হয়েছে',
+    'evs.expired': 'মেয়াদ শেষ',
+    'staff.present': 'ডিউটিতে',
+    'mode.beds': 'আজকের বেড',
+    'beds.title': 'এখন কতগুলো বেডে রোগী আছেন?',
+    'beds.sub': 'যে বেডে রোগী আছেন সেগুলো গুনুন। সিস্টেমের কাছে বেডের এই একটিই সংখ্যা আছে যা অনুমান নয়।',
+    'beds.inpatient': 'ভর্তি রোগীর ব্যবহৃত বেড',
+    'beds.daycare': 'ডে-কেয়ারের ব্যবহৃত বেড',
+    'beds.save': 'বেডের সংখ্যা সেভ করুন',
+    'unit.bed': 'বেড',
+    'beds.inuse': 'ব্যবহারে',
+  },
 };
 
+// Every language the page reads in, with the name it is written in and the
+// voice the read-back asks the phone for. Marathi, Telugu and Bengali cover
+// the working languages of Maharashtra, Telangana and Assam's Barak Valley;
+// Hindi covers Rajasthan, Delhi and Uttar Pradesh. Adding a language is one
+// dictionary above and one line here.
+const REPORT_LANGS = [
+  ['en', 'English', 'en-IN'], ['hi', 'हिंदी', 'hi-IN'], ['mr', 'मराठी', 'mr-IN'],
+  ['te', 'తెలుగు', 'te-IN'], ['bn', 'বাংলা', 'bn-IN'],
+];
+// Scripts in which the catalogue's Devanagari drug names are readable.
+const DEVANAGARI_LANGS = ['hi', 'mr'];
+
 let reportLang = 'en';
-try { reportLang = localStorage.getItem(REPORT_LANG_KEY) === 'hi' ? 'hi' : 'en'; } catch (e) { /* private mode */ }
+try {
+  const saved = localStorage.getItem(REPORT_LANG_KEY);
+  if (REPORT_LANGS.some(l => l[0] === saved)) reportLang = saved;
+} catch (e) { /* private mode */ }
 
 function t(key) {
   const table = REPORT_STRINGS[reportLang] || REPORT_STRINGS.en;
@@ -156,8 +468,9 @@ function t(key) {
 
 function rq(id) { return document.getElementById(id); }
 
-function toggleLang() {
-  reportLang = reportLang === 'hi' ? 'en' : 'hi';
+function setLang(code) {
+  if (!REPORT_LANGS.some(l => l[0] === code)) code = 'en';
+  reportLang = code;
   try { localStorage.setItem(REPORT_LANG_KEY, reportLang); } catch (e) { /* ignore */ }
   applyReportStrings();
   renderTapStep();
@@ -170,13 +483,20 @@ function toggleLang() {
   const rb = rq('report-readback');
   if (rb && !rb.hidden && readbackRows.length) showReadback(readbackRows, readbackSource, readbackTranscript, readbackResourceType);
 }
-window.toggleLang = toggleLang;
+window.setLang = setLang;
 
 function applyReportStrings() {
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
   const html = document.documentElement;
   if (html) html.setAttribute('data-report-lang', reportLang);
+  const sel = document.getElementById('lang-select');
+  if (sel) {
+    if (!sel.options.length) {
+      sel.innerHTML = REPORT_LANGS.map(([c, n]) => `<option value="${c}">${n}</option>`).join('');
+    }
+    sel.value = reportLang;
+  }
 }
 
 // ===== The centre =====
@@ -369,8 +689,8 @@ function renderTapStep() {
       if (!grid) return;
       grid.innerHTML = items.map((it, i) => `
         <button class="tile ven-${(it.ven_class || '').toLowerCase()}" onclick="tapItem(${i})">
-          <span class="tile-name">${escapeHtml(reportLang === 'hi' && it.hindi_name ? it.hindi_name : it.display_name)}</span>
-          <span class="tile-sub">${escapeHtml(reportLang === 'hi' && it.hindi_name ? it.display_name : (it.spoken || ''))}</span>
+          <span class="tile-name">${escapeHtml(DEVANAGARI_LANGS.includes(reportLang) && it.hindi_name ? it.hindi_name : it.display_name)}</span>
+          <span class="tile-sub">${escapeHtml(DEVANAGARI_LANGS.includes(reportLang) && it.hindi_name ? it.display_name : (it.spoken || ''))}</span>
           <span class="tile-unit">${escapeHtml(unitWord(it.unit))}</span>
         </button>`).join('') + `
         <button class="tile tile-other" onclick="setReportMode('voice')">
@@ -398,7 +718,7 @@ function renderTapStep() {
   }
 }
 
-function tileName(it) { return reportLang === 'hi' && it.hindi_name ? it.hindi_name : it.display_name; }
+function tileName(it) { return DEVANAGARI_LANGS.includes(reportLang) && it.hindi_name ? it.hindi_name : it.display_name; }
 
 function tapEvent(ev) { tapState.event_type = ev; tapState.step = 'which'; renderTapStep(); }
 function tapItem(i) {
@@ -445,7 +765,7 @@ let readbackTranscript = null;
 let readbackResourceType = 'medicine';
 
 function rowSentence(r) {
-  const name = reportLang === 'hi' && r.hindi_name ? r.hindi_name : (r.item_name || r.local_name || '?');
+  const name = DEVANAGARI_LANGS.includes(reportLang) && r.hindi_name ? r.hindi_name : (r.item_name || r.local_name || '?');
   const qty = (r.quantity === null || r.quantity === undefined) ? '?' : r.quantity;
   if (readbackResourceType === 'personnel') return `${name}: ${qty} ${t('staff.present')}`;
   if (readbackResourceType === 'bed') return `${name}: ${qty} ${t('beds.inuse')}`;
@@ -500,7 +820,7 @@ function speakReadback() {
   window.speechSynthesis.cancel();
   const text = t('rb.title') + ' ' + readbackRows.map(rowSentence).join('. ');
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = reportLang === 'hi' ? 'hi-IN' : 'en-IN';
+  u.lang = (REPORT_LANGS.find(l => l[0] === reportLang) || REPORT_LANGS[0])[2];
   u.rate = 0.95;
   window.speechSynthesis.speak(u);
 }

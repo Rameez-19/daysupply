@@ -36,7 +36,10 @@ from app import action_queue, capture
 
 log = logging.getLogger(__name__)
 
-LANGUAGES = {"en": "English", "hi": "Hindi (Devanagari script)"}
+LANGUAGES = {"en": "English", "hi": "Hindi (Devanagari script)",
+             "mr": "Marathi (Devanagari script)",
+             "te": "Telugu (Telugu script)",
+             "bn": "Bengali (Bengali script)"}
 
 SYSTEM = """
 You draft short escalation notes for district health officers in India about

@@ -240,37 +240,70 @@ WEB = ROOT / "web"
 
 
 class TestTheReportPageStrings:
-    """Both languages carry every key, and every key the code asks for
-    exists — a missing Hindi string would silently show its key."""
+    """Every language carries every key, and every key the code asks for
+    exists: a missing string would silently show its key to a health worker.
+    """
+
+    LANGS = ("en", "hi", "mr", "te", "bn")
 
     def _strings(self):
         src = (WEB / "report.js").read_text(encoding="utf-8")
-        block = src[src.index("const REPORT_STRINGS"):src.index("let reportLang")]
-        en = block[block.index("  en: {"):block.index("  hi: {")]
-        hi = block[block.index("  hi: {"):]
-        key = re.compile(r"'([a-z.]+(?:\.[a-z]+)*)':")
-        return src, set(key.findall(en)), set(key.findall(hi))
+        block = src[src.index("const REPORT_STRINGS"):src.index("\nlet reportLang")]
+        key = re.compile(r"'([a-z]+(?:\.[a-z]+)*)':")
+        tables = {}
+        for i, lang in enumerate(self.LANGS):
+            start = block.index(f"  {lang}: {{")
+            later = [block.index(f"  {l}: {{") for l in self.LANGS
+                     if block.index(f"  {l}: {{") > start]
+            end = min(later) if later else len(block)
+            tables[lang] = set(key.findall(block[start:end]))
+        return src, tables
 
-    def test_hindi_and_english_carry_the_same_keys(self):
-        _, en, hi = self._strings()
-        assert en == hi, (sorted(en - hi), sorted(hi - en))
+    def test_every_language_carries_the_same_keys(self):
+        _, tables = self._strings()
+        en = tables["en"]
+        for lang, keys in tables.items():
+            assert keys == en, (lang, sorted(en - keys), sorted(keys - en))
+
+    def test_every_language_is_offered_in_the_picker(self):
+        src, tables = self._strings()
+        for lang in tables:
+            assert f"['{lang}'," in src, lang
+
+    def test_every_language_is_written_in_its_own_script(self):
+        """A dictionary pasted in English under a Telugu key would pass the
+        key check; this catches it."""
+        src, _ = self._strings()
+        scripts = {"hi": "\u0900-\u097F", "mr": "\u0900-\u097F",
+                   "te": "\u0C00-\u0C7F", "bn": "\u0980-\u09FF"}
+        block = src[src.index("const REPORT_STRINGS"):src.index("\nlet reportLang")]
+        for lang, rng in scripts.items():
+            start = block.index(f"  {lang}: {{")
+            body = block[start:start + 4000]
+            title = re.search(r"'report\.title': '([^']+)'", body).group(1)
+            assert re.search(f"[{rng}]", title), (lang, title)
 
     def test_every_key_the_code_uses_exists(self):
-        src, en, _ = self._strings()
+        src, tables = self._strings()
+        en = tables["en"]
         used = set(re.findall(r"\bt\('([a-z.]+)'\)", src))
         html = (WEB / "index.html").read_text(encoding="utf-8")
         used |= set(re.findall(r'data-i18n="([a-z.]+)"', html))
-        # Keys built at runtime from a prefix and a value.
         for prefix, values in (("ev.", ("received", "dispensed", "count", "lost")),
                                ("evs.", sorted(capture_pipeline.EVENT_TYPES)),
                                ("loss.", sorted(capture_pipeline.LOSS_REASONS)),
                                ("unit.", ("tablet", "capsule", "vial", "bottle",
-                                          "strip", "unit", "unknown")),
+                                          "strip", "unit", "unknown", "person", "bed")),
                                ("mode.", ("tap", "voice", "photo", "scan",
-                                          "chat", "staff"))):
+                                          "chat", "staff", "beds"))):
             used |= {prefix + v for v in values}
         missing = sorted(used - en)
         assert not missing, missing
+
+    def test_the_drafted_note_speaks_every_page_language(self):
+        from app import brief
+        _, tables = self._strings()
+        assert set(tables) <= set(brief.LANGUAGES)
 
     def test_the_page_no_longer_posts_against_a_hardcoded_centre(self):
         app = (WEB / "app.js").read_text(encoding="utf-8")
