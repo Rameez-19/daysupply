@@ -79,10 +79,14 @@ class TestTheCountsAreTheRegisters:
         assert c["total"] == c["phc"] + c["chc"] == len(register["points"])
 
     def test_the_reporting_centres_are_the_forecast_set(self, register):
-        """The 200 that report stock are the same 200 every other view counts;
-        a different number here would mean two definitions of 'reporting'."""
-        assert register["counts"]["reporting"] == 200
-        assert sum(1 for p in register["points"] if p[3] == 1) == 200
+        """The centres that report stock are the same set every other view
+        counts; a different number here would mean two definitions of
+        'reporting'. Counted from the flag rather than pinned: it was a literal
+        200 until Uttar Pradesh took the set to 275."""
+        from app.bq import run_query
+        n = run_query("SELECT COUNTIF(is_forecast_facility) AS n FROM `daysupply.daysupply.facilities`")[0]["n"]
+        assert register["counts"]["reporting"] == n
+        assert sum(1 for p in register["points"] if p[3] == 1) == n
 
     def test_the_register_dwarfs_the_reporting_set(self, register):
         """The point of the layer. If these ever converged, the layer would be

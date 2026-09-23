@@ -32,6 +32,69 @@ FACILITIES = f"`{PROJECT}.{DATASET}.facilities`"
 DEMAND_REF = f"`{PROJECT}.{DATASET}.demand_reference`"
 
 FORECAST_STATES = ["Telangana", "Maharashtra", "Rajasthan", "Delhi", "Assam"]
+
+# States added later, one PHC per district, WITHOUT reselecting the original
+# 200. Re-running SELECT_AND_FLAG over six states would reshuffle the round-
+# robin and change which of the original facilities are chosen, and every
+# figure built on them would move. `--add-state` only ever sets flags to TRUE
+# for the named state; it never clears one.
+ADDED_STATES = ["Uttar Pradesh"]
+
+ADD_STATE = f"""
+UPDATE {FACILITIES} AS f
+SET is_forecast_facility = TRUE
+WHERE f.facility_id IN (
+  SELECT facility_id FROM (
+    SELECT
+      facility_id,
+      ROW_NUMBER() OVER (
+        PARTITION BY admin_l1, admin_l2
+        ORDER BY FARM_FINGERPRINT(facility_id)
+      ) AS rank_in_district
+    FROM {FACILITIES}
+    WHERE country_code = 'IN'
+      AND admin_l1 = @state
+      AND facility_type = 'phc'
+      AND latitude IS NOT NULL
+      AND longitude IS NOT NULL
+      AND population_served IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM {DEMAND_REF} d
+        WHERE d.admin_l1 = {FACILITIES}.admin_l1
+          AND d.district_key = UPPER(TRIM({FACILITIES}.admin_l2))
+      )
+  )
+  WHERE rank_in_district <= @per_district
+)
+"""
+
+
+def add_state(state: str, per_district: int = 1) -> None:
+    """Flag one PHC per district of `state`, leaving every other flag alone."""
+    client = bigquery.Client(project=PROJECT, location=LOCATION)
+    before = next(iter(client.query(
+        f"SELECT COUNTIF(is_forecast_facility) AS n, "
+        f"COUNTIF(is_forecast_facility AND admin_l1 != @state) AS others "
+        f"FROM {FACILITIES} WHERE country_code = 'IN'",
+        job_config=bigquery.QueryJobConfig(query_parameters=[
+            bigquery.ScalarQueryParameter("state", "STRING", state)])).result()))
+    client.query(ADD_STATE, job_config=bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ScalarQueryParameter("state", "STRING", state),
+        bigquery.ScalarQueryParameter("per_district", "INT64", per_district),
+    ])).result()
+    after = next(iter(client.query(
+        f"SELECT COUNTIF(is_forecast_facility) AS n, "
+        f"COUNTIF(is_forecast_facility AND admin_l1 != @state) AS others, "
+        f"COUNTIF(is_forecast_facility AND admin_l1 = @state) AS added, "
+        f"COUNT(DISTINCT IF(is_forecast_facility AND admin_l1 = @state, admin_l2, NULL)) AS districts "
+        f"FROM {FACILITIES} WHERE country_code = 'IN'",
+        job_config=bigquery.QueryJobConfig(query_parameters=[
+            bigquery.ScalarQueryParameter("state", "STRING", state)])).result()))
+    print(f"  {state}: {after.added} PHCs across {after.districts} districts")
+    print(f"  forecast facilities: {before.n} -> {after.n}")
+    if after.others != before.others:
+        raise SystemExit("A facility outside the added state changed its flag.")
+    print("  every other state's selection is unchanged")
 TARGET_COUNT = 200
 
 ADD_COLUMN = f"""
@@ -154,6 +217,14 @@ def run() -> None:
 
 
 if __name__ == "__main__":
+    import argparse as _ap
+    _p = _ap.ArgumentParser()
+    _p.add_argument("--add-state")
+    _p.add_argument("--per-district", type=int, default=1)
+    _a, _rest = _p.parse_known_args()
+    if _a.add_state:
+        add_state(_a.add_state, _a.per_district)
+        sys.exit(0)
     try:
         run()
     except Exception as exc:

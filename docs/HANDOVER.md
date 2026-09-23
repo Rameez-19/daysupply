@@ -35,6 +35,8 @@ difference will overclaim in the submission.
 | **Capture persistence** | **BROKEN** | Extraction works; storage does not. The Firestore database does not exist, and nothing reads `pending_events` into BigQuery even if it did. `captures_today` therefore stays 0. See §9c |
 | Offline queue + sync | **REAL** | Service Worker + IndexedDB, genuinely works offline. Queues both recordings and rows the worker already confirmed; the Report page shows the count waiting |
 | Report page (tap / voice / photo / scan / type / staff / beds) | **REAL** | Built 2026-09-18. Preview-then-confirm on every model-read mode; Hindi/English; centre remembered on the phone. See CLAIMS §7g |
+| Sixth state: Uttar Pradesh | **REAL inputs, GENERATED ledger, as for the other five** | Added 2026-09-23 with `docs/ONBOARD_A_STATE.md`: 75 PHCs, 3,818 series in total. The original 200 centres' stock lines did not change status. See CLAIMS §0 and Data/README §20 |
+| Report page languages | **REAL** | English, Hindi, Marathi, Telugu, Bengali. The three new dictionaries were written without a native-speaker review; the test guide asks testers to flag wording |
 | Escalation note drafting (Gemini) | **REAL** | `app/brief.py`. Grounded on the row, number-checked, flagged if it strays. See CLAIMS §7g |
 | PWA / dashboard UI | **REAL** | Vanilla JS, Chart.js, deployed and functional |
 | Barcode scanning | **REAL** | `html5-qrcode` |

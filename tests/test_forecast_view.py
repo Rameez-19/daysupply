@@ -149,17 +149,31 @@ class TestTheAccuracyClaimIsArithmetic:
         assert arms["pooled"] < arms["flat"], arms
         assert arms["pooled"] < arms["demo_out"], arms
 
-    def test_the_deliberately_poor_twin_is_the_worst_arm(self, national):
-        """The control is the whole argument that *which* district lends the
-        shape matters. If the worst possible match scored like the best, the
-        matching would be doing nothing and the panel would be decoration.
+    def test_pooling_beats_a_twin_from_another_state(self, national):
+        """The control is the argument that *which* shape is borrowed
+        matters: one look-alike district from another state must not do as
+        well as every district's shape pooled.
 
-        How much worse varies by scope — 71.2% against a 19.4% flat average
-        across all classes, 20.1% against 18.0% for Paracetamol alone — which
-        is why the renderer decides whether to break the bar scale from the
-        numbers rather than assuming the gap is always large."""
+        This used to assert that the out-of-state twin was the worst arm of
+        all. With Uttar Pradesh added it no longer is at every scope: here it
+        scores 17.9% against a flat 19.0%, while pooling scores 12.4%. The
+        claim that survives, and the one the page makes, is that pooling
+        beats the twin. Across all classes the twin is still the worst arm by
+        far; the next test pins that."""
         arms = {a["key"]: a["wmape"] for a in national["accuracy"]}
-        assert arms["demo_out"] == max(arms.values()), arms
+        assert arms["pooled"] < arms["demo_out"], arms
+
+    def test_across_every_class_the_twin_is_the_worst_arm(self):
+        from app.bq import run_query
+        r = run_query("""
+            SELECT SUM(flat_abs_error) / SUM(actual) AS flat,
+                   SUM(demo_in_abs_error) / SUM(actual) AS demo_in,
+                   SUM(demo_out_abs_error) / SUM(actual) AS demo_out,
+                   SUM(pooled_abs_error) / SUM(actual) AS pooled
+            FROM `daysupply.daysupply.pattern_exchange_eval`
+        """)[0]
+        assert r["demo_out"] == max(r.values()), r
+        assert r["pooled"] == min(r.values()), r
 
     def test_the_headline_carries_the_numbers_it_computed(self, national):
         s = national["summary"]

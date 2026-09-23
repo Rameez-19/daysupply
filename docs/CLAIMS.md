@@ -49,6 +49,87 @@ Verified against the live BigQuery dataset on **2026-09-02**, after
 
 ---
 
+## 0. Six states — the current figures (2026-09-23)
+
+> **Read this first.** Uttar Pradesh was added on 2026-09-23 (runbook:
+> `docs/ONBOARD_A_STATE.md`; disclosure: `Data/README.md` §20). Sections 1 to
+> 10 below were measured on the original five states and are kept as the
+> record of that run. **Where this table gives a figure, this table is
+> current and the older one is superseded.** Quote the six-state figure.
+
+| Figure | Five states (superseded) | **Six states (current)** | Status | Computed in |
+|---|---|---|---|---|
+| States running forecasts | 5 | **6** (Assam, Delhi, Maharashtra, Rajasthan, Telangana, Uttar Pradesh) | REAL selection | `set_forecast_facilities.py --add-state` |
+| Forecast PHCs | 200 | **275** | REAL selection | same |
+| Districts with forecast PHCs | 116 | **191** | REAL | same |
+| HMIS districts loaded | 137 | **212** (Uttar Pradesh adds 75; 18,900 rows) | REAL | `parse_hmis.py` |
+| People in the demand-data footprint | 151.7 million | **260.8 million** (7,781 rural PHCs, 180 districts) | REAL SOURCE, DERIVED | `build_population_reach.py` |
+| People served by operating PHCs | 4.8 million | **7.5 million** (230 rural forecast PHCs) | REAL SOURCE, DERIVED | same |
+| National addressable | 793.7 million | **793.7 million** (unchanged) | REAL SOURCE, DERIVED | same |
+| ARIMA_PLUS series | 2,794 | **3,818** (76.4% of the 5,000 ceiling) | MEASURED | `train_forecast.py`; `ML.ARIMA_EVALUATE` |
+| Series with a weekly cycle | 2,149 (76.9%) | **2,951 (77.3%)** | MEASURED | same |
+| Distinct ARIMA orders chosen | 12 | **12** | MEASURED | same |
+| Stock lines (facility × medicine) | 2,794 | **3,818** | MEASURED | `build_supply_plan.py` |
+| Shortages (below reorder point) | 597 | **765** — LIVE | MEASURED | `reorder_status` |
+| Completely out | 69 | **89** (2.3%) — LIVE | MEASURED | same |
+| Medicines available (scorecard) | 78.6% | **80.0%** — LIVE | MEASURED | `today_v2.scorecard` |
+| Life-saving medicines available | 77.7% | **80.3%** — LIVE | MEASURED | same |
+| Gone within a week | 10.2% | **9.9%** — LIVE | MEASURED | same |
+| Districts affected | 87.9% | **80.6%** (154 of 191) — LIVE | MEASURED | same |
+| Transfer recommendations | 527 | **685** — LIVE | MEASURED | `recommendations` |
+| Units to move | 64,218 | **88,578** — LIVE | MEASURED | same |
+| Life-saving transfers | 116 | **150** — LIVE | MEASURED | same |
+| Transfers crossing a district line | 362 of 527 | **520 of 685** — LIVE | MEASURED | same |
+| Therapeutic substitutions | 1 | **1** | MEASURED | same |
+| Action queue split: move / order / escalate | 525 / 33 / 39 | **685 / 36 / 44** — LIVE (6 of the 44 life-saving, 14 already at zero) | MEASURED | `action_queue.triage` |
+| Pattern exchange: flat wMAPE | 19.4% | **21.1%** | MEASURED | `build_pattern_exchange.py` |
+| Pattern exchange: pooled wMAPE | 14.4% | **15.6%** (5.5 points, 26% relative, better than flat) | MEASURED | same |
+| Pattern exchange: same-state twin | 16.4% | **18.6%** | MEASURED | same |
+| Pattern exchange: twin in another state | 71.2% | **46.5%** (25.4 points worse than flat) | MEASURED | same |
+| Predictions scored | — | **49,134**, 191 districts, 36 classes | MEASURED | same |
+| Brihan Mumbai antimalarials, January | 2,345 vs 987.8 expected, 2.37×, modified z 6.54 | **2,345 vs 938.4 expected, 2.50×, modified z 8.49**, classical z 2.72; a flat average says 1.67× (unchanged) | MEASURED on REAL HMIS | `surge_signals` |
+| Largest modified z / classical z | 166.7 / 3.17 | **306.5 / 3.18** (the classical figure is the 3.175 bound, rounded) | MEASURED | same |
+| Surge series-months scanned | 58,932 | **90,780** | MEASURED | `build_surge_signals.py` |
+| Surges detected | 1,295 | **2,352** (2.6%) | MEASURED | same |
+| District-classes that hold a 2× / 3× / 5× surge | 59.0% / 30.1% / 4.3% | **62.8% / 34.1% / 4.8%** of 2,601 | MEASURED | `network_absorption` |
+| Needs reorder, steady → under surge | 100 → 198 (98 newly at risk) | **208 → 447** (239 newly at risk) | MEASURED | `surge_supply_impact` |
+| Surge-hit lines an order cannot reach in time | 145 of 322 | **331 of 673** | MEASURED | same, `lead_time_decisive` |
+| Surge transfers | 101, 5,881 units | **247**, 12,140 units, 54 rationed by donor stock | MEASURED | `build_surge_supply.py` |
+| Waste avoided by FEFO, at NPPA ceiling prices | Rs 29,268 · Rs 146 per PHC per year | **Rs 49,786 · Rs 181 per PHC per year** (on modelled units; 50,868 units, 39.9% of what FIFO would have expired) | MEASURED on modelled units | `build_waste_value.py`, `impact_metrics_parts` |
+| Reporting consistency | — | **51%** mean; 48 complete, 185 partial, 42 silent | MEASURED on generated reporting | `build_facility_metrics.py` |
+| Lead times | 7–19 days | **7–19 days** | REAL DISTANCE, ASSUMED CONVERSION | `set_lead_times.py` |
+| Lead-time gradient in surge transfer-only share (6–10 / 11–15 / >15 days) | 43.5% / 47.9% / 80.0% | **49.8% / 45.4% / 80.0% — WITHDRAWN, do not quote.** It is no longer monotone, and the >15-day band is 5 lines | MEASURED | `surge_supply_impact` |
+| Staff posts filled | 77.8% | **71.6%** of 1,361 sanctioned posts, 23 state-and-cadre roles | REAL SOURCE, DERIVED | `today_v2.staff_scorecard` |
+| Worst state and role | Rajasthan pharmacist, 56.2% vacant | **Uttar Pradesh health assistant, 81.5% vacant** | REAL (RHS 2021-22) | same |
+| Nurses below the bed norm | 11 | **86** | REAL SOURCE, DERIVED | same |
+| Report page languages | Hindi, English | **English, Hindi, Marathi, Telugu, Bengali** | REAL feature | `web/report.js` |
+
+**What adding Uttar Pradesh did not change.** All 2,794 of the original
+stock lines are still there and none changed status. The original 200
+centres are still short on 597 lines, 69 of them at zero. Refitting the
+model moved 7 of their forecasts by about 1%, and 524 of their 527 transfers
+came out identical. The other 8 changed because a Uttar Pradesh centre is now
+the nearest donor or receiver across the Delhi border.
+
+**Two errors the six-state run caught, both fixed on 2026-09-23.** The rupee
+waste figure applied the original five states' waste-avoided share to six
+states' expiries and divided by a hard-coded 200 centres; a first quote of
+Rs 55,870 and Rs 279 per PHC was wrong and must not be used. And five queries
+counted districts by name alone, so Pratapgarh in Rajasthan and Pratapgarh in
+Uttar Pradesh counted as one district (190 instead of 191).
+
+**What adding Uttar Pradesh did change, and why it is reported rather than
+hidden.** At the default all-medicine scope on Plan ahead, the out-of-state
+twin now scores 17.9% against a flat 19.0%, so it is no longer the worst arm
+at every scope. Across every class it still is (46.5% against 21.1%), and
+pooling still wins everywhere (12.4% at that scope). And life-saving
+availability is now slightly *better* than overall availability (80.3%
+against 80.0%). With five states it was worse, which Today called out in
+words. The page computes that comparison rather than asserting it, so it
+changed on its own.
+
+---
+
 ## 1. Scale and coverage
 
 *Last verified against the live deployment: **2026-09-02**.*
@@ -1156,7 +1237,7 @@ with the one we can.
 
 | Never say | Say instead | Why |
 |---|---|---|
-| "federated learning" | **"Districts exchange seasonal shape, not data"** — and pair it with the measured result: pooling cuts forecast error from **19.4% to 14.4% wMAPE** | There are no gradients, no secure aggregation and no client-side training. What crosses a boundary is twelve numbers per medicine class, from aggregate HMIS that is already public. The honest claim is stronger *and* measured |
+| "federated learning" | **"Districts exchange seasonal shape, not data"** — and pair it with the measured result: pooling cuts forecast error from **21.1% to 15.6% wMAPE** across six states (it was 19.4% to 14.4% across five; see §0) | There are no gradients, no secure aggregation and no client-side training. What crosses a boundary is twelve numbers per medicine class, from aggregate HMIS that is already public. The honest claim is stronger *and* measured |
 | "predicts outbreaks" | **"We detect that one has begun, earlier and more reliably than a 3-sigma rule"** — which on twelve monthly observations cannot fire above **3.175** at all | We have no forward-looking outbreak model. What we have is a better detector, and the bounded-z finding is the evidence |
 | "368 HMIS indicators available" | **"21 HMIS drivers loaded, 20 used by forecast items"** | 368 is the count of data items in the source file. It is not in this document, so it is not evidence. Stating it as capability implies we use them |
 | cold chain, GS1 / GTIN serialisation | *nothing* — leave them off any roadmap surface | **eVIN** already does cold chain for vaccines and **DVDMS** already does barcode; listing them reads as not having checked what exists |

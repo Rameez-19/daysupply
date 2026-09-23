@@ -39,7 +39,10 @@ class TestSurgeStatistic:
             SELECT MAX(z_classical) AS max_z, MIN(z_classical) AS min_z
             FROM `daysupply.daysupply.surge_signals`
         """)
-        assert rows[0]["max_z"] <= CLASSICAL_CEILING + 1e-6, (
+        # z_classical is stored rounded to two decimals, so a residual at the
+        # ceiling itself (3.1754) is stored as 3.18. Half a unit in the last
+        # place is the tolerance that rounding introduces, and no more.
+        assert rows[0]["max_z"] <= CLASSICAL_CEILING + 0.005, (
             "a standardised residual above the ceiling means the residual was "
             "not centred on its own mean before dividing")
         assert rows[0]["max_z"] > CLASSICAL_CEILING - 0.05, (
@@ -156,10 +159,14 @@ class TestSurgeChangesTheSupplyAnswer:
     def test_lead_time_decisive_means_exactly_what_it_says(self):
         """Runs out before an indent can arrive — no other definition."""
         rows = run_query("""
+            -- days_to_stockout is stored to one decimal and the decision is
+            -- taken on the unrounded value, so 10.96 days against an 11-day
+            -- lead time is stored as 11.0 and is correctly decisive. The 0.05
+            -- margin is that rounding, and no more.
             SELECT COUNTIF(lead_time_decisive
-                           AND days_to_stockout >= lead_time_days) AS wrong,
+                           AND days_to_stockout >= lead_time_days + 0.05) AS wrong,
                    COUNTIF(NOT lead_time_decisive
-                           AND days_to_stockout < lead_time_days) AS missed
+                           AND days_to_stockout < lead_time_days - 0.05) AS missed
             FROM `daysupply.daysupply.surge_supply_impact`
         """)
         assert rows[0]["wrong"] == 0
@@ -174,19 +181,25 @@ class TestSurgeChangesTheSupplyAnswer:
         """)
         assert rows[0]["wrong"] == 0
 
-    def test_longer_lead_times_are_more_often_transfer_only(self):
-        """The central operational claim, checked as a monotone gradient."""
+    def test_transfer_only_is_decided_by_lead_time_not_by_band(self):
+        """This used to assert a monotone gradient: centres with longer lead
+        times are transfer-only more often. Across five states it held weakly
+        (43.5% / 47.9% / 80.0%, the last on 5 lines). With Uttar Pradesh
+        added it does not: 49.8% at 6-10 days, 45.4% at 11-15. The claim is
+        withdrawn in CLAIMS §0 rather than rescued here.
+
+        What does hold, by construction, is that the decision is taken per
+        line on days of cover against that line's own lead time, which the
+        test above pins. This checks only that every band has lines to
+        decide on, so a lead-time build that collapsed to one value fails."""
         rows = run_query("""
-            SELECT lead_time_days <= 10 AS fast,
-                   SAFE_DIVIDE(COUNTIF(lead_time_decisive), COUNT(*)) AS share
+            SELECT COUNT(DISTINCT lead_time_days) AS lead_times,
+                   COUNTIF(lead_time_decisive) AS decisive,
+                   COUNTIF(NOT lead_time_decisive) AS not_decisive
             FROM `daysupply.daysupply.surge_supply_impact`
-            GROUP BY fast ORDER BY fast DESC
-        """)
-        assert len(rows) == 2
-        fast, slow = rows[0]["share"], rows[1]["share"]
-        assert slow > fast, (
-            f"slow facilities ({slow:.2f}) should be transfer-only more often "
-            f"than fast ones ({fast:.2f})")
+        """)[0]
+        assert rows["lead_times"] > 3, rows
+        assert rows["decisive"] > 0 and rows["not_decisive"] > 0, rows
 
 
 class TestSurgeRedistribution:
@@ -398,10 +411,12 @@ class TestMedicineVerticalUnharmed:
 
     def test_the_steady_state_plan_covers_every_forecast_series(self):
         rows = run_query("""
-            SELECT COUNT(*) AS reorder_rows FROM
-              `daysupply.daysupply.reorder_status`
+            SELECT (SELECT COUNT(*) FROM `daysupply.daysupply.reorder_status`)
+                     AS reorder_rows,
+                   (SELECT COUNT(*) FROM `daysupply.daysupply.demand_baseline`)
+                     AS series
         """)
-        assert rows[0]["reorder_rows"] == 2794
+        assert rows[0]["reorder_rows"] == rows[0]["series"] > 0
 
     def test_steady_state_recommendations_remain_sane(self):
         """Structural assertions, not frozen magic numbers.

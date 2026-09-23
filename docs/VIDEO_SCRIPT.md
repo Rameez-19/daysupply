@@ -16,9 +16,10 @@ the read-back appears and is spoken.
 
 *Voice:* "This is a pharmacist at a primary health centre in India reporting
 stock. Three taps, one number, and the phone reads it back before it saves.
-No form, no code, and it works in Hindi."
+No form, no code, and it works in five languages."
 
-Tap the language toggle; the page and the read-back switch to Hindi. Tap
+Pick हिंदी in the language list; the page and the read-back switch to Hindi.
+Flick through मराठी, తెలుగు and বাংলা on camera, back to Hindi, and tap
 "हाँ, सेव करें".
 
 ---
@@ -30,9 +31,9 @@ Tap the language toggle; the page and the read-back switch to Hindi. Tap
 *Voice:* "India's register has 200,438 health facilities [§1]. Nobody
 publishes the daily stock position of any of them. So the first job is
 capture, and the second is what you can do once the reports exist. Across
-the 200 centres running today, availability is 78.6 percent, and for
-life-saving medicines it is lower, 77.7 [§7c]. The page says that in words,
-because it is the finding that should not be true."
+the 275 centres running today in six states, availability is 80.0 percent,
+and 80.3 for life-saving medicines [§0]. Every figure is a rate with its
+count beside it, so Uttar Pradesh and Delhi read on the same scale."
 
 ---
 
@@ -61,13 +62,13 @@ fact."
 
 *On screen:* the demand outlook, then the early-warning list.
 
-*Voice:* "Every report lands in BigQuery, where ARIMA_PLUS forecasts 2,794
+*Voice:* "Every report lands in BigQuery, where ARIMA_PLUS forecasts 3,818
 series [§4]. Demand has a shape: real HMIS morbidity, 21 drivers loaded, 20
 used. And when demand has begun to surge, we detect it earlier and more
 reliably than a 3-sigma rule, which on twelve monthly points cannot fire above
-3.175 [§9]. Brihan Mumbai in January: 2,345 observed against 987.8 expected.
-A flat average would have called that 1.67 times; the pooled seasonal shape
-says 2.37."
+3.175 [§9]. Brihan Mumbai in January: 2,345 observed against 938.4 expected
+[§0]. A flat average would have called that 1.67 times; the pooled seasonal
+shape says 2.5."
 
 *On screen:* scenario mode, run at 3×.
 
@@ -81,9 +82,9 @@ because an order would arrive too late."
 
 *On screen:* the triage bar and the three panels.
 
-*Voice:* "597 shortages, each in exactly one of three states [§7e]: 527 have
-a transfer waiting, worked out by batch expiry within 150 kilometres; 33 can
-be ordered in time; 39 cannot be fixed by either. Those 39 are the point."
+*Voice:* "765 shortages, each in exactly one of three states [§0]: 685 have
+a transfer waiting, worked out by batch expiry within 150 kilometres; 36 can
+be ordered in time; 44 cannot be fixed by either. Those 44 are the point."
 
 *On screen:* click Draft note on the first escalation. The note appears with
 the "every number checked" badge.
@@ -101,10 +102,10 @@ strays, the page flags it. It writes the note; the officer makes the call."
 *On screen:* the four-arm hold-out chart.
 
 *Voice:* "Districts improve each other's forecasts by exchanging seasonal
-shape, not data. Against a district's own flat baseline at 19.4 percent
-error, pooling every district's shape gives 14.4 [§5]. Borrowing a look-alike
-district from another state gives 71.2. Shape travels; raw data never has to
-leave the district."
+shape, not data. Against a district's own flat baseline at 21.1 percent
+error, pooling every district's shape gives 15.6, across six states [§0].
+Borrowing a look-alike district from another state gives 46.5. Shape
+travels; raw data never has to leave the district."
 
 ---
 
@@ -113,9 +114,9 @@ leave the district."
 *On screen:* the map, "Every centre" layer on, then transfers.
 
 *Voice:* "The map draws all 34,935 primary and community health centres in
-the register [§7a], and the 527 transfers between the ones reporting; 362 of
-them cross a district line. 151.7 million people live in the footprint where
-demand is grounded in real government data [§2]."
+the register [§7a], and the 685 transfers between the ones reporting; 520 of
+them cross a district line. 260.8 million people live in the footprint where
+demand is grounded in real government data [§0]."
 
 ---
 

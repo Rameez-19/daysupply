@@ -71,7 +71,9 @@ WASTE_VALUE = f"`{PROJECT}.{DATASET}.waste_value`"
 # Below this share of priced expiry units, no headline figure is published.
 COVERAGE_FLOOR = float(os.getenv("WASTE_VALUE_COVERAGE_FLOOR", "0.80"))
 # Forecast PHCs, over which the per-facility figure is expressed.
-FORECAST_PHCS = 200
+# Counted, not pinned: this was a literal 200 and silently kept dividing
+# by it after Uttar Pradesh took the forecast set to 275.
+FORECAST_PHCS = None
 
 
 def load_prices() -> pd.DataFrame:
@@ -153,6 +155,10 @@ def run() -> None:
         f"SELECT waste_avoided_share FROM `{PROJECT}.{DATASET}.impact_metrics`"
     ).result())).waste_avoided_share
     avoided_value = partial_value / coverage * waste_avoided_share
+    global FORECAST_PHCS
+    FORECAST_PHCS = next(iter(client.query(
+        f"SELECT COUNTIF(is_forecast_facility) AS n "
+        f"FROM `{PROJECT}.{DATASET}.facilities`").result())).n
     print(f"\n  Value of waste AVOIDED by FEFO: Rs {avoided_value:,.0f}")
     print(f"  Per PHC per year:               Rs "
           f"{avoided_value / FORECAST_PHCS:,.0f}")

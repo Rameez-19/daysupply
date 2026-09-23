@@ -142,7 +142,7 @@ def scorecard(state: str = "", district: str = "", phc: str = "",
          -- Forward risk: already gone, or gone inside a week.
          COUNTIF(on_hand <= 0 OR days_of_cover <= 7) AS at_risk_week,
          COUNT(DISTINCT facility_id) AS facilities,
-         COUNT(DISTINCT district) AS districts,
+         COUNT(DISTINCT CONCAT(state, '|', district)) AS districts,
          COUNT(DISTINCT IF(needs_reorder, district, NULL)) AS districts_short,
          COUNT(DISTINCT state) AS states,
          SUM(on_hand) AS units_on_hand
@@ -176,7 +176,7 @@ def scorecard(state: str = "", district: str = "", phc: str = "",
             FROM (
               SELECT item_name, ANY_VALUE(ven_class) AS ven_class,
                      COUNT(DISTINCT facility_id) AS centres,
-                     COUNT(DISTINCT district) AS districts
+                     COUNT(DISTINCT CONCAT(state, '|', district)) AS districts
               FROM `{D}.reorder_status`
               WHERE {rs} AND needs_reorder
               GROUP BY item_name
@@ -718,7 +718,7 @@ def bed_scorecard(state: str = "", district: str = "", phc: str = "") -> dict:
          ROUND(AVG(occupancy_rate), 4) AS mean_occupancy,
          COUNTIF(status = 'over_capacity') AS over_capacity,
          COUNTIF(turned_away > 0) AS turning_away,
-         COUNT(DISTINCT district) AS districts,
+         COUNT(DISTINCT CONCAT(state, '|', district)) AS districts,
          COUNT(DISTINCT IF(turned_away > 0, district, NULL)) AS districts_affected
        FROM `{D}.bed_status` WHERE {where}) AS s,
 
@@ -865,7 +865,7 @@ def staff_scorecard(state: str = "", district: str = "",
                                   sanctioned_posts))), 4) AS mean_vacancy,
          COUNTIF(vacancy_rate IS NULL) AS no_rhs_figure,
          SUM(nurses_short_of_bed_norm) AS nurses_short,
-         COUNT(DISTINCT district) AS districts,
+         COUNT(DISTINCT CONCAT(state, '|', district)) AS districts,
          COUNT(DISTINCT state) AS states
        FROM `{D}.staff_status` WHERE {where}) AS s,
 

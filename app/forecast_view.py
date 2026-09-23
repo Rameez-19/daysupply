@@ -31,20 +31,25 @@ does — by scoring four methods against the same actuals:
 
 | Arm | wMAPE |
 |---|---|
-| Closest demographic twin, **different state** | **71.2%** |
-| Flat, no seasonality | 19.4% |
-| Closest demographic twin, **same state** | 16.4% |
-| **Every district's shape, pooled** | **14.4%** |
+| Closest demographic twin, **different state** | **46.5%** |
+| Flat, no seasonality | 21.1% |
+| Closest demographic twin, **same state** | 18.6% |
+| **Every district's shape, pooled** | **15.6%** |
+
+Six states, 191 districts, 36 medicine classes, 49,134 scored predictions
+(2026-09-23, after Uttar Pradesh was added). With the original five states it
+was 71.2% / 19.4% / 16.4% / 14.4%: the ordering, and the 26% relative gain
+from pooling, held.
 
 Districts exchange seasonal **shape**, not data — a twelve-number monthly
-multiplier per medicine class — and that takes error from 19.4% to 14.4%.
+multiplier per medicine class — and that takes error from 21.1% to 15.6%.
 
 The ordering is the finding, and it is not the obvious one. `demo_out` is not a
 bad match: it is the *closest demographic twin in all of India*, only required
-to sit in a different state. Amravati's is Ranga Reddy in Telangana, 0.323 away
-on profile — and borrowing its seasonal shape is nearly four times worse than
-using no seasonality at all. Confine the same matching to one state and the
-error falls from 71.2% to 16.4%.
+to sit in a different state. Amravati's is now Bijnor in Uttar Pradesh, 0.308
+away on profile — and across all classes, borrowing a twin's seasonal shape is
+more than twice as bad as using no seasonality at all. Confine the same
+matching to one state and the error falls from 46.5% to 18.6%.
 
 Two districts can be demographically interchangeable and still have nothing to
 say to each other about *when* demand arrives, because what drives the monthly
@@ -143,7 +148,7 @@ METHODS = [
 # Applying it does two things: the curve lands in the unit named on the axis,
 # and the duplicate classes separate. It leaves every accuracy figure exactly
 # where it was — wMAPE is SUM(|error|)/SUM(actual), so a constant multiplier
-# cancels top and bottom. 19.4% to 14.4% is the same number before and after.
+# cancels top and bottom. The flat-to-pooled figure is the same before and after.
 CLASS_UNITS = f"""
   SELECT SUBSTR(atc_code, 1, 5) AS atc_class,
          SUM(units_per_driver_event) AS units_per_event,

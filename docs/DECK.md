@@ -47,14 +47,14 @@ downstream can be real.*
 Report (tap · speak · photo · scan · type · SMS)
    → Gemini reads, the catalogue matches, the worker confirms
       → BigQuery ledger
-         → ARIMA_PLUS forecast (2,794 series)
+         → ARIMA_PLUS forecast (3,818 series)
             → reorder point μ×L + 1.65σ√L
-               → 597 shortages → 527 transfers, 33 orders, 39 escalations
+               → 765 shortages → 685 transfers, 36 orders, 44 escalations
                   → early warning when demand has begun to surge
 ```
 
 Districts exchange **seasonal shape, not data**: pooling cuts forecast error
-from **19.4% to 14.4%** wMAPE [§5].
+from **21.1% to 15.6%** wMAPE across six states [§0].
 
 ---
 
@@ -62,13 +62,13 @@ from **19.4% to 14.4%** wMAPE [§5].
 
 | Person | Page | What they get |
 |---|---|---|
-| Pharmacist / ASHA at a PHC | Report | 39 medicine tiles with Hindi names, a keypad, a spoken read-back, and offline that says what is waiting |
+| Pharmacist / ASHA at a PHC | Report | 39 medicine tiles, the whole page in English, Hindi, Marathi, Telugu or Bengali, a keypad, a spoken read-back, and offline that says what is waiting |
 | Medical officer | Report | The review queue: what the model held back and why |
-| District programme officer | Today, Action queue | Availability **78.6%**, life-saving availability **77.7%**, and every shortage sorted by what can be done [§7c, §7e] |
-| State supply-chain cell | Plan ahead, Map, Network | Demand outlook, surge warnings, transfers across district lines (**362 of 527** cross one) [§7a] |
+| District programme officer | Today, Action queue | Availability **80.0%**, life-saving availability **80.3%**, and every shortage sorted by what can be done [§0] |
+| State supply-chain cell | Plan ahead, Map, Network | Demand outlook, surge warnings, transfers across district lines (**520 of 685** cross one) [§0] |
 
 **Reach:** 200,438 facilities, 37 states/UTs, 701 districts in the register;
-**151.7 million people** in the demand-data footprint [§1, §2].
+**260.8 million people** in the demand-data footprint, across six states and 191 forecast districts [§0].
 
 ---
 
@@ -76,9 +76,9 @@ from **19.4% to 14.4%** wMAPE [§5].
 
 | Where | What | Guard |
 |---|---|---|
-| **Gemini** (`gemini-3.6-flash`) | Hindi/English speech, typed notes and photographed register pages → structured stock events | The model never returns a drug code. Names are matched server-side against all 385 NLEM medicines; below 0.6 confidence a human decides [§3] |
+| **Gemini** (`gemini-3.6-flash`) | Speech and typed notes in Hindi, Marathi, Telugu, Bengali, English or a mix, and photographed register pages → structured stock events | The model never returns a drug code. Names are matched server-side against all 385 NLEM medicines; below 0.6 confidence a human decides [§3] |
 | **Gemini** | Drafts the escalation note for each shortage nothing routine will fix | Every number in the draft is checked against the row; a stray figure is flagged, never hidden [§7g] |
-| **BigQuery ML ARIMA_PLUS** | 2,794 demand series, 12 auto-selected orders, 2,149 with a detected weekly cycle | `ML.ARIMA_EVALUATE` on the Evidence page, not a screenshot [§4a] |
+| **BigQuery ML ARIMA_PLUS** | 3,818 demand series, 12 auto-selected orders, 2,951 with a detected weekly cycle | `ML.ARIMA_EVALUATE` on the Evidence page, not a screenshot [§4a] |
 | **BigQuery GIS** | Distance to district HQ → lead time; 150 km transfer radius; the full register on the map | Days-per-km is a documented proxy and the page says so [§7] |
 
 *If the model is unsure, it asks a person. If the draft strays from the data,
@@ -90,7 +90,7 @@ the page says so beside it.*
 
 - **Tap** what happened → which medicine → how many. No reading beyond a
   name, no typing beyond a number.
-- **Speak** in Hindi, English or both. **Type** it the same way.
+- **Speak** in Hindi, Marathi, Telugu, Bengali, English or a mix. **Type** it the same way.
 - **Photograph** the stock register: every row shown for checking, never
   written unconfirmed.
 - **Scan** a barcode. **SMS** to the endpoint a gateway would call.
@@ -105,33 +105,33 @@ only attendance and occupancy counts the system holds as fact [§7g, §8a].
 
 ## 7. Forecast and early warning
 
-- **ARIMA_PLUS in BigQuery ML**, trained on the project's own ledger, 55.9%
+- **ARIMA_PLUS in BigQuery ML**, trained on the project's own ledger, 76.4%
   of the 5,000-series ceiling [§4].
 - **21 HMIS drivers loaded, 20 used** by forecast items: real monthly
   morbidity from MoHFW shapes the demand [§4].
 - **Early warning** when demand has begun to surge: a modified-z rule that
   fires where a 3-sigma rule cannot. On twelve monthly points the classical
-  statistic is bounded at **3.175**; ours reached **166.7** [§9].
-- **1,295 surges** from **58,932** district-month series (2.2%).
-  Brihan Mumbai, January: **2,345 observed vs 987.8 expected**, 2.37×; a
-  flat average would have said 1.67× [§9].
-- Under a surge, needs-reorder goes **100 → 198**; **145 of 322** can only
-  be served laterally, because an order would arrive too late [§9].
+  statistic is bounded at **3.175**; ours reached **306.5** [§0].
+- **2,352 surges** from **90,780** district-month series (2.6%) [§0].
+  Brihan Mumbai, January: **2,345 observed vs 938.4 expected**, 2.50×; a
+  flat average would have said 1.67× [§0].
+- Under a surge, needs-reorder goes **208 → 447**; in **331 of 673** surge-hit lines an order
+  cannot arrive in time, so only a transfer can serve them [§0].
 
 ---
 
 ## 8. Redistribution and the action queue
 
-- **597 shortages**, each in exactly one of three states [§7e]:
-  **527** a transfer is waiting · **33** an order arrives in time ·
-  **39** nothing routine works.
+- **765 shortages**, each in exactly one of three states [§0]:
+  **685** a transfer is waiting · **36** an order arrives in time ·
+  **44** nothing routine works.
 - Transfers are FEFO by batch, donor-protected, within 150 km:
-  **64,218 units**, 116 life-saving, 1 therapeutic substitution [§7].
+  **88,578 units**, 150 life-saving, 1 therapeutic substitution [§0].
 - Every transfer has a lifecycle: approve → dispatch → receive, and stock
   moves in the ledger when it does.
-- Waste avoided by FEFO, priced at NPPA ceilings: **Rs 29,268**, about
-  **Rs 146 per PHC per year** on modelled units [§7f].
-- The 39 escalations each carry a **drafted note**, grounded and checked.
+- Waste avoided by FEFO, priced at NPPA ceilings: **Rs 49,786**, about
+  **Rs 181 per PHC per year** on modelled units [§0].
+- The 44 escalations each carry a **drafted note**, grounded and checked, in the officer's language.
 
 ---
 
@@ -156,8 +156,8 @@ A judge can check any figure on this deck against `docs/CLAIMS.md`.*
 - **Data a state already has**: the facility register, HMIS, the NLEM, its
   own stock register. Loading a new state is the ingestion scripts against
   those files; the country and geography abstraction is in `config/`.
-- **Nothing to install on the phone**: a PWA, works offline, Hindi and
-  English from one dictionary, more languages are a dictionary each.
+- **Nothing to install on the phone**: a PWA that works offline, in five languages today; each further language
+  is one dictionary.
 - **Fits the workflow that exists**: the review queue is the pharmacist's
   check; the escalation note is what the district officer already writes;
   SMS is the endpoint a state's gateway would call.
@@ -170,10 +170,13 @@ A judge can check any figure on this deck against `docs/CLAIMS.md`.*
 
 - The forecast layer scales by series; the shape exchange is why a new
   district starts with a usable seasonal pattern before it has history:
-  the pooled vector beat a district's own flat baseline by **5.0 points**
-  and a cross-state twin lost by **51.8 points** [§5]. Shape travels; raw
+  the pooled vector beat a district's own flat baseline by **5.5 points**
+  and a cross-state twin lost by **25.4 points** [§0]. Shape travels; raw
   data does not have to.
-- 200 forecast PHCs in 5 states run today; the register already holds all
+- **Uttar Pradesh was added in one working session** with the runbook in
+  `docs/ONBOARD_A_STATE.md`: 75 districts, 1,024 new series, and none of
+  the original 2,794 stock lines changed status [§0].
+- 275 forecast PHCs in 6 states run today; the register already holds all
   29,733 PHCs, and the map already draws 34,935 centres [§1, §7a].
 - What would change first at national scale: per-facility catchments (none
   published), a phone-number register for SMS, and a state's real lead

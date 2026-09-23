@@ -1355,3 +1355,30 @@ each from elsewhere in this document:
 MoHFW's own finding that a PHC serves **36,049 people on average against a
 20–30,000 norm** is the context for all of it: these are facilities already
 carrying more population than the standard assumes.
+
+## 20. Uttar Pradesh, added 2026-09-23
+
+**Real:** HMIS 2019-20 for all 75 districts (18,900 rows, 21 drivers, 12
+months), the 75 PHCs chosen (one per district, by `FARM_FINGERPRINT` rank, the
+same rule as the original selection), their lead times, their Rural Health
+Statistics 2021-22 staffing, and their IPHS bed norm.
+
+**Generated, exactly as for the original five states:** the daily stock
+ledger (422,345 medicine rows) and bed occupancy (27,772 rows). Anchors are
+the same: the district's real HMIS volume for each item's driver, divided by
+the district's PHCs, shaped by that district's real monthly seasonality.
+
+**One added-state rule.** The register lists fewer PHCs in some Uttar Pradesh
+districts than a district of that size runs: 6 in Pratapgarh, 8 in Siddharth
+Nagar, 12 in Ghazipur and Shrawasti, 13 in Jaunpur, against a state mean of
+41. Dividing by those counts gave one PHC about 3,000 iron tablets a day. For
+added states only, a district listing fewer than half its state's mean is
+treated as under-counted and its denominator is raised to that floor, 21 for
+Uttar Pradesh. Nine districts were raised; the generator prints each one.
+The original five states are not re-run under this rule, so their figures
+stay reproducible. `ingestion/generate_usage.py::floor_phc_counts`.
+
+**Separate random stream.** The original generator draws every facility from
+one stream in `facility_id` order, so inserting facilities would have changed
+every draw after them. Added states use a stream offset by a stable hash of
+the state name. Verified: all 2,794 original stock lines kept their status.

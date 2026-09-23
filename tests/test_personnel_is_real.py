@@ -96,7 +96,7 @@ class TestGeneratedPresenceIsGoneFromTheDataLayer:
             SELECT COUNT(DISTINCT facility_id) AS facs, COUNT(*) AS rows_
             FROM `daysupply.daysupply.staff_status`
         """)[0]
-        assert r["facs"] == 200, r
+        assert r["facs"] == run_query("SELECT COUNTIF(is_forecast_facility) AS n FROM `daysupply.daysupply.facilities`")[0]["n"], r
 
     def test_vacancy_exists_only_at_state_and_cadre_grain(self):
         """The reason no personnel figure may be reported per district."""

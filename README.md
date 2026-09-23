@@ -36,14 +36,14 @@ extract  →  match against all 385 NLEM medicines  →  read back  →  confide
 ```
 
 The Report page is built for the person holding the phone at the end of a
-shift, not for an analyst: it reads in Hindi or English from one toggle, the
+shift, not for an analyst: it reads in English, Hindi, Marathi, Telugu or Bengali from one picker, the
 default mode needs no typing beyond a number, and **nothing is written until
 the worker has heard it read back and said yes** (the offline queue is the one
 exception, because nobody is holding the phone when it syncs).
 
 | Rank | Mode | When it wins | Needs | Extraction confidence |
 |---|---|---|---|---|
-| 0 | **Tap** | The default. What happened → which medicine (39 tiles, Hindi names where the catalogue has them) → how many, on a keypad | A thumb | 1.0 — nothing to extract |
+| 0 | **Tap** | The default. What happened → which medicine (39 tiles, Devanagari names where the catalogue has them) → how many, on a keypad | A thumb | 1.0 — nothing to extract |
 | 1 | **Barcode** | Most accurate — the code names the product, there is no speech to mis-hear | Labelled stock, working camera | 1.0 |
 | 2 | **Voice** | **Works when nothing else does.** No labels, no keyboard, no connectivity | 30 seconds, any language | Per item, from the model |
 | 3 | **Chat** | When audio is impractical — shared room, night shift, noisy clinic | A keyboard | Per item, from the model |
@@ -88,15 +88,16 @@ This matters more than any feature list, and the full accounting is in
 | **200,438 facilities** | Every health facility in India, from the government directory. 37 states, 668 districts. Not a sample |
 | **HMIS 2019-20 seasonality** | Real monthly morbidity from MoHFW, driving demand shape |
 | **385 medicines** | The complete National List of Essential Medicines 2022 |
-| **A trained ARIMA_PLUS model** | 2,794 series, trained in BigQuery ML on the project's own history |
+| **A trained ARIMA_PLUS model** | 3,818 series, trained in BigQuery ML on the project's own history |
 | **Supply-chain logic** | Lead-time reorder points, VEN ranking, FEFO, ATC substitution, reporting consistency — all computed |
-| **Generated** | Daily dispensing, receipt and expiry events for 200 PHCs — anchored to the real HMIS series above, and labelled as generated everywhere it appears |
+| **Generated** | Daily dispensing, receipt and expiry events for 275 PHCs — anchored to the real HMIS series above, and labelled as generated everywhere it appears |
 
-HMIS is loaded for **five states — 137 districts, 34,524 rows across 21 demand
+HMIS is loaded for **six states — 212 districts, 53,424 rows across 21 demand
 drivers** — and 6,989 of
 the 7,092 demo PHCs (98.5%) join to it. Forecasting is active where sufficient
-signal exists: every essential medicine is tracked, 39 are forecast, across 200
-PHCs spanning 5 states and 116 districts.
+signal exists: every essential medicine is tracked, 39 are forecast, across 275
+PHCs spanning 6 states and 191 districts. Uttar Pradesh was added on
+2026-09-23 with [`docs/ONBOARD_A_STATE.md`](docs/ONBOARD_A_STATE.md).
 
 `captures_today` counts real capture events and is **legitimately zero** until
 someone captures something. It is not a placeholder number.
@@ -126,22 +127,23 @@ truncated to three months and the rest predicted four ways
 
 | Arm | Weighted MAPE |
 |---|---|
-| flat — own three months, no seasonality | 19.4% |
-| nearest demographic match, different state | 71.2% — **51.8pt worse** |
-| nearest demographic match, same state | 16.4% — 3.0pt better |
-| **pooled — mean vector across all districts** | **14.4% — 5.0pt better** |
+| flat — own three months, no seasonality | 21.1% |
+| nearest demographic match, different state | 46.5% — **25.4pt worse** |
+| nearest demographic match, same state | 18.6% — 2.5pt better |
+| **pooled — mean vector across all districts** | **15.6% — 5.5pt better** |
 
-**Cross-state demographic matching loses catastrophically** — 71.2% against a
-19.4% flat baseline, nearly four times the error of doing nothing. Seasonality
+**Cross-state demographic matching loses badly** — 46.5% against a 21.1%
+flat baseline, more than twice the error of doing nothing. (Across the
+original five states it was 71.2% against 19.4%; see `docs/CLAIMS.md` §0.) Seasonality
 here is climate-driven and population density does not predict climate: Assam
 and Rajasthan can be demographically near-identical and have opposite malaria
 seasons. A single donor also carries all of its own reporting noise.
 
-**Restricting the match to the same state fixes most of it** (16.4%, a modest
-3.0pt better than flat), which is the confirmation rather than the refutation:
+**Restricting the match to the same state fixes most of it** (18.6%, a modest
+2.5pt better than flat), which is the confirmation rather than the refutation:
 what a same-state donor shares with the receiver is climate, not demography.
 
-**Pooling beats both** at 14.4%, because averaging across every district cancels
+**Pooling beats both** at 15.6%, because averaging across every district cancels
 individual reporting noise while keeping the shared seasonal shape. Pooling is
 what ships. The losing arms are kept because a claim is only worth what it beats.
 
@@ -173,7 +175,7 @@ pip install -r requirements.txt
 # Ingestion — in order
 python -m ingestion.load_facilities        # 200,438 facilities
 python -m ingestion.build_geo_summary      # dropdown cache
-python -m ingestion.parse_hmis             # HMIS, 5 states
+python -m ingestion.parse_hmis             # HMIS, 5 states; add more with --state
 python -m ingestion.build_items            # full NLEM 2022 catalogue
 python -m ingestion.set_forecast_facilities
 python -m ingestion.set_lead_times         # distance to district HQ

@@ -118,15 +118,18 @@ CADRE_ITEM_IDS = {
 }
 
 
-def fetch(client: bigquery.Client):
+def fetch(client: bigquery.Client, state: str | None = None):
+    only = "AND admin_l1 = @state" if state else ""
     facilities = client.query(f"""
         SELECT facility_id, admin_l1 AS state, admin_l2 AS district,
                UPPER(TRIM(admin_l2)) AS district_key,
                bed_capacity, beds_are_day_care
         FROM {FACILITIES}
-        WHERE is_forecast_facility
+        WHERE is_forecast_facility {only}
         ORDER BY facility_id
-    """).to_dataframe()
+    """, job_config=bigquery.QueryJobConfig(query_parameters=(
+        [bigquery.ScalarQueryParameter("state", "STRING", state)]
+        if state else []))).to_dataframe()
 
     phc_counts = client.query(f"""
         SELECT admin_l1 AS state, UPPER(TRIM(admin_l2)) AS district_key,
@@ -191,15 +194,24 @@ def build_scale(hmis: pd.DataFrame, phc_counts: pd.DataFrame) -> dict:
     return scale
 
 
-def generate(dry_run: bool = False) -> None:
+def generate(dry_run: bool = False, add_state: str | None = None) -> None:
     client = bigquery.Client(project=PROJECT, location=LOCATION)
+    # A state added later gets its own random stream so the original
+    # facilities' draws do not move. See generate_usage.state_seed.
+    from ingestion.generate_usage import state_seed
+    SEED = state_seed(add_state) + (0 if not add_state else 7)  # noqa: N806
+    if not add_state:
+        SEED = globals()["SEED"]  # noqa: N806
 
     print("Fetching real inputs ...")
-    facilities, phc_counts, hmis, staffing = fetch(client)
+    facilities, phc_counts, hmis, staffing = fetch(client, add_state)
     print(f"  facilities:   {len(facilities)}")
     print(f"  staffing rows:{len(staffing)}")
     print(f"  HMIS rows:    {len(hmis)}")
 
+    if add_state:
+        from ingestion.generate_usage import floor_phc_counts
+        phc_counts = floor_phc_counts(phc_counts, add_state)
     seasonality = build_seasonality(hmis)
     scale = build_scale(hmis, phc_counts)
     share = phc_share(BED_DRIVER)
@@ -365,9 +377,20 @@ def generate(dry_run: bool = False) -> None:
         FROM `{RESOURCE_EVENTS}`
     """).result()))
 
+    # Only GENERATED rows are replaced. This used to delete every bed and
+    # personnel row, which would have taken real captured reports ("3 beds in
+    # use", "2 nurses on duty") with it on any rerun.
+    scope = ""
+    params = []
+    if add_state:
+        scope = (f" AND facility_id IN (SELECT facility_id FROM {FACILITIES} "
+                 f"WHERE is_forecast_facility AND admin_l1 = @state)")
+        params = [bigquery.ScalarQueryParameter("state", "STRING", add_state)]
     client.query(
         f"DELETE FROM `{RESOURCE_EVENTS}` "
-        "WHERE resource_type IN ('bed', 'personnel')"
+        "WHERE resource_type IN ('bed', 'personnel') AND source = 'seed'"
+        + scope,
+        job_config=bigquery.QueryJobConfig(query_parameters=params),
     ).result()
 
     client.load_table_from_dataframe(
@@ -399,9 +422,10 @@ def generate(dry_run: bool = False) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--add-state")
     args = parser.parse_args()
     try:
-        generate(dry_run=args.dry_run)
+        generate(dry_run=args.dry_run, add_state=args.add_state)
     except Exception as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         raise

@@ -161,14 +161,59 @@ SCHEMA = [
 # ---------------------------------------------------------------------------
 # Real inputs
 # ---------------------------------------------------------------------------
-def fetch_inputs(client: bigquery.Client):
+RESOURCE_EVENTS = f"{PROJECT}.{DATASET}.resource_events"
+
+
+def state_seed(state: str | None) -> int:
+    """The random stream for a run.
+
+    The original run draws every facility from one stream in facility_id
+    order, so adding a facility anywhere in that order would change the draws
+    for every facility after it. A state added later gets its own stream,
+    offset by a stable hash of its name, so the original 200 stay bit-for-bit
+    the same.
+    """
+    if not state:
+        return SEED
+    import zlib
+    return SEED + 1_000_003 * (1 + zlib.crc32(state.encode("utf-8")) % 997)
+
+
+# For a state added later only. The register lists 6 PHCs in Pratapgarh and 8
+# in Siddharth Nagar against an Uttar Pradesh mean of 41 per district, so a
+# district total divided by the register count gave one PHC about 3,000 iron
+# tablets a day. A district listing fewer than this share of its state's mean
+# is treated as under-counted in the register and its denominator is raised to
+# the floor. The original five states keep their exact method so their figures
+# stay reproducible; this is disclosed in Data/README.md.
+PHC_FLOOR_SHARE = 0.5
+
+
+def floor_phc_counts(phc_counts: pd.DataFrame, state: str) -> pd.DataFrame:
+    out = phc_counts.copy()
+    mask = out["state"] == state
+    if not mask.any():
+        return out
+    floor = int(round(PHC_FLOOR_SHARE * out.loc[mask, "phcs"].mean()))
+    raised = mask & (out["phcs"] < floor)
+    for _, r in out[raised].iterrows():
+        print(f"  {r['district_key']}: register lists {r['phcs']} PHCs, "
+              f"denominator raised to {floor}")
+    out.loc[raised, "phcs"] = floor
+    return out
+
+
+def fetch_inputs(client: bigquery.Client, state: str | None = None):
+    only = "AND admin_l1 = @state" if state else ""
     facilities = client.query(f"""
         SELECT facility_id, admin_l1 AS state, admin_l2 AS district,
                UPPER(TRIM(admin_l2)) AS district_key, population_served
         FROM {FACILITIES}
-        WHERE is_forecast_facility
+        WHERE is_forecast_facility {only}
         ORDER BY facility_id
-    """).to_dataframe()
+    """, job_config=bigquery.QueryJobConfig(query_parameters=(
+        [bigquery.ScalarQueryParameter("state", "STRING", state)]
+        if state else []))).to_dataframe()
 
     items = client.query(f"""
         SELECT item_id, display_name, unit, demand_driver, ven_class,
@@ -257,11 +302,12 @@ def build_scale(hmis: pd.DataFrame, phc_counts: pd.DataFrame) -> dict:
 # ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
-def generate(dry_run: bool = False) -> None:
+def generate(dry_run: bool = False, add_state: str | None = None) -> None:
     client = bigquery.Client(project=PROJECT, location=LOCATION)
+    SEED = state_seed(add_state)  # noqa: N806 — shadows the module seed on purpose
 
     print("Fetching real inputs ...")
-    facilities, items, phc_counts, hmis = fetch_inputs(client)
+    facilities, items, phc_counts, hmis = fetch_inputs(client, add_state)
     print(f"  forecast facilities: {len(facilities)}")
     print(f"  forecast items:      {len(items)}")
     print(f"  HMIS rows:           {len(hmis)}")
@@ -269,6 +315,8 @@ def generate(dry_run: bool = False) -> None:
     if facilities.empty or items.empty:
         raise SystemExit("No forecast facilities or items — run the setup steps")
 
+    if add_state:
+        phc_counts = floor_phc_counts(phc_counts, add_state)
     seasonality = build_seasonality(hmis)
     scale = build_scale(hmis, phc_counts)
 
@@ -525,9 +573,56 @@ def generate(dry_run: bool = False) -> None:
         print(frame.head(5).to_string())
         return
 
+    if add_state:
+        # The impact table describes the original network and is left alone;
+        # the new state's rows are appended to the ledger the app reads.
+        _append_state(client, frame, add_state)
+        _merge_impact(client, frame, add_state, unmet_units, expired_units,
+                      fifo_expired_units)
+        return
     _write(client, frame)
     _write_impact(client, frame, unmet_units, expired_units,
                   fifo_expired_units)
+
+
+def _append_state(client: bigquery.Client, frame: pd.DataFrame,
+                  state: str) -> None:
+    """Replace one state's generated medicine rows in `resource_events`.
+
+    Only rows with `source = 'seed'` for that state's forecast facilities are
+    deleted, so captured reports survive a rerun, and a check fails the run if
+    any medicine row outside the state changed.
+    """
+    params = [bigquery.ScalarQueryParameter("state", "STRING", state)]
+    scope = (f"facility_id IN (SELECT facility_id FROM {FACILITIES} "
+             f"WHERE is_forecast_facility AND admin_l1 = @state)")
+    count_sql = (f"SELECT COUNTIF(NOT ({scope})) AS others FROM `{RESOURCE_EVENTS}` "
+                 f"WHERE resource_type = 'medicine'")
+    cfg = bigquery.QueryJobConfig(query_parameters=params)
+    before = next(iter(client.query(count_sql, job_config=cfg).result())).others
+
+    client.query(f"DELETE FROM `{RESOURCE_EVENTS}` WHERE resource_type = 'medicine' "
+                 f"AND source = 'seed' AND {scope}", job_config=cfg).result()
+
+    out = frame.copy()
+    out["resource_type"] = "medicine"
+    out["resource_subtype"] = None
+    out["capacity"] = None
+    schema = client.get_table(RESOURCE_EVENTS).schema
+    out = out[[f.name for f in schema]]
+    print(f"\nAppending {len(out):,} rows for {state} to {RESOURCE_EVENTS} ...")
+    client.load_table_from_dataframe(
+        out, RESOURCE_EVENTS,
+        job_config=bigquery.LoadJobConfig(
+            schema=schema,
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND),
+    ).result()
+
+    after = next(iter(client.query(count_sql, job_config=cfg).result())).others
+    if after != before:
+        raise SystemExit(f"Medicine rows outside {state} changed: "
+                         f"{before:,} -> {after:,}")
+    print(f"  medicine rows outside {state} unchanged ({after:,})")
 
 
 def _write_impact(client, frame, unmet, expired, fifo_expired):
@@ -568,6 +663,69 @@ def _write_impact(client, frame, unmet, expired, fifo_expired):
     ).result()
     print(f"  impact_metrics written: {fifo_expired - expired:,} units of "
           "waste avoided by FEFO")
+
+
+IMPACT_PARTS = f"{PROJECT}.{DATASET}.impact_metrics_parts"
+
+
+def _merge_impact(client, frame, state, unmet, expired, fifo_expired):
+    """Fold an added state into the network impact figures, idempotently.
+
+    `impact_metrics` is one row for the whole network. Before Uttar Pradesh
+    it described the original run only, so the rupee waste figure applied the
+    original waste-avoided share to six states' expiries and divided by 200
+    centres. Now each part is kept in `impact_metrics_parts` (the original run
+    under `__original__`, each added state under its name), a rerun replaces
+    its own part, and `impact_metrics` is rebuilt as the sum.
+    """
+    dispensed = int(frame.loc[frame["event_type"] == "dispensed",
+                              "quantity"].sum())
+    client.query(f"""
+        CREATE TABLE IF NOT EXISTS `{IMPACT_PARTS}` (
+          part STRING, as_of_date DATE, units_dispensed INT64,
+          units_unmet INT64, units_expired_fefo INT64, units_expired_fifo INT64)
+    """).result()
+    has_original = next(iter(client.query(
+        f"SELECT COUNT(*) AS n FROM `{IMPACT_PARTS}` "
+        f"WHERE part = '__original__'").result())).n
+    if not has_original:
+        client.query(f"""
+            INSERT INTO `{IMPACT_PARTS}`
+            SELECT '__original__', as_of_date, units_dispensed, units_unmet,
+                   units_expired_fefo, units_expired_fifo
+            FROM {IMPACT_METRICS}
+        """.replace("{IMPACT_METRICS}", f"`{IMPACT_METRICS}`")).result()
+    cfg = bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ScalarQueryParameter("part", "STRING", state),
+        bigquery.ScalarQueryParameter("d", "INT64", dispensed),
+        bigquery.ScalarQueryParameter("u", "INT64", int(unmet)),
+        bigquery.ScalarQueryParameter("e", "INT64", int(expired)),
+        bigquery.ScalarQueryParameter("f", "INT64", int(fifo_expired)),
+        bigquery.ScalarQueryParameter("asof", "DATE", END_DATE),
+    ])
+    client.query(f"DELETE FROM `{IMPACT_PARTS}` WHERE part = @part",
+                 job_config=cfg).result()
+    client.query(f"INSERT INTO `{IMPACT_PARTS}` VALUES "
+                 f"(@part, @asof, @d, @u, @e, @f)", job_config=cfg).result()
+    client.query(f"""
+        CREATE OR REPLACE TABLE `{IMPACT_METRICS}` AS
+        SELECT MAX(as_of_date) AS as_of_date,
+               SUM(units_dispensed) AS units_dispensed,
+               SUM(units_unmet) AS units_unmet,
+               ROUND(SAFE_DIVIDE(SUM(units_unmet),
+                     SUM(units_dispensed) + SUM(units_unmet)), 4) AS unmet_share,
+               SUM(units_expired_fefo) AS units_expired_fefo,
+               SUM(units_expired_fifo) AS units_expired_fifo,
+               SUM(units_expired_fifo) - SUM(units_expired_fefo)
+                 AS waste_avoided_by_fefo_units,
+               ROUND(SAFE_DIVIDE(SUM(units_expired_fifo) - SUM(units_expired_fefo),
+                     SUM(units_expired_fifo)), 4) AS waste_avoided_share
+        FROM `{IMPACT_PARTS}`
+    """).result()
+    row = next(iter(client.query(f"SELECT * FROM `{IMPACT_METRICS}`").result()))
+    print(f"  impact_metrics now covers every part: "
+          f"{row.waste_avoided_by_fefo_units:,} units avoided "
+          f"({row.waste_avoided_share:.1%})")
 
 
 def _pick_scenarios(facilities: pd.DataFrame):
@@ -719,9 +877,12 @@ def _write(client: bigquery.Client, frame: pd.DataFrame) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--add-state",
+                        help="generate only this state's forecast facilities "
+                             "and append them, leaving the rest untouched")
     args = parser.parse_args()
     try:
-        generate(dry_run=args.dry_run)
+        generate(dry_run=args.dry_run, add_state=args.add_state)
     except Exception as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         raise

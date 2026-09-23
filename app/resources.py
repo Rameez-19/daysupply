@@ -237,7 +237,7 @@ def staff_reallocation(state: str = "", district: str = "",
         ),
         scope AS (
           SELECT COUNT(DISTINCT CONCAT(state, '|', cadre)) AS roles,
-                 COUNT(DISTINCT district) AS districts
+                 COUNT(DISTINCT CONCAT(state, '|', district)) AS districts
           FROM {STAFF_STATUS}
           WHERE {scope_where}
         )

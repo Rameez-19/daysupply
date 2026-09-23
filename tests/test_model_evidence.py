@@ -33,9 +33,15 @@ class TestTheModelDescribesItself:
 
     def test_every_series_is_fitted(self, ev):
         assert ev["model"]["series"] > 0
-        assert ev["model"]["series"] == 2794, (
-            "the trained series count moved; check the model was retrained "
-            "rather than partially built")
+        # Every stock line the supply plan reads must have a fitted series,
+        # and nothing else. A partial build shows as a mismatch here.
+        from app.bq import run_query
+        lines = run_query("SELECT COUNT(*) AS n FROM "
+                          "`daysupply.daysupply.demand_baseline`")[0]["n"]
+        assert ev["model"]["series"] == lines, (
+            "the trained series count differs from the stock lines it feeds; "
+            "check the model was retrained rather than partially built")
+        assert ev["model"]["series"] <= 5000, "the series ceiling is 5,000"
 
     def test_the_orders_were_chosen_per_series_not_stamped(self, ev):
         """A single (p,d,q) across all 2,794 series would mean auto-ARIMA never
