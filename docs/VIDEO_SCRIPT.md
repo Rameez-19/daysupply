@@ -40,13 +40,13 @@ count beside it, so Uttar Pradesh and Delhi read on the same scale."
 **0:45 – 1:20 · The other ways in (phone)**
 
 *On screen:* Speak: hold the mic, say "Paracetamol ke do sau tablet aaye hain,
-ORS ke kuch packet khatam". Read-back shows Paracetamol 200 received, and ORS
-held for the pharmacist because "kuch" is not a number.
+ORS ka aadha dabba bacha hai". Read-back shows Paracetamol 200 received, and ORS
+held for the pharmacist because "half a box" is not a number.
 
 *Voice:* "Gemini reads the speech. It is never asked for a drug code; the name
 is matched server-side against all 385 medicines in the National List [§3],
 and anything the model is unsure about waits for the pharmacist. Here it heard
-'some packets' of ORS and held it rather than guess."
+'half a box' of ORS and held it rather than guess."
 
 *On screen:* Photo mode, a register page; rows appear for checking. Then
 Staff today with the five roles.
