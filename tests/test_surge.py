@@ -460,3 +460,24 @@ class TestMedicineVerticalUnharmed:
               ON s.recommendation_id = r.recommendation_id
         """)
         assert rows[0]["leaked"] == 0
+
+
+class TestOneWarningPerSignal:
+    """P01BA and P01BF are driven by the same confirmed-malaria signal. One
+    event must be one card, naming every class it affects; the rule lived on
+    the retired Today v1 page and was lost with it once already."""
+
+    def test_no_district_month_driver_appears_twice(self):
+        from app import surge
+        rows = surge.get_surge_signals(limit=5000)
+        keys = [(r["state"], r["district_key"], r["month"],
+                 r["signal_indicator"] or r["atc_class"]) for r in rows]
+        assert len(keys) == len(set(keys))
+
+    def test_grouped_classes_are_all_named(self):
+        from app import surge
+        rows = surge.get_surge_signals(limit=5000)
+        grouped = [r for r in rows if "," in (r["atc_classes"] or "")]
+        assert grouped, "the malaria classes should be grouped somewhere"
+        for r in grouped:
+            assert r["atc_class"] in r["atc_classes"]

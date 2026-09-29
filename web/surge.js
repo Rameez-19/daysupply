@@ -57,7 +57,7 @@ async function loadSurgeSignals() {
         <div class="alert-icon warning">&#128200;</div>
         <div class="alert-body">
           <div class="alert-title">${signalBadge(s.signal_class)} ${s.signal_indicator || s.atc_class}</div>
-          <div class="alert-meta">${s.district_key} &middot; ${s.month} &middot; ${s.atc_class}${s.example_items ? ' (' + s.example_items + ')' : ''}</div>
+          <div class="alert-meta">${s.district_key} &middot; ${s.month} &middot; ${s.atc_classes || s.atc_class}${s.example_items ? ' (' + s.example_items + ')' : ''}</div>
           <div class="alert-detail signal-line">
             <strong>${s.signal_means || s.atc_class} is ${s.surge_multiplier}&times; expected</strong>
             for this district in ${s.month}.

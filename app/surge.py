@@ -83,21 +83,46 @@ def get_surge_signals(state: str = "", district: str = "",
     # this district in March" is. The signal_class says whether it is an early
     # warning, a coincident fact, or a planned campaign — three different
     # things a district officer must not confuse.
+    # One warning per district, month and DRIVER, not per medicine class.
+    # P01BA and P01BF are different antimalarial classes driven by the same
+    # confirmed-malaria signal, so grouping by class showed one event as two
+    # identical cards. This rule was implemented on the retired Today v1 page
+    # and lost with it; it lives here now, where every page reads it. The
+    # statistic is computed from the driver, so it is identical across the
+    # classes it groups. `atc_class` keeps one class so scenario mode can still
+    # open on it; `atc_classes` names them all for the card.
     return run_query(f"""
-        SELECT s.state, s.district_key, s.atc_class, s.month,
-               s.observed, s.expected, s.baseline, s.pooled_multiplier,
-               s.surge_multiplier, s.z_modified, s.z_classical, s.mad,
-               s.threshold_z, s.threshold_ratio, s.threshold_absolute,
-               s.passes_statistic, s.passes_ratio, s.passes_magnitude,
-               l.demand_driver AS signal_indicator,
-               l.signal_class,
-               l.means AS signal_means,
-               l.why AS signal_why,
-               l.example_items
-        FROM {SURGE_SIGNALS} s
-        LEFT JOIN {SIGNAL_LABELS} l ON l.atc_class = s.atc_class
-        WHERE {' AND '.join(where)}
-        ORDER BY s.surge_multiplier DESC, s.z_modified DESC
+        WITH joined AS (
+          SELECT s.*, l.demand_driver, l.signal_class, l.means, l.why,
+                 l.example_items,
+                 COALESCE(l.demand_driver, s.atc_class) AS signal_key
+          FROM {SURGE_SIGNALS} s
+          LEFT JOIN {SIGNAL_LABELS} l ON l.atc_class = s.atc_class
+          WHERE {' AND '.join(where)}
+        )
+        SELECT state, district_key, month,
+               MIN(atc_class) AS atc_class,
+               STRING_AGG(DISTINCT atc_class, ', ' ORDER BY atc_class)
+                 AS atc_classes,
+               MAX(observed) AS observed, MAX(expected) AS expected,
+               MAX(baseline) AS baseline,
+               MAX(pooled_multiplier) AS pooled_multiplier,
+               MAX(surge_multiplier) AS surge_multiplier,
+               MAX(z_modified) AS z_modified, MAX(z_classical) AS z_classical,
+               MAX(mad) AS mad, MAX(threshold_z) AS threshold_z,
+               MAX(threshold_ratio) AS threshold_ratio,
+               MAX(threshold_absolute) AS threshold_absolute,
+               LOGICAL_AND(passes_statistic) AS passes_statistic,
+               LOGICAL_AND(passes_ratio) AS passes_ratio,
+               LOGICAL_AND(passes_magnitude) AS passes_magnitude,
+               ANY_VALUE(demand_driver) AS signal_indicator,
+               ANY_VALUE(signal_class) AS signal_class,
+               ANY_VALUE(means) AS signal_means,
+               ANY_VALUE(why) AS signal_why,
+               STRING_AGG(DISTINCT example_items, ', ') AS example_items
+        FROM joined
+        GROUP BY state, district_key, month, signal_key
+        ORDER BY surge_multiplier DESC, z_modified DESC
         LIMIT @limit
     """, params)
 
