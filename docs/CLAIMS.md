@@ -102,6 +102,7 @@ Verified against the live BigQuery dataset on **2026-09-02**, after
 | Staff posts filled | 77.8% | **71.6%** of 1,361 sanctioned posts, 23 state-and-cadre roles | REAL SOURCE, DERIVED | `today_v2.staff_scorecard` |
 | Worst state and role | Rajasthan pharmacist, 56.2% vacant | **Uttar Pradesh health assistant, 81.5% vacant** | REAL (RHS 2021-22) | same |
 | Nurses below the bed norm | 11 | **86** | REAL SOURCE, DERIVED | same |
+| Gemini models | gemini-3.6-flash, fallback gemini-2.5-flash | **gemini-3.5-flash, then gemini-3.6-flash, then gemini-3.1-flash-lite** (2.5-flash is retired; a 404 skips to the next) | REAL config | `app/capture.py` |
 | Report page languages | Hindi, English | **English, Hindi, Marathi, Telugu, Bengali** | REAL feature | `web/report.js` |
 
 **What adding Uttar Pradesh did not change.** All 2,794 of the original

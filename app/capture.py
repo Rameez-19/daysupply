@@ -5,25 +5,29 @@ confidence gate, routing and the review queue all live in
 `app/capture_pipeline.py` and are covered by tests that never call Gemini. That
 boundary is deliberate, and it is what made this migration cheap.
 
-## Model pin — verified 2026-09-01
+## Models — verified 2026-09-29
 
-`gemini-3.6-flash`. GA, not preview, and Flash-class is the right weight for
-short multilingual audio into a small JSON payload.
+Primary `gemini-3.5-flash`, then a chain of fallbacks: `gemini-3.6-flash`,
+then `gemini-3.1-flash-lite`. Flash-class is the right weight for short
+multilingual audio, text and register photos into a small JSON payload.
 
-Deliberately **not**:
+**Why a chain, not one fallback.** On 2026-09-29 one call to each current
+Flash model found `gemini-3.5-flash`, `3.7-flash`, `3.8-flash` and
+`flash-latest` all returning 503 "high demand", `3.6-flash` and
+`3.1-flash-lite` answering, and the old fallback `gemini-2.5-flash` returning
+404 "no longer available to new users". With a single fallback that was
+retired, a busy primary meant a failed request.
 
-* `gemini-3.7-flash` — newer, but tuned for coding and agentic work rather than
-  this.
-* `gemini-3.1-pro` and the rest of the Gemini 3 Pro line — still in preview.
+**A retired model is skipped, not retried.** A 404 NOT_FOUND on a model moves
+straight to the next model in the chain; waiting would not bring it back.
 
-**Fallback if Hindi audio accuracy disappoints:** `gemini-2.5-flash`, the
-cheaper proven option. Set `GEMINI_MODEL` to override without a code change.
+Override without a code change: `GEMINI_MODEL` for the primary,
+`GEMINI_FALLBACK_MODELS` as a comma-separated list for the chain.
 
-**Model pins go stale, and this one already did once.** The previous pin was
-`gemini-1.5-pro`, which Google has since shut down — every request returned
-404, a failure entirely independent of the API key. Re-verify this pin against
-the current model list before each submission or deployment, and update the
-date above when you do.
+**Model names go stale, and this one has twice.** `gemini-1.5-pro` was shut
+down, then `gemini-2.5-flash` was closed to new users. Re-check the chain
+against the live model list before each submission or deployment, and update
+the date above when you do.
 """
 
 import logging
@@ -39,12 +43,14 @@ from app import items
 
 log = logging.getLogger(__name__)
 
-# See the module docstring for why this pin and not another.
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-# Used automatically after repeated retryable failures on the pinned model,
-# and settable directly via GEMINI_MODEL. The switch is logged, so a silent
-# degradation is still a visible one.
-FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
+# See the module docstring for why these models and this order.
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+# Tried in order after repeated retryable failures on the primary. Every
+# switch is logged, so a silent degradation is still a visible one.
+FALLBACK_MODELS = [m.strip() for m in os.getenv(
+    "GEMINI_FALLBACK_MODELS", "gemini-3.6-flash,gemini-3.1-flash-lite"
+).split(",") if m.strip()]
+FALLBACK_MODEL = FALLBACK_MODELS[0]
 
 _client: genai.Client | None = None
 
@@ -156,7 +162,10 @@ PHOTO_INSTRUCTION = (
 # worker loses the extraction and sees a raw API error, which is the worst of
 # both outcomes.
 RETRYABLE_STATUS = (429, 500, 502, 503, 504)
-MAX_ATTEMPTS = int(os.getenv("GEMINI_MAX_ATTEMPTS", "4"))
+# Default: two tries on the primary, then one on each fallback.
+MAX_ATTEMPTS = int(os.getenv(
+    "GEMINI_MAX_ATTEMPTS",
+    str(int(os.getenv("GEMINI_FALLBACK_AFTER", "2")) + len(FALLBACK_MODELS))))
 BACKOFF_BASE_SECONDS = float(os.getenv("GEMINI_BACKOFF_BASE", "0.6"))
 BACKOFF_CAP_SECONDS = float(os.getenv("GEMINI_BACKOFF_CAP", "8.0"))
 # After this many consecutive retryable failures on the pinned model, switch to
@@ -192,12 +201,29 @@ def _is_retryable(exc: Exception) -> bool:
         or "high demand" in text or "INTERNAL" in text)
 
 
+def _is_retired(exc: Exception) -> bool:
+    """The model itself no longer exists for this key; try the next one."""
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    text = str(exc)
+    return (code == 404 or "404" in text[:5]) and (
+        "NOT_FOUND" in text or "no longer available" in text)
+
+
+def model_for_attempt(attempt: int) -> str:
+    """The primary for the first attempts, then each fallback in turn."""
+    if attempt <= FALLBACK_AFTER_ATTEMPTS or not FALLBACK_MODELS:
+        return MODEL
+    i = min(attempt - FALLBACK_AFTER_ATTEMPTS - 1, len(FALLBACK_MODELS) - 1)
+    return FALLBACK_MODELS[i]
+
+
 def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
     """One extraction call, retried on transient failure, then degraded.
 
     Exponential backoff with jitter. After `FALLBACK_AFTER_ATTEMPTS` the model
-    is swapped for `FALLBACK_MODEL` — a congested model is better answered by a
-    different one than by waiting longer for the same one. If every attempt
+    moves down `FALLBACK_MODELS` — a congested model is better answered by a
+    different one than by waiting longer for the same one. A retired model
+    (404) is skipped at once, without a wait. If every attempt
     fails, `ModelUnavailable` carries a message written for the person holding
     the phone; the raw status never reaches them.
     """
@@ -208,8 +234,11 @@ def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
     # on purpose, so a change in library and a change in prompting could not be
     # confounded if the output shifted.
     config = types.GenerateContentConfig(system_instruction=system_instruction)
+    retired: set[str] = set()
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        model = MODEL if attempt <= FALLBACK_AFTER_ATTEMPTS else FALLBACK_MODEL
+        model = model_for_attempt(attempt)
+        if model in retired:
+            continue
         try:
             response = client.models.generate_content(
                 model=model, contents=contents, config=config)
@@ -219,6 +248,11 @@ def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
             return (response.text or "").strip()
         except Exception as exc:
             last_error = str(exc)
+            if _is_retired(exc):
+                log.warning("Gemini %s is retired (%s); moving to the next "
+                            "model", model, last_error[:120])
+                retired.add(model)
+                continue
             if not _is_retryable(exc) or attempt == MAX_ATTEMPTS:
                 if _is_retryable(exc):
                     break

@@ -407,3 +407,37 @@ class TestEventTypeIsValidated:
         # `count` is a stocktake, deliberately neither — see HANDOVER §9f.
         neutral = {"count"}
         assert capture_pipeline.EVENT_TYPES == consuming | adding | neutral
+
+
+
+class TestModelChain:
+    """The primary, then each fallback in turn; a retired model is skipped."""
+
+    def test_the_chain_is_walked_in_order(self, monkeypatch, fast_backoff):
+        models = _FakeModels(failures=99, exc=_Boom(503, "UNAVAILABLE high demand"))
+        _install(monkeypatch, models)
+        with pytest.raises(capture.ModelUnavailable):
+            capture.process_text("kuch bhi")
+        expected = ([capture.MODEL] * capture.FALLBACK_AFTER_ATTEMPTS
+                    + capture.FALLBACK_MODELS)
+        assert models.calls == expected[:capture.MAX_ATTEMPTS]
+
+    def test_a_retired_model_is_skipped_without_failing_the_request(
+            self, monkeypatch, fast_backoff):
+        class Retired(_FakeModels):
+            def generate_content(self, model, contents, config=None):
+                self.calls.append(model)
+                if model == capture.MODEL:
+                    raise _Boom(404, "NOT_FOUND. This model is no longer available")
+                return type("R", (), {"text": "[]"})()
+        models = Retired(failures=0, exc=None)
+        _install(monkeypatch, models)
+        assert capture.process_text("kuch bhi") == "[]"
+        assert models.calls == [capture.MODEL, capture.FALLBACK_MODELS[0]], (
+            "a 404 must move to the next model at once, not retry the dead one")
+
+    def test_no_retired_model_is_configured(self):
+        """gemini-2.5-flash was closed to new users on or before 2026-09-29."""
+        chain = [capture.MODEL] + capture.FALLBACK_MODELS
+        assert "gemini-2.5-flash" not in chain
+        assert "gemini-1.5-pro" not in chain

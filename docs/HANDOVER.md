@@ -436,9 +436,9 @@ real ARIMA_PLUS, then lead-time-aware thresholds. Everything else is optional.
 
    | | |
    |---|---|
-   | **Pinned model** | `gemini-3.6-flash` |
+   | **Pinned model** | `gemini-3.5-flash` (since 2026-09-29) |
    | **Verified working** | **2026-09-01**, against the live Cloud Run service |
-   | **Fallback** | `gemini-2.5-flash` if Hindi audio accuracy disappoints |
+   | **Fallback chain** | `gemini-3.6-flash`, then `gemini-3.1-flash-lite`. `gemini-2.5-flash` returned 404 "no longer available to new users" on 2026-09-29 and was removed; a 404 now skips to the next model |
    | **Override** | `GEMINI_MODEL` env var — no code change needed |
    | **SDK** | `google-genai` (the older `google-generativeai` is gone) |
 
