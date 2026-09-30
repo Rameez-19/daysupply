@@ -351,9 +351,11 @@ function v2RenderScope(d) {
 // Handled here, once, so no tile added later can reintroduce it.
 function v2Kpi(value, unit, label, sub, tone, says) {
   const missing = value === null || value === undefined || value === '';
+  const tip = String(says || '').replace(/<[^>]+>/g, '').replace(/"/g, '&quot;');
   return `
-    <div class="v2-kpi ${missing ? 'unknown' : (tone || '')}">
+    <div class="v2-kpi ${missing ? 'unknown' : (tone || '')}" title="${tip}">
       <div class="v2-kpi-value">${missing ? '—' : (typeof value === 'number' ? v2n(value) : value)}<span class="v2-kpi-unit">${missing ? '' : (unit || '')}</span></div>
+      <div class="v2-kpi-delta" data-label="${v2Esc(label)}"></div>
       <div class="v2-kpi-label">${label}</div>
       <div class="v2-kpi-sub">${sub || ''}</div>
       <div class="v2-kpi-says">${says || ''}</div>
@@ -402,7 +404,7 @@ async function v2Fetch() {
       v2InheritedPanels(d);
       if (synced) {
         synced.className = 'last-synced';
-        synced.textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
+        synced.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · refreshes every 5 min`;
       }
       return;
     }
@@ -412,6 +414,8 @@ async function v2Fetch() {
     // looking at medicines, beds or staff.
     host.innerHTML = d.kpis.map(k =>
       v2Kpi(k.value, k.unit, k.label, k.sub, k.tone, k.says)).join('');
+    v2Deltas(d);
+    v2Tasks();
 
     v2Distribution(d);
     v2Ranking(d);
@@ -421,7 +425,7 @@ async function v2Fetch() {
 
     if (synced) {
       synced.className = 'last-synced';
-      synced.textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
+      synced.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · refreshes every 5 min`;
     }
   } catch (e) {
     if (host) host.innerHTML = panelError(e.message, 'loadToday2');
@@ -738,7 +742,7 @@ function v2ShowNonReporting() {
   v2RenderScope({ empty: true });
   if (synced) {
     synced.className = 'last-synced';
-    synced.textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
+    synced.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · refreshes every 5 min`;
   }
 }
 
@@ -898,11 +902,20 @@ function verdictBar(d) {
   else if (short > 0)       { level = 'warn'; label = 'Holding, with gaps'; }
   else                      { level = 'ok';   label = 'Holding'; }
 
+  // Four chips a reader takes in at a glance, every visit. The full sentence
+  // is still there for anyone who switches on Explain.
+  const chip = (n, l) => `<span class="verdict-chip"><strong>${n}</strong> ${l}</span>`;
   return `
     <div class="verdict ${level}">
       <div class="verdict-main">
         <span class="verdict-label">${label}</span>
-        <p class="verdict-line">
+        <div class="verdict-chips">
+          ${chip(pct + '%', 'running low')}
+          ${chip(vital.toLocaleString('en-IN'), 'life-saving short')}
+          ${chip(out.toLocaleString('en-IN'), 'completely out')}
+          ${absorb3 ? chip(absorb3.pct + '%', 'could take a 3× surge') : ''}
+        </div>
+        <p class="verdict-line explain-only">
           <strong>${pct}%</strong> of the medicines we track are running low
           &mdash; <strong>${vital}</strong> of them life-saving, and
           <strong>${out}</strong> already completely out.
@@ -910,13 +923,92 @@ function verdictBar(d) {
         </p>
       </div>
       <div class="verdict-aside">
-        <span class="verdict-figure">${d.transfer_only || 0}</span>
+        <span class="verdict-figure">${(d.transfer_only || 0).toLocaleString('en-IN')}</span>
+        <span class="verdict-short">can't wait for an order</span>
         <span class="verdict-caption">medicines would run out before a new
           order could reach the health centre.<br>
           Ordering cannot fix these &mdash; only moving stock that already exists.</span>
       </div>
     </div>`;
 }
+
+// ===== Change since the last visit =====
+// This page is opened every day, so the useful question is "what moved".
+// Each scope keeps one snapshot per calendar day on this browser; the tiles
+// compare against the most recent earlier day, or against this morning's
+// first look if there is no earlier day yet.
+function v2Deltas(d) {
+  let store = {};
+  const key = `stockpulse.kpi.${v2Resource}.${v2VitalOnly ? 'v' : 'a'}.${v2State}|${v2District}|${v2Phc}`;
+  try { store = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) { store = {}; }
+  const today = new Date().toISOString().slice(0, 10);
+  const now = {};
+  (d.kpis || []).forEach(k => { if (typeof k.value === 'number') now[k.label] = k.value; });
+  const days = Object.keys(store).filter(x => x !== today).sort();
+  let base = null, since = '';
+  if (days.length) {
+    base = store[days[days.length - 1]].values;
+    const dd = new Date(days[days.length - 1]);
+    since = days[days.length - 1] === new Date(Date.now() - 864e5).toISOString().slice(0, 10)
+      ? 'since yesterday' : `since ${dd.toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
+  } else if (store[today] && Date.now() - store[today].ts > 15 * 60 * 1000) {
+    base = store[today].values;
+    since = `since ${new Date(store[today].ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  if (!store[today]) store[today] = { ts: Date.now(), values: now };
+  const keep = Object.keys(store).sort().slice(-7);
+  const trimmed = {}; keep.forEach(x => { trimmed[x] = store[x]; });
+  try { localStorage.setItem(key, JSON.stringify(trimmed)); } catch (e) { /* private mode */ }
+  document.querySelectorAll('#v2-kpis .v2-kpi-delta').forEach(el => {
+    const label = el.dataset.label;
+    if (!base || !(label in base) || !(label in now)) { el.textContent = ''; return; }
+    const diff = Math.round((now[label] - base[label]) * 10) / 10;
+    el.textContent = diff === 0 ? `no change ${since}` : `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff).toLocaleString('en-IN')} ${since}`;
+    el.className = 'v2-kpi-delta' + (diff === 0 ? ' flat' : '');
+  });
+}
+
+// ===== Today's work =====
+// Buttons with live counts, each opening the place where the work is done.
+// This replaces reading a paragraph to find out what to do.
+async function v2Tasks() {
+  const host = document.getElementById('v2-tasks');
+  if (!host) return;
+  const q = new URLSearchParams();
+  if (v2State) q.set('state', v2State);
+  if (v2District) q.set('district', v2District);
+  if (v2Phc) q.set('phc', v2Phc);
+  const scope = q.toString();
+  const get = async (url) => { try { const r = await fetch(url); return r.ok ? r.json() : null; } catch (e) { return null; } };
+  const [aq, sig, rv] = await Promise.all([
+    get(`/api/v1/action-queue?summary=true&${scope}`),
+    get(`/api/v1/surge/signals?count_only=true&${scope}`),
+    get(`/api/v1/review-queue?${scope}`),
+  ]);
+  const s = (aq && aq.summary) || {};
+  const tasks = [
+    ['bad', s.escalate, 'Escalate', 'nothing routine will fix', "v2Go('action-view','escalate-list')"],
+    ['move', s.transfer, 'Approve transfers', 'stock that already exists', "v2Go('action-view','transfers-full')"],
+    ['order', s.order, 'Place orders', 'arrive in time if ordered now', "v2Go('action-view','order-list')"],
+    ['warn', sig ? sig.early_warning_districts : null, 'Early warnings', sig && sig.month ? `districts, ${sig.month}` : 'districts', "v2Go('plan-view','surge-signal-list')"],
+    ['check', rv && rv.items ? rv.items.length : null, 'Check held reports', 'the model was not sure', "v2Go('capture-view','review-list')"],
+  ];
+  host.innerHTML = tasks.map(([cls, n, label, sub, go]) => `
+    <button class="task ${cls} ${n ? '' : 'zero'}" onclick="${go}">
+      <span class="task-n">${n === null || n === undefined ? '—' : Number(n).toLocaleString('en-IN')}</span>
+      <span class="task-label">${label}</span>
+      <span class="task-sub">${sub}</span>
+    </button>`).join('');
+}
+
+function v2Go(view, anchorId) {
+  switchTab(view);
+  setTimeout(() => {
+    const el = document.getElementById(anchorId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 350);
+}
+window.v2Go = v2Go;
 
 function stepCard(n, title, body, action) {
   return `

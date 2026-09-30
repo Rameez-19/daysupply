@@ -31,7 +31,9 @@ difference will overclaim in the submission.
 
 | Component | Status | Notes |
 |---|---|---|
-| Gemini extraction (voice + chat + register photo) | **REAL, WORKING IN PROD** | Fixed 2026-09-01 by migrating to `google-genai` and pinning `gemini-3.6-flash`. Verified live: clean Hindi-English extracted correctly at 0.95 confidence. Intermittent 503s under load — see §9b |
+| Gemini extraction (voice + chat + register photo) | **REAL, WORKING IN PROD** | Since 2026-09-30 through **Vertex AI** (service identity, billed to the project, no API key): gemini-3.5-flash in Mumbai, then gemini-2.5-flash in Mumbai, then gemini-3.6-flash global, 25 s timeout per call. The AI Studio key hit its quota and made phone voice notes take 140-176 s. Verified live in Telugu (voice), Bengali, Marathi and Telugu (text) |
+| Spoken read-back | **REAL** | Cloud Text-to-Speech in five Indian voices (`app/speech.py`); the phone's own engine is the fallback |
+| Officer pages: lean view | **REAL** | Explanations hidden by default behind one Explain switch (remembered per browser); Today opens with a task bar of live counts, change since the last visit on each tile, and a 5-minute auto-refresh. Report page and Evidence are exempt |
 | **Capture persistence** | **BROKEN** | Extraction works; storage does not. The Firestore database does not exist, and nothing reads `pending_events` into BigQuery even if it did. `captures_today` therefore stays 0. See §9c |
 | Offline queue + sync | **REAL** | Service Worker + IndexedDB, genuinely works offline. Queues both recordings and rows the worker already confirmed; the Report page shows the count waiting |
 | Report page (tap / voice / photo / scan / type / staff / beds) | **REAL** | Built 2026-09-18. Preview-then-confirm on every model-read mode; Hindi/English; centre remembered on the phone. See CLAIMS §7g |

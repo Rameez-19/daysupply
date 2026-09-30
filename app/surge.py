@@ -178,7 +178,7 @@ def current_surge_month() -> str:
     rows = run_query(f"""
         SELECT FORMAT_DATE('%B', MAX(as_of_date)) AS month
         FROM `{PROJECT}.{DATASET}.current_stock`
-    """)
+    """, cache_key="surge:current_month", ttl=3600)
     return rows[0]["month"] if rows else ""
 
 

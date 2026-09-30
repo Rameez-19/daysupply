@@ -102,7 +102,9 @@ Verified against the live BigQuery dataset on **2026-09-02**, after
 | Staff posts filled | 77.8% | **71.6%** of 1,361 sanctioned posts, 23 state-and-cadre roles | REAL SOURCE, DERIVED | `today_v2.staff_scorecard` |
 | Worst state and role | Rajasthan pharmacist, 56.2% vacant | **Uttar Pradesh health assistant, 81.5% vacant** | REAL (RHS 2021-22) | same |
 | Nurses below the bed norm | 11 | **86** | REAL SOURCE, DERIVED | same |
-| Gemini models | gemini-3.6-flash, fallback gemini-2.5-flash | **gemini-3.5-flash, then gemini-3.6-flash, then gemini-3.1-flash-lite** (2.5-flash is retired; a 404 skips to the next) | REAL config | `app/capture.py` |
+| Gemini backend and models | AI Studio API key; gemini-3.6-flash, fallback gemini-2.5-flash | **Vertex AI, as the Cloud Run service identity. gemini-3.5-flash in asia-south1 (Mumbai), then gemini-2.5-flash in Mumbai, then gemini-3.6-flash global.** The API key's quota ran out on 2026-09-30 and voice notes took 140-176 s; each call now has a 25 s timeout | REAL config | `app/capture.py` |
+| Languages verified end to end through Vertex AI, 2026-09-30 | — | **Telugu voice; Bengali, Marathi and Telugu text: every medicine extracted and matched to the catalogue.** Names now come back in Latin letters; in Telugu script they failed to match | MEASURED (live calls) | `app/capture.py` SYSTEM_PROMPT |
+| Spoken read-back | the phone's own speech engine | **Cloud Text-to-Speech in en-IN, hi-IN, mr-IN, te-IN, bn-IN**, phone engine as fallback. Phones lacked Telugu, Marathi and Bengali voices and read only the digits | REAL feature | `app/speech.py`, `POST /api/v1/speak` |
 | Report page languages | Hindi, English | **English, Hindi, Marathi, Telugu, Bengali** | REAL feature | `web/report.js` |
 
 **What adding Uttar Pradesh did not change.** All 2,794 of the original

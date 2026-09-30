@@ -63,7 +63,7 @@ async function loadSurgeSignals() {
             for this district in ${s.month}.
             ${s.signal_why ? `<span class="signal-why">${s.signal_why}</span>` : ''}
           </div>
-          <div class="alert-detail">
+          <div class="alert-detail explain-only">
             ${Math.round(s.observed).toLocaleString()} clinical events against
             ${Math.round(s.expected).toLocaleString()} expected &mdash; the district's own
             baseline of ${Math.round(s.baseline).toLocaleString()} shaped by the pooled
@@ -303,11 +303,11 @@ async function loadSurgeBanner(hostId = 'v2-surge-banner') {
           in ${s.district_key}, ${s.month}
         </div>
         <p class="surge-banner-body">
-          ${s.signal_why || ''}
+          <span class="explain-only">${s.signal_why || ''}</span>
           ${s.example_items ? `Affects <strong>${s.example_items}</strong>.` : ''}
           ${others > 0 ? `${others} other signal${others > 1 ? 's' : ''} in this scope.` : ''}
         </p>
-        <button class="btn-primary"
+        <button class="btn btn-primary"
                 onclick="openScenarioFor(${JSON.stringify(s.district_key || '')}, ${JSON.stringify(s.atc_class || '')})">
           See what it changes
         </button>

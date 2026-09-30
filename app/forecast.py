@@ -88,9 +88,15 @@ def get_forecast_series(facility_id: str, item_id: str,
         WHERE facility_id = @facility_id
           AND item_id = @item_id
           AND event_type = 'dispensed'
+          -- Anchored to the end of the training data, which is the day
+          -- before ML.FORECAST starts. It used to be the latest event in the
+          -- whole ledger; once live captures arrived dated after training
+          -- ended, the window slid past every generated series and the chart
+          -- showed a forecast with no history under it.
           AND DATE(event_ts) > DATE_SUB(
-                (SELECT MAX(DATE(event_ts)) FROM {STOCK_EVENTS}),
+                (SELECT MAX(DATE(event_ts)) FROM {STOCK_EVENTS} WHERE source = 'seed'),
                 INTERVAL @days DAY)
+          AND DATE(event_ts) <= (SELECT MAX(DATE(event_ts)) FROM {STOCK_EVENTS} WHERE source = 'seed')
         GROUP BY day
         ORDER BY day
         """,
@@ -99,7 +105,7 @@ def get_forecast_series(facility_id: str, item_id: str,
             bigquery.ScalarQueryParameter("item_id", "STRING", item_id),
             bigquery.ScalarQueryParameter("days", "INT64", history_days),
         ],
-        cache_key=f"fcst:hist:{series_id}:{history_days}",
+        cache_key=f"fcst:hist2:{series_id}:{history_days}",
     )
 
     predictions = run_query(
