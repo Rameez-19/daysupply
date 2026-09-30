@@ -458,6 +458,14 @@ class TestModelChain:
             if name in ("gemini-3.5-flash", "gemini-2.5-flash"):
                 assert loc == "asia-south1", m
 
+    def test_thinking_level_goes_only_to_gemini_3(self):
+        """Gemini 2.5 rejects a thinking level; Gemini 3 gets the configured one."""
+        if not capture.THINKING_LEVEL:
+            return
+        c3 = capture.config_for("gemini-3.8-flash", "x")
+        assert c3.thinking_config.thinking_level.lower() == capture.THINKING_LEVEL
+        assert capture.config_for("gemini-2.5-flash", "x").thinking_config is None
+
     def test_the_prompts_are_files_in_the_repository(self):
         for name in ("extraction_system.txt", "chat_instruction.txt",
                      "photo_instruction.txt", "escalation_note_system.txt", "models.json"):

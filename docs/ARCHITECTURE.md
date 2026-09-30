@@ -80,7 +80,8 @@ flowchart TD
 
 The chain is in `prompts/models.json`, newest Flash first. Each call has a
 25-second timeout and moves to the next model if it fails; a retired model is
-skipped at once.
+skipped at once. Gemini 3 models run at thinking level `low`: a stock report
+needs little reasoning, and it keeps a report to about three seconds.
 
 | Order | Model | Vertex AI location |
 |---|---|---|

@@ -52,6 +52,10 @@ FALLBACK_MODEL = FALLBACK_MODELS[0]
 # Per call. A voice note is a few seconds of audio; anything slower than this
 # is better answered by the next model than waited for.
 TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", str(_MODELS.get("timeout_ms", 25000))))
+# Gemini 3 models think before answering by default. A stock report or a short
+# note needs little of it, and at the default level gemini-3.8-flash overran
+# the timeout on escalation notes. Gemini 2.5 takes no thinking level.
+THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", _MODELS.get("thinking_level", "")) or None
 
 _used = threading.local()
 
@@ -182,6 +186,15 @@ def model_for_attempt(attempt: int) -> str:
     return FALLBACK_MODELS[i]
 
 
+def config_for(model: str, system_instruction: str) -> types.GenerateContentConfig:
+    """The call's config; the thinking level only where the model takes one."""
+    if THINKING_LEVEL and model.startswith("gemini-3"):
+        return types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            thinking_config=types.ThinkingConfig(thinking_level=THINKING_LEVEL))
+    return types.GenerateContentConfig(system_instruction=system_instruction)
+
+
 def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
     """One extraction call, retried on transient failure, then degraded.
 
@@ -197,7 +210,6 @@ def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
     # the first element of `contents`. Done separately from the SDK migration
     # on purpose, so a change in library and a change in prompting could not be
     # confounded if the output shifted.
-    config = types.GenerateContentConfig(system_instruction=system_instruction)
     retired: set[str] = set()
     for attempt in range(1, MAX_ATTEMPTS + 1):
         entry = model_for_attempt(attempt)
@@ -207,7 +219,8 @@ def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
         try:
             client = _get_client(location)
             response = client.models.generate_content(
-                model=model, contents=contents, config=config)
+                model=model, contents=contents,
+                config=config_for(model, system_instruction))
             _used.model = model
             if attempt > 1:
                 log.info("Extraction succeeded on attempt %d using %s",

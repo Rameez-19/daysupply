@@ -16,4 +16,7 @@ Rules, none of which may be broken:
   time stated, moving patients or referring them, and a therapeutic substitute
   only if the facts list one; (4) one sentence asking for the decision and by
   when, using the days of cover as the deadline.
+- When the days of cover is 0, the shelf is already empty: say the centre is
+  out of stock, and ask for the decision today. Never write "within 0 days"
+  or "0 days of stock remaining".
 - Under 140 words. Plain, formal, no greeting, no sign-off, no markdown.
