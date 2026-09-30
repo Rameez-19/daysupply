@@ -5,34 +5,35 @@ confidence gate, routing and the review queue all live in
 `app/capture_pipeline.py` and are covered by tests that never call Gemini. That
 boundary is deliberate, and it is what made this migration cheap.
 
-## Models — verified 2026-09-29
+## Models — verified 2026-09-30
 
-Primary `gemini-3.5-flash`, then a chain of fallbacks: `gemini-3.6-flash`,
-then `gemini-3.1-flash-lite`. Flash-class is the right weight for short
-multilingual audio, text and register photos into a small JSON payload.
+Gemini is called through **Vertex AI**, authenticated as the Cloud Run
+service's own identity and billed to the project. The AI Studio API key it used
+before ran out of quota on 2026-09-30: every model returned 429, retries
+stretched a voice note to 140-176 seconds, and on a phone that looks like the
+app doing nothing. Vertex AI also means no API key to leak or rotate.
 
-**Why a chain, not one fallback.** On 2026-09-29 one call to each current
-Flash model found `gemini-3.5-flash`, `3.7-flash`, `3.8-flash` and
-`flash-latest` all returning 503 "high demand", `3.6-flash` and
-`3.1-flash-lite` answering, and the old fallback `gemini-2.5-flash` returning
-404 "no longer available to new users". With a single fallback that was
-retired, a busy primary meant a failed request.
+The chain, in order: `gemini-3.5-flash` in `asia-south1` (Mumbai), then
+`gemini-2.5-flash` in Mumbai, then `gemini-3.6-flash` from the `global`
+endpoint. The first two keep health data in India; the last is the only step
+that leaves it, and only when both Mumbai models are unavailable. Each call has
+a hard timeout, so a stuck request fails over instead of hanging.
 
-**A retired model is skipped, not retried.** A 404 NOT_FOUND on a model moves
-straight to the next model in the chain; waiting would not bring it back.
+A retired model (404) is skipped at once, not retried. Override without a code
+change: `GEMINI_MODEL` for the primary, `GEMINI_FALLBACK_MODELS` as a
+comma-separated list, each entry `model` or `model@location`.
+`GEMINI_BACKEND=apikey` with `GEMINI_API_KEY` restores the AI Studio path for
+local development.
 
-Override without a code change: `GEMINI_MODEL` for the primary,
-`GEMINI_FALLBACK_MODELS` as a comma-separated list for the chain.
-
-**Model names go stale, and this one has twice.** `gemini-1.5-pro` was shut
-down, then `gemini-2.5-flash` was closed to new users. Re-check the chain
-against the live model list before each submission or deployment, and update
-the date above when you do.
+**Model names go stale.** `gemini-1.5-pro` was shut down and
+`gemini-2.5-flash` was closed to new AI Studio users (it is still served on
+Vertex AI). Re-check the chain before each submission or deployment.
 """
 
 import logging
 import os
 import random
+import threading
 import time
 
 from google import genai
@@ -44,35 +45,55 @@ from app import items
 log = logging.getLogger(__name__)
 
 # See the module docstring for why these models and this order.
+BACKEND = os.getenv("GEMINI_BACKEND", "vertex")
+PROJECT = os.getenv("GCP_PROJECT", os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply"))
+LOCATION = os.getenv("GEMINI_LOCATION", "asia-south1")
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 # Tried in order after repeated retryable failures on the primary. Every
 # switch is logged, so a silent degradation is still a visible one.
 FALLBACK_MODELS = [m.strip() for m in os.getenv(
-    "GEMINI_FALLBACK_MODELS", "gemini-3.6-flash,gemini-3.1-flash-lite"
+    "GEMINI_FALLBACK_MODELS", "gemini-2.5-flash,gemini-3.6-flash@global"
 ).split(",") if m.strip()]
 FALLBACK_MODEL = FALLBACK_MODELS[0]
+# Per call. A voice note is a few seconds of audio; anything slower than this
+# is better answered by the next model than waited for.
+TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", "25000"))
 
-_client: genai.Client | None = None
+_used = threading.local()
 
 
-def _get_client() -> genai.Client:
-    """Build the client on first use, not at import.
+def split_model(entry: str) -> tuple[str, str]:
+    """`gemini-3.6-flash@global` -> ("gemini-3.6-flash", "global")."""
+    name, _, loc = entry.partition("@")
+    return name, (loc or LOCATION)
 
-    Constructing it at import time would make the whole module — and therefore
-    the whole app — fail to start wherever `GEMINI_API_KEY` is absent, which
-    includes the test suite and any container that has not been given the key
-    yet. The old code called `genai.configure()` at import for the same reason
-    it should not have.
+
+def model_used() -> str:
+    """The model that answered the last call on this thread, for the record."""
+    return getattr(_used, "model", MODEL)
+
+_clients: dict[str, genai.Client] = {}
+
+
+def _get_client(location: str | None = None) -> genai.Client:
+    """Build a client per location on first use, not at import.
+
+    Constructing clients at import would make the app fail to start wherever
+    credentials are absent, which includes the test suite.
     """
-    global _client
-    if _client is None:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "GEMINI_API_KEY is not set. Voice and chat capture cannot run "
-                "without it; set it on the Cloud Run service.")
-        _client = genai.Client(api_key=api_key)
-    return _client
+    loc = location or LOCATION
+    key = f"{BACKEND}:{loc}"
+    if key not in _clients:
+        opts = types.HttpOptions(timeout=TIMEOUT_MS)
+        if BACKEND == "apikey":
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise RuntimeError("GEMINI_BACKEND=apikey needs GEMINI_API_KEY.")
+            _clients[key] = genai.Client(api_key=api_key, http_options=opts)
+        else:
+            _clients[key] = genai.Client(vertexai=True, project=PROJECT,
+                                         location=loc, http_options=opts)
+    return _clients[key]
 
 SYSTEM_PROMPT = """
 You extract pharmacy stock updates from reports by health workers at
@@ -85,7 +106,7 @@ Return ONLY a JSON array, no prose, no markdown fences. One object per
 item mentioned:
 
 [{
-  "local_name": "<drug name exactly as spoken>",
+  "local_name": "<drug name as spoken, written in English (Latin) letters>",
   "event_type": "dispensed" | "received" | "count" | "lost",
   "loss_reason": "<only when event_type is lost; the speaker's own word:
                   damaged | broken | expired | spilled | stolen | unknown>",
@@ -99,7 +120,11 @@ Rules:
 - "kuch nahi bacha" / "khatam" -> quantity 0, event_type "count"
 - If quantity is unclear, return the item with quantity null
 - Never invent items that were not mentioned
-- Transcribe the drug name as spoken; do not translate or correct it
+- Write local_name in English (Latin) letters exactly as it sounds, even when
+  the speaker uses Telugu, Bengali, Marathi or Hindi: "పారాసిటమాల్" ->
+  "paracetamol", "প্যারাসিটামল" -> "paracetamol", "शुगर की गोली" ->
+  "sugar ki goli". Never write it in Devanagari, Telugu or Bengali script.
+  Do not replace a local name with a different drug; only change the letters.
 
 LOSSES. Stock leaves a shelf in ways that are neither dispensing nor
 transfer, and a supply chain that cannot see them cannot explain its own
@@ -195,6 +220,9 @@ def _is_retryable(exc: Exception) -> bool:
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
     if code in RETRYABLE_STATUS:
         return True
+    name = type(exc).__name__.lower()
+    if "timeout" in name or "timed out" in str(exc).lower():
+        return True
     text = str(exc)
     return any(str(s) in text for s in RETRYABLE_STATUS) and (
         "UNAVAILABLE" in text or "RESOURCE_EXHAUSTED" in text
@@ -227,7 +255,6 @@ def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
     fails, `ModelUnavailable` carries a message written for the person holding
     the phone; the raw status never reaches them.
     """
-    client = _get_client()
     last_error = ""
     # The extraction rules now travel as a system_instruction rather than as
     # the first element of `contents`. Done separately from the SDK migration
@@ -236,12 +263,15 @@ def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
     config = types.GenerateContentConfig(system_instruction=system_instruction)
     retired: set[str] = set()
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        model = model_for_attempt(attempt)
-        if model in retired:
+        entry = model_for_attempt(attempt)
+        if entry in retired:
             continue
+        model, location = split_model(entry)
         try:
+            client = _get_client(location)
             response = client.models.generate_content(
                 model=model, contents=contents, config=config)
+            _used.model = model
             if attempt > 1:
                 log.info("Extraction succeeded on attempt %d using %s",
                          attempt, model)
@@ -251,7 +281,7 @@ def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
             if _is_retired(exc):
                 log.warning("Gemini %s is retired (%s); moving to the next "
                             "model", model, last_error[:120])
-                retired.add(model)
+                retired.add(entry)
                 continue
             if not _is_retryable(exc) or attempt == MAX_ATTEMPTS:
                 if _is_retryable(exc):

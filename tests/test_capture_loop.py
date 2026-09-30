@@ -66,7 +66,7 @@ def fast_backoff(monkeypatch):
 
 
 def _install(monkeypatch, models):
-    monkeypatch.setattr(capture, "_get_client", lambda: _FakeClient(models))
+    monkeypatch.setattr(capture, "_get_client", lambda *a, **k: _FakeClient(models))
 
 
 class TestRetryOn503:
@@ -114,7 +114,7 @@ class TestRetryOn503:
         _install(monkeypatch, models)
         capture.process_text("kuch bhi")
         assert models.calls[0] == capture.MODEL
-        assert models.calls[-1] == capture.FALLBACK_MODEL, (
+        assert models.calls[-1] == capture.split_model(capture.FALLBACK_MODEL)[0], (
             f"expected a fallback to {capture.FALLBACK_MODEL}, "
             f"got {models.calls}")
 
@@ -419,7 +419,7 @@ class TestModelChain:
         with pytest.raises(capture.ModelUnavailable):
             capture.process_text("kuch bhi")
         expected = ([capture.MODEL] * capture.FALLBACK_AFTER_ATTEMPTS
-                    + capture.FALLBACK_MODELS)
+                    + [capture.split_model(m)[0] for m in capture.FALLBACK_MODELS])
         assert models.calls == expected[:capture.MAX_ATTEMPTS]
 
     def test_a_retired_model_is_skipped_without_failing_the_request(
@@ -433,11 +433,23 @@ class TestModelChain:
         models = Retired(failures=0, exc=None)
         _install(monkeypatch, models)
         assert capture.process_text("kuch bhi") == "[]"
-        assert models.calls == [capture.MODEL, capture.FALLBACK_MODELS[0]], (
+        assert models.calls == [capture.MODEL, capture.split_model(capture.FALLBACK_MODELS[0])[0]], (
             "a 404 must move to the next model at once, not retry the dead one")
 
     def test_no_retired_model_is_configured(self):
-        """gemini-2.5-flash was closed to new users on or before 2026-09-29."""
-        chain = [capture.MODEL] + capture.FALLBACK_MODELS
-        assert "gemini-2.5-flash" not in chain
+        """gemini-1.5-pro was shut down. gemini-2.5-flash is closed to new AI
+        Studio users but still served on Vertex AI, which is the backend."""
+        chain = [capture.MODEL] + [capture.split_model(m)[0] for m in capture.FALLBACK_MODELS]
         assert "gemini-1.5-pro" not in chain
+        assert capture.BACKEND == "vertex"
+
+    def test_the_first_two_models_stay_in_india(self):
+        """Health data is processed in Mumbai unless both Mumbai models fail."""
+        assert capture.LOCATION == "asia-south1"
+        assert capture.split_model(capture.FALLBACK_MODELS[0])[1] == "asia-south1"
+
+    def test_names_come_back_in_latin_letters(self):
+        """The catalogue matcher knows Latin and Devanagari spellings only, so
+        a Telugu-script name would never match and every Telugu report would
+        be held for review."""
+        assert "English (Latin) letters" in capture.SYSTEM_PROMPT

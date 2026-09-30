@@ -276,7 +276,7 @@ async def demand_outlook(state: str = "", district: str = "",
 
 @app.get("/api/v1/action-queue")
 async def action_queue_triage(state: str = "", district: str = "",
-                              phc: str = ""):
+                              phc: str = "", summary: bool = False):
     """Every shortage, split by what can actually be done about it.
 
     The page used to open with all 597 shortages above a queue of transfers —
@@ -285,9 +285,11 @@ async def action_queue_triage(state: str = "", district: str = "",
     duplication hid was the 39 that no routine action fixes: nothing within
     reach to move, and an order that arrives after the shelf is empty.
 
-    Three groups, mutually exclusive and exhaustive.
+    Three groups, mutually exclusive and exhaustive. `summary=true` returns
+    only the counts, for the Today task bar.
     """
-    return _facility_query(action_queue.triage, state, district, phc)
+    data = _facility_query(action_queue.triage, state, district, phc)
+    return {"summary": data["summary"]} if summary else data
 
 
 @app.get("/api/v1/access")
@@ -403,7 +405,9 @@ async def post_voice_note(
     nobody is there to confirm hours later.
     """
     audio_bytes = await file.read()
-    content_type = file.content_type or "audio/mp3"
+    # "audio/webm;codecs=opus" (Android) or "audio/mp4" (iPhone): Gemini
+    # wants the bare type.
+    content_type = (file.content_type or "audio/webm").split(";")[0].strip()
     return handle_capture(audio_bytes, facility_id, content_type,
                           preview=preview)
 
@@ -493,6 +497,26 @@ async def action_queue_brief(req: BriefRequest):
     if result.get("error") and "no open shortage" in result["error"]:
         raise HTTPException(status_code=404, detail=result["error"])
     return result
+
+
+class SpeakRequest(BaseModel):
+    text: str
+    lang: str = "en"
+
+
+@app.post("/api/v1/speak")
+async def speak(req: SpeakRequest):
+    """The read-back, spoken by Cloud Text-to-Speech in the worker's language."""
+    from fastapi import Response
+    from app import speech
+    try:
+        audio = await asyncio.to_thread(speech.synthesize, req.text, req.lang)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"speech unavailable: {exc}")
+    return Response(content=audio, media_type="audio/mpeg",
+                    headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.get("/api/v1/items/quick")
@@ -689,14 +713,26 @@ async def fetch_recommendations(state: str = "", district: str = "",
 @app.get("/api/v1/surge/signals")
 async def fetch_surge_signals(state: str = "", district: str = "",
                               atc_class: str = "", month: str = "",
-                              limit: int = 50):
+                              limit: int = 50, count_only: bool = False):
     """District-months whose demand departed from the pooled seasonal pattern.
+
+    `count_only=true` returns the number of districts with an early warning
+    (a leading signal) and the number of signals, for the Today task bar.
 
     The statistic is the Iglewicz-Hoaglin modified z-score, not a plain
     standardised residual: with twelve monthly observations the classical z is
     bounded at 3.175 and saturates, so it cannot rank outbreaks. Every
     threshold the row was tested against is returned with it.
     """
+    if count_only:
+        # Surges span every month of the HMIS year; what an officer can act on
+        # is the month the live stock position is in.
+        month = month or surge.current_surge_month()
+        rows = surge.get_surge_signals(state, district, atc_class, month, 100000)
+        leading = {(r["state"], r["district_key"]) for r in rows
+                   if r.get("signal_class") == "leading"}
+        return {"early_warning_districts": len(leading), "signals": len(rows),
+                "month": month}
     return {
         "signals": surge.get_surge_signals(
             state, district, atc_class, month, limit),

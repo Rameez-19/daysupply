@@ -137,7 +137,7 @@ def draft(facility_id: str, item_id: str, lang: str = "en") -> dict:
         "facts": facts,
         "numbers_checked": not foreign,
         "unverified_numbers": foreign,
-        "model": capture.MODEL,
+        "model": capture.model_used(),
         "basis": ("Drafted by Gemini from the row's own figures. Every number "
                   "in the draft was checked against them."
                   if not foreign else
