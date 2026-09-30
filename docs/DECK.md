@@ -76,7 +76,7 @@ from **21.1% to 15.6%** wMAPE across six states [§0].
 
 | Where | What | Guard |
 |---|---|---|
-| **Gemini** (`gemini-3.5-flash`, with a fallback chain) | Speech and typed notes in Hindi, Marathi, Telugu, Bengali, English or a mix, and photographed register pages → structured stock events | The model never returns a drug code. Names are matched server-side against all 385 NLEM medicines; below 0.6 confidence a human decides [§3] |
+| **Gemini on Vertex AI** (newest Flash first: 3.8 → 2.5) | Speech and typed notes in Hindi, Marathi, Telugu, Bengali, English or a mix, and photographed register pages → structured stock events | The model never returns a drug code. Names are matched server-side against all 385 NLEM medicines; below 0.6 confidence a human decides [§3] |
 | **Gemini** | Drafts the escalation note for each shortage nothing routine will fix | Every number in the draft is checked against the row; a stray figure is flagged, never hidden [§7g] |
 | **BigQuery ML ARIMA_PLUS** | 3,818 demand series, 12 auto-selected orders, 2,951 with a detected weekly cycle | `ML.ARIMA_EVALUATE` on the Evidence page, not a screenshot [§4a] |
 | **BigQuery GIS** | Distance to district HQ → lead time; 150 km transfer radius; the full register on the map | Days-per-km is a documented proxy and the page says so [§7] |

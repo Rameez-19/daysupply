@@ -8,33 +8,24 @@ boundary is deliberate, and it is what made this migration cheap.
 ## Models — verified 2026-09-30
 
 Gemini is called through **Vertex AI**, authenticated as the Cloud Run
-service's own identity and billed to the project. The AI Studio API key it used
-before ran out of quota on 2026-09-30: every model returned 429, retries
-stretched a voice note to 140-176 seconds, and on a phone that looks like the
-app doing nothing. Vertex AI also means no API key to leak or rotate.
+service's own identity and billed to the project: no API key. The chain lives
+in `prompts/models.json`, newest Flash model first: `gemini-3.8-flash`,
+`3.7-flash` and `3.6-flash` from the `global` endpoint (the only place Vertex
+AI serves them), then `gemini-3.5-flash` and `gemini-2.5-flash` in
+`asia-south1` (Mumbai). One attempt per model, a hard timeout per call, and a
+retired model (404) is skipped at once.
 
-The chain, in order: `gemini-3.5-flash` in `asia-south1` (Mumbai), then
-`gemini-2.5-flash` in Mumbai, then `gemini-3.6-flash` from the `global`
-endpoint. The first two keep health data in India; the last is the only step
-that leaves it, and only when both Mumbai models are unavailable. Each call has
-a hard timeout, so a stuck request fails over instead of hanging.
-
-A retired model (404) is skipped at once, not retried. Override without a code
-change: `GEMINI_MODEL` for the primary, `GEMINI_FALLBACK_MODELS` as a
-comma-separated list, each entry `model` or `model@location`.
-`GEMINI_BACKEND=apikey` with `GEMINI_API_KEY` restores the AI Studio path for
-local development.
-
-**Model names go stale.** `gemini-1.5-pro` was shut down and
-`gemini-2.5-flash` was closed to new AI Studio users (it is still served on
-Vertex AI). Re-check the chain before each submission or deployment.
+The prompts live in `prompts/` as plain text. `scripts/eval_prompts.py` scores
+the extraction prompt against the edge cases in `evals/`.
 """
 
+import json
 import logging
 import os
 import random
 import threading
 import time
+from pathlib import Path
 
 from google import genai
 from google.genai import types
@@ -47,17 +38,20 @@ log = logging.getLogger(__name__)
 # See the module docstring for why these models and this order.
 BACKEND = os.getenv("GEMINI_BACKEND", "vertex")
 PROJECT = os.getenv("GCP_PROJECT", os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply"))
-LOCATION = os.getenv("GEMINI_LOCATION", "asia-south1")
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
-# Tried in order after repeated retryable failures on the primary. Every
-# switch is logged, so a silent degradation is still a visible one.
-FALLBACK_MODELS = [m.strip() for m in os.getenv(
-    "GEMINI_FALLBACK_MODELS", "gemini-2.5-flash,gemini-3.6-flash@global"
+_MODELS = json.loads((Path(__file__).resolve().parent.parent / "prompts" / "models.json")
+                     .read_text(encoding="utf-8"))
+_primary_name, _, _primary_loc = os.getenv("GEMINI_MODEL", _MODELS["primary"]).partition("@")
+MODEL = _primary_name
+LOCATION = os.getenv("GEMINI_LOCATION", _primary_loc or "asia-south1")
+# Tried in order after the primary fails. Every switch is logged, so a silent
+# degradation is still a visible one.
+FALLBACK_MODELS = [m.strip() for m in (
+    os.getenv("GEMINI_FALLBACK_MODELS") or ",".join(_MODELS["fallbacks"])
 ).split(",") if m.strip()]
 FALLBACK_MODEL = FALLBACK_MODELS[0]
 # Per call. A voice note is a few seconds of audio; anything slower than this
 # is better answered by the next model than waited for.
-TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", "25000"))
+TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", str(_MODELS.get("timeout_ms", 25000))))
 
 _used = threading.local()
 
@@ -84,7 +78,11 @@ def _get_client(location: str | None = None) -> genai.Client:
     loc = location or LOCATION
     key = f"{BACKEND}:{loc}"
     if key not in _clients:
-        opts = types.HttpOptions(timeout=TIMEOUT_MS)
+        # The SDK's own retries are switched off: the model chain is the retry
+        # policy. With both, a dropped connection was retried inside the SDK
+        # for over nine minutes before the chain ever saw it.
+        opts = types.HttpOptions(timeout=TIMEOUT_MS,
+                                 retry_options=types.HttpRetryOptions(attempts=1))
         if BACKEND == "apikey":
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
@@ -95,71 +93,21 @@ def _get_client(location: str | None = None) -> genai.Client:
                                          location=loc, http_options=opts)
     return _clients[key]
 
-SYSTEM_PROMPT = """
-You extract pharmacy stock updates from reports by health workers at
-primary health centres in India. The speaker may use Hindi, Marathi, Telugu,
-Bengali, Assamese, English or any other Indian language, or a mix of them,
-with local drug names and informal quantities. Numbers may be spoken in any
-of these languages ("do sau", "दोनशे", "రెండు వందలు", "দুশো" are all 200).
+# The prompts live in prompts/ as plain text, so they can be read, reviewed
+# and pasted into Google AI Studio without opening the code. Loaded once.
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
-Return ONLY a JSON array, no prose, no markdown fences. One object per
-item mentioned:
 
-[{
-  "local_name": "<drug name as spoken, written in English (Latin) letters>",
-  "event_type": "dispensed" | "received" | "count" | "lost",
-  "loss_reason": "<only when event_type is lost; the speaker's own word:
-                  damaged | broken | expired | spilled | stolen | unknown>",
-  "quantity": <integer or null>,
-  "unit": "tablet" | "strip" | "vial" | "bottle" | "unknown",
-  "confidence": <0.0-1.0>
-}]
+def load_prompt(name: str) -> str:
+    return (PROMPTS_DIR / name).read_text(encoding="utf-8")
 
-Rules:
-- "aadha dabba" / "half a box" -> estimate in units, confidence <= 0.5
-- "kuch nahi bacha" / "khatam" -> quantity 0, event_type "count"
-- If quantity is unclear, return the item with quantity null
-- Never invent items that were not mentioned
-- Write local_name in English (Latin) letters exactly as it sounds, even when
-  the speaker uses Telugu, Bengali, Marathi or Hindi: "పారాసిటమాల్" ->
-  "paracetamol", "প্যারাসিটামল" -> "paracetamol", "शुगर की गोली" ->
-  "sugar ki goli". Never write it in Devanagari, Telugu or Bengali script.
-  Do not replace a local name with a different drug; only change the letters.
 
-LOSSES. Stock leaves a shelf in ways that are neither dispensing nor
-transfer, and a supply chain that cannot see them cannot explain its own
-shortfalls. Use event_type "lost" when the speaker describes stock that
-was there and no longer is:
-- "toot gaye" / "broken" / "tut gaya"        -> loss_reason "broken"
-- "kharab ho gaya" / "damaged" / "spoiled"   -> loss_reason "damaged"
-- "gir gaya" / "spilled" / "leak ho gaya"    -> loss_reason "spilled"
-- "chori" / "stolen" / "gayab"               -> loss_reason "stolen"
-- "expire ho gaya" / "expired"               -> loss_reason "expired"
-Do NOT force a reason the speaker did not give. If they say only that
-stock is missing, use loss_reason "unknown" - an honest unknown is worth
-more than a guessed category.
-"lost" means gone from the shelf. It is not "dispensed", which means given
-to a patient, and the difference is the whole point of recording it.
-
-VAGUE QUANTITIES. A range or an approximation is not a number. If the
-speaker gives one, set confidence <= 0.5 so a human confirms it. This
-applies to:
-- ranges spoken as two adjacent numbers: "teen char" (three-four),
-  "do teen" (two-three), "das barah" (ten-twelve), "three or four"
-- hedges: "kuch" (some), "thoda" (a little), "lagbhag" / "karib"
-  (approximately), "aas paas" (around), "ya do" ("or two")
-- part-container amounts: "aadha dabba", "half a strip", "paav"
-A precise number stated plainly — "do sau" (200), "pachas" (50) — is NOT
-vague and keeps its normal high confidence.
-"""
+SYSTEM_PROMPT = load_prompt("extraction_system.txt")
 
 # The extraction prompt is shared by voice, chat and photo: the only
 # difference is whether the model is handed audio, text or an image. Keeping
 # one prompt is what makes the modes produce comparable records.
-CHAT_INSTRUCTION = (
-    "The health worker typed this message instead of recording it. "
-    "Extract the same JSON array from the text.\n\nMessage: "
-)
+CHAT_INSTRUCTION = load_prompt("chat_instruction.txt")
 
 # A photograph of the stock register — the ruled ledger book every PHC keeps
 # by hand. Each visible row becomes one object. Handwriting is read, never
@@ -167,18 +115,7 @@ CHAT_INSTRUCTION = (
 # low confidence, so the worker corrects it on the read-back rather than the
 # ledger inheriting a misread "7" for a "1". The model is told which column
 # is which because the stock register's layout is standard across states.
-PHOTO_INSTRUCTION = (
-    "This image is a page of a pharmacy stock register from an Indian primary "
-    "health centre, handwritten or printed. Columns are typically: date, "
-    "item or drug name, received (in), issued or dispensed (out), balance. "
-    "Extract the same JSON array, one object per visible row that names a "
-    "medicine: received -> event_type received, issued/dispensed/out -> "
-    "dispensed, a balance or closing stock -> count. If a row shows several "
-    "of these, return one object per movement. If a figure is illegible, "
-    "return quantity null. If you are not sure a figure is what you read, set "
-    "confidence 0.5 or lower. Do not invent rows. Transcribe drug names as "
-    "written."
-)
+PHOTO_INSTRUCTION = load_prompt("photo_instruction.txt").strip()
 
 
 # Flash models return 503 "this model is currently experiencing high demand"
@@ -190,13 +127,13 @@ RETRYABLE_STATUS = (429, 500, 502, 503, 504)
 # Default: two tries on the primary, then one on each fallback.
 MAX_ATTEMPTS = int(os.getenv(
     "GEMINI_MAX_ATTEMPTS",
-    str(int(os.getenv("GEMINI_FALLBACK_AFTER", "2")) + len(FALLBACK_MODELS))))
+    str(int(os.getenv("GEMINI_FALLBACK_AFTER", str(_MODELS.get("attempts_on_primary", 1)))) + len(FALLBACK_MODELS))))
 BACKOFF_BASE_SECONDS = float(os.getenv("GEMINI_BACKOFF_BASE", "0.6"))
 BACKOFF_CAP_SECONDS = float(os.getenv("GEMINI_BACKOFF_CAP", "8.0"))
 # After this many consecutive retryable failures on the pinned model, switch to
 # the fallback for the remaining attempts. A congested model is better answered
 # by a different model than by waiting longer for the same one.
-FALLBACK_AFTER_ATTEMPTS = int(os.getenv("GEMINI_FALLBACK_AFTER", "2"))
+FALLBACK_AFTER_ATTEMPTS = int(os.getenv("GEMINI_FALLBACK_AFTER", str(_MODELS.get("attempts_on_primary", 1))))
 
 USER_FACING_FAILURE = (
     "The extraction service is busy right now. Your recording has not been "

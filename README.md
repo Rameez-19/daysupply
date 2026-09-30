@@ -3,8 +3,17 @@
 > **Voice-first medicine stock reporting and redistribution for India's primary
 > health centres.**
 
-Built for **Build with AI: Code for Communities, 2nd Edition** — Track 3, Smart
-Health & Supply Chain Resilience.
+Built for **Build with AI: Code for Communities, 2nd Edition**.
+
+| | |
+|---|---|
+| **Theme** | **Resilience** — Track 3, Smart Health & Supply Chain Resilience |
+| **Live app** | https://daysupply-898541549182.asia-south1.run.app |
+| **Google AI** | Gemini Flash on Vertex AI (reads voice, text and register photos; drafts escalation notes) · BigQuery ML ARIMA_PLUS (demand forecasting) · Cloud Text-to-Speech (read-back in five Indian languages) |
+| **Google Cloud** | Cloud Run · BigQuery · BigQuery GIS · Firestore (Firebase) |
+| **Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| **Prompts** | [`prompts/`](prompts/) — every Gemini instruction and the model chain, as files |
+| **Running it** | [Running StockPulse](#running-stockpulse) below |
 
 > **Naming:** the project was renamed mid-build. **StockPulse** is current;
 > `daysupply` survives in the repository name, the GCP project and the Cloud Run
@@ -149,80 +158,90 @@ what ships. The losing arms are kept because a claim is only worth what it beats
 
 ## Architecture
 
+One FastAPI service on **Cloud Run** serves the web app and its API. It calls
+**Gemini on Vertex AI** to read reports and draft notes, keeps the ledger and
+the forecasting model in **BigQuery**, speaks read-backs with **Cloud
+Text-to-Speech**, and holds reports awaiting review in **Firestore**. The full
+diagram and the path of one report are in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ```
-Health worker (PWA, offline-first)
-   │  voice note | barcode scan | chat text
-   ▼
-Cloud Run — FastAPI (asia-south1)
-   ├─► Gemini API        audio/text → structured JSON
-   ├─► BigQuery          facilities, items, demand_reference, stock_events
-   └─► BigQuery ML       ARIMA_PLUS demand forecast
-   ▼
-Dashboard — Chart.js, cascading state/district/PHC filters
+Health worker's phone (PWA, offline queue)      Officer's browser
+        │ tap · speak · photo · scan · type              │
+        ▼                                                ▼
+Cloud Run — FastAPI, asia-south1 ─────────────────────────────────────────
+   ├─► Vertex AI Gemini   3.8 → 3.7 → 3.6 → 3.5 → 2.5 Flash (prompts/models.json)
+   ├─► Cloud Text-to-Speech   read-back in en · hi · mr · te · bn
+   ├─► BigQuery              ledger, facility register, HMIS demand, views
+   │     └─► BigQuery ML     ARIMA_PLUS, 3,818 demand series
+   └─► Firestore (Firebase) review queue, capture audit trail
 ```
 
-- **Frontend**: Vanilla JS PWA — Service Worker, IndexedDB offline queue,
-  MediaRecorder, `html5-qrcode`
-- **Backend**: FastAPI, containerised on Google Cloud Run, `asia-south1`
-- **AI**: Gemini multimodal audio for extraction; BigQuery ML `ARIMA_PLUS` for
-  forecasting
+## Running StockPulse
 
-## Setup
+### Prerequisites
+
+- Python 3.11+, and the Google Cloud CLI signed in:
+  `gcloud auth application-default login`
+- A Google Cloud project with billing and these APIs enabled: Vertex AI,
+  BigQuery, Cloud Text-to-Speech, Firestore, Cloud Run.
+
+### Run it locally
 
 ```bash
 pip install -r requirements.txt
+cp .env.example .env          # set GCP_PROJECT
+uvicorn app.main:app --reload --port 8080
+# open http://localhost:8080
+```
 
-# Ingestion — in order
+Gemini is reached through Vertex AI with your own Google Cloud credentials; no
+API key is needed.
+
+### Load the data (first time only, in order)
+
+```bash
 python -m ingestion.load_facilities        # 200,438 facilities
 python -m ingestion.build_geo_summary      # dropdown cache
-python -m ingestion.parse_hmis             # HMIS, 5 states; add more with --state
+python -m ingestion.parse_hmis             # HMIS demand; add states with --state
 python -m ingestion.build_items            # full NLEM 2022 catalogue
 python -m ingestion.set_forecast_facilities
 python -m ingestion.set_lead_times         # distance to district HQ
-python -m ingestion.generate_usage         # stock_events + expiry
-python -m ingestion.build_current_stock    # batch-level stock, FEFO
-python -m ingestion.train_forecast         # ARIMA_PLUS
+python -m ingestion.generate_usage         # daily stock ledger + expiry
+python -m ingestion.train_forecast         # BigQuery ML ARIMA_PLUS
 python -m ingestion.build_supply_plan      # reorder points, transfers
 python -m ingestion.build_facility_metrics # reporting consistency
-python -m ingestion.build_pattern_exchange # cross-district vectors
-
-# Serve
-uvicorn app.main:app --reload
+python -m ingestion.build_pattern_exchange # cross-district seasonal shape
 ```
 
-Environment: `GEMINI_API_KEY`, `GCP_PROJECT`. See `.env.example`.
+Adding a state is a runbook of its own: [`docs/ONBOARD_A_STATE.md`](docs/ONBOARD_A_STATE.md).
 
-> ### ⚠️ Voice and chat capture return 403 in production — diagnosis open
->
-> `GEMINI_API_KEY` **is** set on the Cloud Run service, and
-> `/api/v1/voice-note` and `/api/v1/chat-note` return
-> `403 API_KEY_SERVICE_BLOCKED` from `generativelanguage.googleapis.com`.
-> Barcode capture is unaffected — it needs no model, and it correctly routes
-> unrecognised codes to the review queue.
->
-> **Key format — do not misread this.** Current Google AI Studio keys begin
-> with **`AQ.`**, the Auth key format Google migrated to in June 2026. The
-> older `AIza` Standard keys are being rejected outright from September 2026.
-> An `AQ.` prefix therefore means the key is *current*, not that it came from
-> the GCP console. (An earlier version of this note claimed the opposite and
-> was wrong.)
->
-> **Leading hypothesis: the SDK, not the key.** The app uses
-> `google-generativeai`, the older library. `AQ.` keys are widely reported to
-> fail against it. The current library is **`google-genai`**.
->
-> **Being tested first**, because it separates the two cases cleanly:
-> ```
-> curl.exe -H "x-goog-api-key: AQ.KEY" \
->   "https://generativelanguage.googleapis.com/v1beta/models"
-> ```
->
-> | Result | Meaning | Fix |
-> |---|---|---|
-> | Returns a model list | The key and the API are fine; the SDK is the problem | Migrate `app/capture.py` from `google-generativeai` to `google-genai` |
-> | 403 | The API is genuinely blocked for this key | Enable `generativelanguage.googleapis.com` on the project and/or widen the key's API restrictions |
->
-> **No SDK change has been made yet** — it waits on that result.
+### Deploy to Cloud Run
+
+```bash
+gcloud run deploy daysupply --source . --region asia-south1 \
+  --min-instances 1 --allow-unauthenticated
+```
+
+The service runs as its Cloud Run service account, which needs the Vertex AI
+User, BigQuery User and Cloud Datastore User roles.
+
+### Check it
+
+```bash
+pytest                                  # unit and data tests
+python -m scripts.smoke_test            # every endpoint the web app calls, on the live service
+python -m scripts.eval_prompts          # the extraction prompt against 20 edge cases
+```
+
+### Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GCP_PROJECT` | `daysupply` | Google Cloud project |
+| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODELS` | from `prompts/models.json` | Override the model chain (`model@location`) |
+| `GEMINI_TIMEOUT_MS` | `25000` | Per-call limit before moving to the next model |
+| `GEMINI_BACKEND` | `vertex` | `apikey` uses `GEMINI_API_KEY` with AI Studio instead, for local experiments |
 
 **Health check:** `/api/v1/healthz`. Google's frontend intercepts the bare
 `/healthz` path in production, so probe the versioned one.

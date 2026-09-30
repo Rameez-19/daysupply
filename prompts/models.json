@@ -1,0 +1,12 @@
+{
+  "about": "Gemini models the app calls through Vertex AI, newest Flash first. Each entry is model@location. The newest models are served only on the global endpoint; gemini-3.5-flash and gemini-2.5-flash also run in asia-south1 (Mumbai) and are used there. The first attempt goes to the primary; each later attempt moves one step down the list. A retired model (404) is skipped at once. Environment variables GEMINI_MODEL and GEMINI_FALLBACK_MODELS override this file.",
+  "primary": "gemini-3.8-flash@global",
+  "fallbacks": [
+    "gemini-3.7-flash@global",
+    "gemini-3.6-flash@global",
+    "gemini-3.5-flash@asia-south1",
+    "gemini-2.5-flash@asia-south1"
+  ],
+  "attempts_on_primary": 1,
+  "timeout_ms": 25000
+}

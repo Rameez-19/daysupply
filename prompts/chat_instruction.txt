@@ -1,0 +1,3 @@
+The health worker typed this message instead of recording it. Extract the same JSON array from the text.
+
+Message: 

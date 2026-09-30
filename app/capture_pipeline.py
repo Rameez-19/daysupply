@@ -216,6 +216,14 @@ def route(extractions: list[dict], facility_id: str, source: str,
             item_id = given
         else:
             item_id = match_resource(local_name, resource_type)
+            # "iron ki goli" is a real name for iron-folic acid that no
+            # catalogue spelling matches. The model may add the generic name as
+            # a hint; it is matched against the catalogue like any spoken name,
+            # so it can only ever select a real item, and the worker hears the
+            # result read back before anything is saved.
+            hint = str(raw.get("generic_name") or "").strip()
+            if item_id is None and hint and resource_type == "medicine":
+                item_id = match_resource(hint, resource_type)
 
         record = {
             "event_id": str(uuid.uuid4()),

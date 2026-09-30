@@ -13,6 +13,7 @@ These tests use fakes rather than calling Gemini or BigQuery, so they run in
 the suite without a key, a network or a bill.
 """
 
+import re
 import sys
 import time
 from pathlib import Path
@@ -443,10 +444,25 @@ class TestModelChain:
         assert "gemini-1.5-pro" not in chain
         assert capture.BACKEND == "vertex"
 
-    def test_the_first_two_models_stay_in_india(self):
-        """Health data is processed in Mumbai unless both Mumbai models fail."""
-        assert capture.LOCATION == "asia-south1"
-        assert capture.split_model(capture.FALLBACK_MODELS[0])[1] == "asia-south1"
+    def test_the_chain_runs_newest_flash_first(self):
+        """Newest to oldest, from prompts/models.json."""
+        chain = [capture.MODEL] + [capture.split_model(m)[0] for m in capture.FALLBACK_MODELS]
+        versions = [float(re.search(r"gemini-(\d+(?:\.\d+)?)-flash", m).group(1)) for m in chain]
+        assert versions == sorted(versions, reverse=True), chain
+        assert chain[0] == "gemini-3.8-flash"
+
+    def test_the_mumbai_models_run_in_mumbai(self):
+        """Where Vertex AI serves a model in asia-south1, it is used there."""
+        for m in capture.FALLBACK_MODELS:
+            name, loc = capture.split_model(m)
+            if name in ("gemini-3.5-flash", "gemini-2.5-flash"):
+                assert loc == "asia-south1", m
+
+    def test_the_prompts_are_files_in_the_repository(self):
+        for name in ("extraction_system.txt", "chat_instruction.txt",
+                     "photo_instruction.txt", "escalation_note_system.txt", "models.json"):
+            assert (capture.PROMPTS_DIR / name).exists(), name
+        assert capture.SYSTEM_PROMPT == capture.load_prompt("extraction_system.txt")
 
     def test_names_come_back_in_latin_letters(self):
         """The catalogue matcher knows Latin and Devanagari spellings only, so

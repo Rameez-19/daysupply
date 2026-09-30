@@ -31,7 +31,7 @@ difference will overclaim in the submission.
 
 | Component | Status | Notes |
 |---|---|---|
-| Gemini extraction (voice + chat + register photo) | **REAL, WORKING IN PROD** | Since 2026-09-30 through **Vertex AI** (service identity, billed to the project, no API key): gemini-3.5-flash in Mumbai, then gemini-2.5-flash in Mumbai, then gemini-3.6-flash global, 25 s timeout per call. The AI Studio key hit its quota and made phone voice notes take 140-176 s. Verified live in Telugu (voice), Bengali, Marathi and Telugu (text) |
+| Gemini extraction (voice + chat + register photo) | **REAL, WORKING IN PROD** | Since 2026-09-30 through **Vertex AI** (service identity, billed to the project, no API key): newest Flash first from prompts/models.json (3.8, 3.7, 3.6 on the global endpoint; 3.5, 2.5 in Mumbai), 25 s timeout per call, SDK retries off. Prompts are files in prompts/, scored by scripts/eval_prompts.py (20/20). The AI Studio key hit its quota and made phone voice notes take 140-176 s. Verified live in Telugu (voice), Bengali, Marathi and Telugu (text) |
 | Spoken read-back | **REAL** | Cloud Text-to-Speech in five Indian voices (`app/speech.py`); the phone's own engine is the fallback |
 | Officer pages: lean view | **REAL** | Explanations hidden by default behind one Explain switch (remembered per browser); Today opens with a task bar of live counts, change since the last visit on each tile, and a 5-minute auto-refresh. Report page and Evidence are exempt |
 | **Capture persistence** | **BROKEN** | Extraction works; storage does not. The Firestore database does not exist, and nothing reads `pending_events` into BigQuery even if it did. `captures_today` therefore stays 0. See §9c |
