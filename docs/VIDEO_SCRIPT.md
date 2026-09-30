@@ -1,133 +1,201 @@
-# Demo video script — 3 min 50 s
+# Demo video script — about 4:50
 
-Screen recording of the live deployment, phone frame for the Report page and
-desktop for the rest. Figures are from [`CLAIMS.md`](CLAIMS.md), section in
-brackets. Timings are targets; cut the Evidence beat first if over.
+Written so that anyone, a fifteen-year-old included, can follow what the
+problem is and how StockPulse solves it. The **voice** stays in plain words.
+The **caption** puts the technical name on screen for judges, so nothing is
+lost by keeping the voice simple.
 
-Before recording: open the site once so the warm instance has answered; set
-the Report page's centre; have a short Hindi-English sentence ready to speak.
+Screen recording of the live app: a phone frame for the Report page, desktop
+for the rest. Every figure is from [`CLAIMS.md`](CLAIMS.md) §0 unless marked.
+About 690 spoken words at an unhurried pace, inside the 5-minute limit. If
+over time, cut the "learning from each other" beat first.
+
+## Before recording
+
+- Open the site and send one typed report in preview a minute before
+  recording. The first Gemini call after a deploy can be slow; the ones after
+  it take two to three seconds.
+- On the Report page, pick the centre **Salchapra MPHC** (Cachar, Assam).
+- Keep the Explain switch **off** on the officer pages, so the screen is clean.
+- The voice line below was checked on 2026-09-30: three runs out of three
+  saved the Paracetamol and held the ORS for review.
 
 ---
 
-**0:00 – 0:20 · Cold open (phone, Report page)**
+## 0:00 – 0:25 · The empty shelf
 
-*On screen:* the tap flow. Tap "Stock came in" → tap Paracetamol → type 200 →
-the read-back appears and is spoken.
+*On screen:* the Report page on a phone, still.
 
-*Voice:* "This is a pharmacist at a primary health centre in India reporting
-stock. Three taps, one number, and the phone reads it back before it saves.
-No form, no code, and it works in five languages."
+*Voice:* "Imagine walking two hours to a health centre with a sick child, and
+being told the medicine ran out last week. Nobody knew it was running out.
+Not the centre, not the district. That happens because in India, nobody keeps
+a daily count of medicines at each health centre that anyone else can see."
 
-Pick हिंदी in the language list; the page and the read-back switch to Hindi.
-Flick through मराठी, తెలుగు and বাংলা on camera, back to Hindi, and tap
+*Caption:* StockPulse · Build with AI: Code for Communities · Resilience,
+Track 3
+
+---
+
+## 0:25 – 1:00 · Why it keeps happening
+
+*On screen:* the title slide's number, then the Today page.
+
+*Voice:* "India's register lists 200,438 health facilities. The person who
+knows what is on the shelf is a busy health worker, often facing a form in a
+language that is not their own. And medicine demand is not steady: on
+National Deworming Day, deworming tablets are needed at more than twenty
+times the usual rate. So shelves go empty before anyone can react.
+
+StockPulse fixes two things. It makes reporting take seconds, and then the
+system does the thinking: what will run out, where spare stock is, and what
+to do about it."
+
+*Caption:* 200,438 facilities · Albendazole peaks at 22.64× its mean [§6]
+
+---
+
+## 1:00 – 1:55 · Reporting takes seconds
+
+*On screen (phone):* tap "Stock came in" → Paracetamol → type 200. The phone
+reads it back aloud.
+
+*Voice:* "Here is a health worker reporting. Three taps and one number. The
+phone reads it back out loud, and nothing is saved until they say yes."
+
+*On screen:* switch the language to हिंदी; the whole page and the read-back
+change. Flick through मराठी, తెలుగు, বাংলা, back to हिंदी, tap
 "हाँ, सेव करें".
 
----
+*Voice:* "It works in five languages: English, Hindi, Marathi, Telugu and
+Bengali."
 
-**0:20 – 0:45 · Why this matters**
+*On screen:* tap the microphone, say "Paracetamol ke do sau tablet aaye hain,
+ORS ka aadha dabba bacha hai", tap again to stop. Paracetamol 200 is ready to
+save; the ORS goes to review.
 
-*On screen:* Today, national scope, medicine scorecard.
+*Voice:* "They can also just talk, the way they would to a colleague. Google's
+Gemini AI listens and turns the sentence into a stock report. Two hundred
+Paracetamol tablets arrived: clear. But 'half a box' of ORS is not a number,
+so instead of guessing, it asks the pharmacist to check. When the AI is not
+sure, a person decides."
 
-*Voice:* "India's register has 200,438 health facilities [§1]. Nobody
-publishes the daily stock position of any of them. So the first job is
-capture, and the second is what you can do once the reports exist. Across
-the 275 centres running today in six states, availability is 80.0 percent,
-and 80.3 for life-saving medicines [§0]. Every figure is a rate with its
-count beside it, so Uttar Pradesh and Delhi read on the same scale."
+*On screen:* photo mode, a photographed register page turning into rows.
 
----
+*Voice:* "They can even photograph the paper stock register, and it becomes
+rows to check. It works without internet too: reports wait on the phone and
+send themselves when the signal comes back."
 
-**0:45 – 1:20 · The other ways in (phone)**
-
-*On screen:* Speak: hold the mic, say "Paracetamol ke do sau tablet aaye hain,
-ORS ka aadha dabba bacha hai". Read-back shows Paracetamol 200 received, and ORS
-held for the pharmacist because "half a box" is not a number.
-
-*Voice:* "Gemini reads the speech. It is never asked for a drug code; the name
-is matched server-side against all 385 medicines in the National List [§3],
-and anything the model is unsure about waits for the pharmacist. Here it heard
-'half a box' of ORS and held it rather than guess."
-
-*On screen:* Photo mode, a register page; rows appear for checking. Then
-Staff today with the five roles.
-
-*Voice:* "A photograph of the stock register becomes rows to check, never a
-direct write. And the same page takes who is on duty and how many beds are in
-use, which are the only attendance and occupancy counts the system holds as
-fact."
+*Caption:* Gemini on Vertex AI · matched to all 385 medicines on India's
+Essential Medicines List [§3] · Cloud Text-to-Speech read-back
 
 ---
 
-**1:20 – 1:50 · Forecast and early warning (desktop, Plan ahead)**
+## 1:55 – 2:20 · The district officer's to-do list
 
-*On screen:* the demand outlook, then the early-warning list.
+*On screen (desktop):* the Today page, with the task bar across the top.
 
-*Voice:* "Every report lands in BigQuery, where ARIMA_PLUS forecasts 3,818
-series [§4]. Demand has a shape: real HMIS morbidity, 21 drivers loaded, 20
-used. And when demand has begun to surge, we detect it earlier and more
-reliably than a 3-sigma rule, which on twelve monthly points cannot fire above
-3.175 [§9]. Brihan Mumbai in January: 2,345 observed against 938.4 expected
-[§0]. A flat average would have called that 1.67 times; the pooled seasonal
-shape says 2.5."
+*Voice:* "Every report lands in one place, and the district officer sees it
+as a to-do list: which shortages need escalating, which transfers to approve,
+which orders to place. Below it, the health of the whole network. Across the
+275 centres running today in six states, 80 percent of medicines are at a
+safe level."
 
-*On screen:* scenario mode, run at 3×.
-
-*Voice:* "Scenario mode recomputes against real stock: at three times demand,
-this is how many centres fail and how many can only be served by a transfer
-because an order would arrive too late."
+*Caption:* 275 PHCs, 6 states · availability 80.0%, life-saving 80.3%
 
 ---
 
-**1:50 – 2:30 · Redistribution (Action queue)**
+## 2:20 – 3:10 · Seeing trouble coming
 
-*On screen:* the triage bar and the three panels.
+*On screen:* Plan ahead, the demand outlook chart.
 
-*Voice:* "765 shortages, each in exactly one of three states [§0]: 685 have
-a transfer waiting, worked out by batch expiry within 150 kilometres; 36 can
-be ordered in time; 44 cannot be fixed by either. Those 44 are the point."
+*Voice:* "Next, a forecast. Like a weather forecast, but for medicines: how
+many tablets each centre will need in the coming weeks, based on real
+government records of which illnesses rise in which months."
 
-*On screen:* click Draft note on the first escalation. The note appears with
-the "every number checked" badge.
+*Caption:* BigQuery ML ARIMA_PLUS · 3,818 forecasts, one per centre and
+medicine · real HMIS data
 
-*Voice:* "For each of those, Gemini drafts the escalation note from the row's
-own figures, and every number in the draft is checked against the row. If it
-strays, the page flags it. It writes the note; the officer makes the call."
+*On screen:* scroll to Early warnings: the three labels, then a card.
 
-*On screen:* approve one transfer; the lifecycle advances.
+*Voice:* "And an early warning. Most alarms only ring when a number is wildly
+off. With just twelve months of data, the usual alarm cannot ring at all. So
+StockPulse uses a smarter test that catches the weak signal, when cases are
+rising but have not exploded yet. In Mumbai one January, malaria medicine
+demand hit two and a half times normal. It
+also labels each warning. Deworming Day is a planned campaign, not an
+outbreak, so it is never raised as an emergency. We do not predict outbreaks; we
+notice early that one has begun."
 
----
-
-**2:30 – 2:55 · Shape, not data (Evidence)**
-
-*On screen:* the four-arm hold-out chart.
-
-*Voice:* "Districts improve each other's forecasts by exchanging seasonal
-shape, not data. Against a district's own flat baseline at 21.1 percent
-error, pooling every district's shape gives 15.6, across six states [§0].
-Borrowing a look-alike district from another state gives 46.5. Shape
-travels; raw data never has to leave the district."
+*Caption:* modified z-score; a 3-sigma rule cannot exceed 3.175 on twelve
+points · 2,352 surges found · Brihan Mumbai: 2,345 vs 938.4 expected, 2.50×
 
 ---
 
-**2:55 – 3:25 · Map and reach**
+## 3:10 – 4:00 · Fixing every shortage
 
-*On screen:* the map, "Every centre" layer on, then transfers.
+*On screen:* the Action queue, the three groups.
 
-*Voice:* "The map draws all 34,935 primary and community health centres in
-the register [§7a], and the 685 transfers between the ones reporting; 520 of
-them cross a district line. 260.8 million people live in the footprint where
-demand is grounded in real government data [§0]."
+*Voice:* "Now the fix. Today there are 765 shortages, and each one comes with
+a plan. For 685, another centre nearby has spare stock, so the medicine is
+moved, the batch that expires soonest first, so nothing goes to waste. For 36, an order
+will arrive in time. And for 44, neither works."
+
+*On screen:* click "Draft" on the first escalation; the note appears with
+"Every number checked against the row."
+
+*Voice:* "For those, Gemini drafts an escalation note: what is short, why
+the usual fixes will not work, and what the officer can do. It uses only
+that shortage's own numbers, and every number in the note is checked. The AI
+writes the draft; the officer makes the call."
+
+*On screen:* the Map, with transfers drawn between centres.
+
+*Voice:* "On the map, most transfers cross a district border: something
+one district could never arrange alone."
+
+*Caption:* 685 move · 36 order · 44 escalate · 520 of 685 transfers cross a
+district line
 
 ---
 
-**3:25 – 3:50 · Close**
+## 4:00 – 4:20 · Districts learning from each other
 
-*On screen:* Evidence page, the "what is real" table, then the URL.
+*On screen:* the Evidence page, the four-bar chart.
 
-*Voice:* "Every figure you have seen is in one file in the repository with
-the query it came from. What is modelled, the daily ledger and bed occupancy,
-is labelled on the page and listed with its source. It runs on Cloud Run,
-BigQuery and Gemini, on data a state already has, and a new state is the
-ingestion scripts against its own register. StockPulse."
+*Voice:* "Districts also help each other's forecasts. They share only the
+shape of their year, when demand goes up and when it goes down, never
+anyone's records. Sharing that shape cut forecast mistakes from about 21
+percent to under 16."
+
+*Caption:* forecast error 21.1% → 15.6% (weighted MAPE) · seasonal shape,
+not data
+
+---
+
+## 4:20 – 4:50 · How it is built, and where it goes next
+
+*On screen:* the architecture poster, then the live URL.
+
+*Voice:* "All of this runs on Google Cloud: Gemini for understanding reports,
+BigQuery for the data and the forecasts, and Cloud Run to serve the app. It
+uses real government data, and it tells you plainly which parts are
+estimated. Data for every state in India is already in hand; six states run
+today, and adding Uttar Pradesh, India's most populous state, took a single working
+session. A health worker reports in seconds. The system does the rest. That
+is StockPulse."
 
 *End card:* StockPulse · https://daysupply-898541549182.asia-south1.run.app
+
+---
+
+## Words to use, and words to avoid
+
+- Say "we notice early that a surge has begun". **Never** "predicts
+  outbreaks".
+- Say "districts share the shape of their year, not their data". **Never**
+  "federated learning".
+- 260.8 million people is the footprint where demand rests on real data. If
+  it is used, say exactly that.
+- The daily stock ledger is generated from real drivers, because no one
+  publishes one. If a judge asks, say so plainly; it is on the Evidence page
+  and in `Data/README.md`.
