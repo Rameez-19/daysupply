@@ -54,7 +54,7 @@ const REPORT_STRINGS = {
     'offline.now': 'No network right now.',
     'offline.unsent': 'reports waiting to send from this phone.',
     'online.unsent': 'reports still waiting to send.',
-    'voice.hold': 'Press and hold to speak', 'voice.listening': 'Listening… release when done',
+    'voice.hold': 'Tap the button and speak', 'voice.listening': 'Listening… tap again when you finish',
     'voice.working': 'Understanding…',
     'voice.hint': 'Hindi, English or both. Example: “Paracetamol ke 200 tablet aaye hain”',
     'voice.denied': 'Microphone access was refused',
@@ -82,6 +82,39 @@ const REPORT_STRINGS = {
     'beds.sub': 'Count the beds with a patient in them. This is the only bed count the system holds that is not modelled.',
     'beds.inpatient': 'Inpatient beds in use', 'beds.daycare': 'Day-care beds in use',
     'beds.save': 'Save bed count', 'unit.bed': 'beds', 'beds.inuse': 'in use',
+    'voice.short': 'That was too short. Tap, speak, then tap again.',
+    'voice.unsupported': 'This phone cannot record here. Use Tap or Type instead.',
+    'rv.approve': 'Approve',
+    'rv.reject': 'Reject',
+    'rv.qty': 'Quantity',
+    'rv.type': 'What happened',
+    'rv.sure': 'sure',
+    'rv.notstated': 'not said',
+    'rv.empty': 'Nothing is waiting. Every recent report was clear enough to save directly.',
+    'rv.loading': 'Loading…',
+    'rv.loaderror': 'Could not load the list. Check the network and try again.',
+    'rv.askqty': 'How many? This report is waiting because the amount was not clear.',
+    'rv.cannot': 'Could not approve this.',
+    'rv.ago.min': 'min ago',
+    'rv.ago.hr': 'h ago',
+    'rv.ago.day': 'd ago',
+    'reason.noqty': 'The amount was not said',
+    'reason.lowconf': 'The system was not sure what it heard',
+    'reason.nomatch': 'The medicine name was not recognised',
+    'reason.badevent': 'It was not clear what happened to the stock',
+    'photo.error': 'Could not read that photo. Try again in good light, with the page flat.',
+    'scan.matching': 'Scanned. Finding the medicine…',
+    'scan.askqty': 'How many?',
+    'scan.denied': 'The camera could not be opened.',
+    'work.busy': 'Working… this takes a few seconds',
+    'work.retry': 'The system is busy. Nothing was lost; try again in a minute.',
+    'chat.ph': 'e.g. paracetamol 200 tablets came in, ORS half a box left',
+    'how.title': 'How it works',
+    'how.1': 'Tap, speak, photograph, scan or type your report.',
+    'how.2': 'Gemini turns speech, text or a photo of the register into medicines and amounts.',
+    'how.3': 'Every medicine is matched to the national list. The AI never invents a drug code.',
+    'how.4': 'You hear it read back and say yes. Anything unclear waits for the pharmacist.',
+    'reason.overstock': 'More was given out than the stock on record',
   },
   hi: {
     'report.title': 'स्टॉक बताएँ',
@@ -115,7 +148,7 @@ const REPORT_STRINGS = {
     'offline.now': 'अभी नेटवर्क नहीं है।',
     'offline.unsent': 'रिपोर्ट इस फ़ोन से भेजने को बाकी।',
     'online.unsent': 'रिपोर्ट अभी भी भेजने को बाकी।',
-    'voice.hold': 'दबाकर रखें और बोलें', 'voice.listening': 'सुन रहे हैं… बोलकर छोड़ दें',
+    'voice.hold': 'बटन दबाएँ और बोलें', 'voice.listening': 'सुन रहे हैं… बोलकर फिर से दबाएँ',
     'voice.working': 'समझ रहे हैं…',
     'voice.hint': 'हिंदी, अंग्रेज़ी या दोनों। जैसे: “Paracetamol ke 200 tablet aaye hain”',
     'voice.denied': 'माइक्रोफ़ोन की अनुमति नहीं मिली',
@@ -143,6 +176,39 @@ const REPORT_STRINGS = {
     'beds.sub': 'जिन बेड पर मरीज़ है उन्हें गिनें। सिस्टम के पास बेड का यही एक आँकड़ा है जो अनुमान नहीं है।',
     'beds.inpatient': 'भर्ती बेड जिन पर मरीज़ हैं', 'beds.daycare': 'डे-केयर बेड जिन पर मरीज़ हैं',
     'beds.save': 'बेड गिनती सेव करें', 'unit.bed': 'बेड', 'beds.inuse': 'पर मरीज़',
+    'voice.short': 'बहुत छोटा था। दबाएँ, बोलें, फिर दबाएँ।',
+    'voice.unsupported': 'यह फ़ोन यहाँ रिकॉर्ड नहीं कर सकता। दबाएँ या लिखें का इस्तेमाल करें।',
+    'rv.approve': 'मंज़ूर करें',
+    'rv.reject': 'रद्द करें',
+    'rv.qty': 'मात्रा',
+    'rv.type': 'क्या हुआ',
+    'rv.sure': 'भरोसा',
+    'rv.notstated': 'नहीं बताया',
+    'rv.empty': 'कुछ बाकी नहीं है। हाल की हर रिपोर्ट सीधे सेव हो गई।',
+    'rv.loading': 'लोड हो रहा है…',
+    'rv.loaderror': 'सूची लोड नहीं हुई। नेटवर्क देखें और फिर कोशिश करें।',
+    'rv.askqty': 'कितनी? यह रिपोर्ट रुकी है क्योंकि मात्रा साफ़ नहीं थी।',
+    'rv.cannot': 'यह मंज़ूर नहीं हो सका।',
+    'rv.ago.min': 'मिनट पहले',
+    'rv.ago.hr': 'घंटे पहले',
+    'rv.ago.day': 'दिन पहले',
+    'reason.noqty': 'मात्रा नहीं बताई गई',
+    'reason.lowconf': 'सिस्टम को ठीक से समझ नहीं आया',
+    'reason.nomatch': 'दवा का नाम पहचाना नहीं गया',
+    'reason.badevent': 'साफ़ नहीं था कि स्टॉक के साथ क्या हुआ',
+    'photo.error': 'फ़ोटो पढ़ी नहीं जा सकी। अच्छी रोशनी में, पन्ना सीधा रखकर फिर से लें।',
+    'scan.matching': 'स्कैन हो गया। दवा ढूँढ रहे हैं…',
+    'scan.askqty': 'कितनी?',
+    'scan.denied': 'कैमरा नहीं खुल सका।',
+    'work.busy': 'काम हो रहा है… कुछ सेकंड लगेंगे',
+    'work.retry': 'सिस्टम व्यस्त है। कुछ खोया नहीं; एक मिनट बाद फिर कोशिश करें।',
+    'chat.ph': 'जैसे: पैरासिटामोल की 200 गोलियाँ आईं, ORS आधा डिब्बा बचा',
+    'how.title': 'यह कैसे काम करता है',
+    'how.1': 'अपनी रिपोर्ट दबाकर, बोलकर, फ़ोटो लेकर, स्कैन करके या लिखकर दें।',
+    'how.2': 'Gemini आवाज़, लिखे शब्दों या रजिस्टर की फ़ोटो से दवा और मात्रा निकालता है।',
+    'how.3': 'हर दवा राष्ट्रीय सूची से मिलाई जाती है। AI कभी दवा का कोड नहीं बनाता।',
+    'how.4': 'आप इसे सुनकर हाँ कहते हैं। जो साफ़ नहीं है वह फार्मासिस्ट के लिए रुकता है।',
+    'reason.overstock': 'रिकॉर्ड में जितना स्टॉक है, उससे ज़्यादा दिया गया',
   },
   mr: {
     'report.title': 'साठा नोंदवा',
@@ -195,8 +261,8 @@ const REPORT_STRINGS = {
     'offline.now': 'आत्ता नेटवर्क नाही.',
     'offline.unsent': 'नोंदी या फोनवरून पाठवायच्या बाकी.',
     'online.unsent': 'नोंदी अजून पाठवायच्या बाकी.',
-    'voice.hold': 'दाबून धरा आणि बोला',
-    'voice.listening': 'ऐकत आहे… बोलून झाल्यावर सोडा',
+    'voice.hold': 'बटण दाबा आणि बोला',
+    'voice.listening': 'ऐकत आहे… बोलून झाल्यावर पुन्हा दाबा',
     'voice.working': 'समजून घेत आहे…',
     'voice.hint': 'मराठी, हिंदी, इंग्रजी किंवा मिसळून. उदा.: “पॅरासिटामॉलच्या २०० गोळ्या आल्या”',
     'voice.denied': 'मायक्रोफोनची परवानगी मिळाली नाही',
@@ -242,6 +308,39 @@ const REPORT_STRINGS = {
     'beds.save': 'बेडची संख्या जतन करा',
     'unit.bed': 'बेड',
     'beds.inuse': 'वापरात',
+    'voice.short': 'खूप लहान होते. दाबा, बोला, मग पुन्हा दाबा.',
+    'voice.unsupported': 'हा फोन इथे रेकॉर्ड करू शकत नाही. दाबा किंवा लिहा वापरा.',
+    'rv.approve': 'मंजूर करा',
+    'rv.reject': 'नाकारा',
+    'rv.qty': 'संख्या',
+    'rv.type': 'काय झाले',
+    'rv.sure': 'खात्री',
+    'rv.notstated': 'सांगितले नाही',
+    'rv.empty': 'काहीही बाकी नाही. अलीकडची प्रत्येक नोंद थेट जतन झाली.',
+    'rv.loading': 'लोड होत आहे…',
+    'rv.loaderror': 'यादी लोड झाली नाही. नेटवर्क तपासा आणि पुन्हा प्रयत्न करा.',
+    'rv.askqty': 'किती? ही नोंद थांबली आहे कारण संख्या स्पष्ट नव्हती.',
+    'rv.cannot': 'हे मंजूर होऊ शकले नाही.',
+    'rv.ago.min': 'मिनिटांपूर्वी',
+    'rv.ago.hr': 'तासांपूर्वी',
+    'rv.ago.day': 'दिवसांपूर्वी',
+    'reason.noqty': 'संख्या सांगितली नाही',
+    'reason.lowconf': 'प्रणालीला नीट समजले नाही',
+    'reason.nomatch': 'औषधाचे नाव ओळखता आले नाही',
+    'reason.badevent': 'साठ्याचे काय झाले ते स्पष्ट नव्हते',
+    'photo.error': 'फोटो वाचता आला नाही. चांगल्या प्रकाशात, पान सरळ ठेवून पुन्हा काढा.',
+    'scan.matching': 'स्कॅन झाले. औषध शोधत आहे…',
+    'scan.askqty': 'किती?',
+    'scan.denied': 'कॅमेरा उघडता आला नाही.',
+    'work.busy': 'काम सुरू आहे… काही सेकंद लागतील',
+    'work.retry': 'प्रणाली व्यस्त आहे. काहीही हरवले नाही; एका मिनिटाने पुन्हा प्रयत्न करा.',
+    'chat.ph': 'उदा.: पॅरासिटामॉलच्या 200 गोळ्या आल्या, ORS अर्धा डबा उरला',
+    'how.title': 'हे कसे काम करते',
+    'how.1': 'तुमची नोंद दाबून, बोलून, फोटो काढून, स्कॅन करून किंवा लिहून द्या.',
+    'how.2': 'Gemini आवाज, लिहिलेला मजकूर किंवा रजिस्टरच्या फोटोतून औषध आणि संख्या काढते.',
+    'how.3': 'प्रत्येक औषध राष्ट्रीय यादीशी जुळवले जाते. AI कधीही औषधाचा कोड तयार करत नाही.',
+    'how.4': 'तुम्ही ते ऐकून हो म्हणता. जे स्पष्ट नाही ते फार्मासिस्टसाठी थांबते.',
+    'reason.overstock': 'नोंदीतील साठ्यापेक्षा जास्त दिले गेले',
   },
   te: {
     'report.title': 'స్టాక్ నమోదు చేయండి',
@@ -294,8 +393,8 @@ const REPORT_STRINGS = {
     'offline.now': 'ప్రస్తుతం నెట్‌వర్క్ లేదు.',
     'offline.unsent': 'నమోదులు ఈ ఫోన్ నుండి పంపవలసి ఉంది.',
     'online.unsent': 'నమోదులు ఇంకా పంపవలసి ఉంది.',
-    'voice.hold': 'నొక్కి పట్టుకొని మాట్లాడండి',
-    'voice.listening': 'వింటోంది… పూర్తయ్యాక వదలండి',
+    'voice.hold': 'బటన్ నొక్కి మాట్లాడండి',
+    'voice.listening': 'వింటోంది… పూర్తయ్యాక మళ్ళీ నొక్కండి',
     'voice.working': 'అర్థం చేసుకుంటోంది…',
     'voice.hint': 'తెలుగు, హిందీ, ఇంగ్లీష్ లేదా కలిపి. ఉదా: “పారాసిటమాల్ 200 మాత్రలు వచ్చాయి”',
     'voice.denied': 'మైక్రోఫోన్ అనుమతి లభించలేదు',
@@ -341,6 +440,39 @@ const REPORT_STRINGS = {
     'beds.save': 'పడకల సంఖ్య సేవ్ చేయండి',
     'unit.bed': 'పడకలు',
     'beds.inuse': 'వాడుకలో',
+    'voice.short': 'చాలా చిన్నది. నొక్కండి, మాట్లాడండి, మళ్ళీ నొక్కండి.',
+    'voice.unsupported': 'ఈ ఫోన్ ఇక్కడ రికార్డ్ చేయలేదు. నొక్కండి లేదా టైప్ ఉపయోగించండి.',
+    'rv.approve': 'ఆమోదించు',
+    'rv.reject': 'తిరస్కరించు',
+    'rv.qty': 'సంఖ్య',
+    'rv.type': 'ఏమి జరిగింది',
+    'rv.sure': 'నమ్మకం',
+    'rv.notstated': 'చెప్పలేదు',
+    'rv.empty': 'ఏదీ పెండింగ్‌లో లేదు. ఇటీవలి ప్రతి నమోదు నేరుగా సేవ్ అయింది.',
+    'rv.loading': 'లోడ్ అవుతోంది…',
+    'rv.loaderror': 'జాబితా లోడ్ కాలేదు. నెట్‌వర్క్ చూసి మళ్ళీ ప్రయత్నించండి.',
+    'rv.askqty': 'ఎన్ని? సంఖ్య స్పష్టంగా లేనందున ఈ నమోదు ఆగింది.',
+    'rv.cannot': 'దీన్ని ఆమోదించలేకపోయాము.',
+    'rv.ago.min': 'నిమిషాల క్రితం',
+    'rv.ago.hr': 'గంటల క్రితం',
+    'rv.ago.day': 'రోజుల క్రితం',
+    'reason.noqty': 'సంఖ్య చెప్పలేదు',
+    'reason.lowconf': 'వ్యవస్థకు సరిగ్గా అర్థం కాలేదు',
+    'reason.nomatch': 'మందు పేరు గుర్తించబడలేదు',
+    'reason.badevent': 'స్టాక్‌కు ఏమి జరిగిందో స్పష్టంగా లేదు',
+    'photo.error': 'ఫోటో చదవలేకపోయాము. మంచి వెలుతురులో, పేజీని నిటారుగా ఉంచి మళ్ళీ తీయండి.',
+    'scan.matching': 'స్కాన్ అయింది. మందు కోసం వెతుకుతోంది…',
+    'scan.askqty': 'ఎన్ని?',
+    'scan.denied': 'కెమెరా తెరవలేకపోయాము.',
+    'work.busy': 'పని జరుగుతోంది… కొన్ని సెకన్లు పడుతుంది',
+    'work.retry': 'వ్యవస్థ బిజీగా ఉంది. ఏదీ పోలేదు; ఒక నిమిషం తర్వాత మళ్ళీ ప్రయత్నించండి.',
+    'chat.ph': 'ఉదా: పారాసిటమాల్ 200 మాత్రలు వచ్చాయి, ORS సగం పెట్టె మిగిలింది',
+    'how.title': 'ఇది ఎలా పనిచేస్తుంది',
+    'how.1': 'మీ నమోదును నొక్కి, మాట్లాడి, ఫోటో తీసి, స్కాన్ చేసి లేదా టైప్ చేసి ఇవ్వండి.',
+    'how.2': 'Gemini మాట, టైప్ చేసిన పాఠం లేదా రిజిస్టర్ ఫోటో నుండి మందు మరియు సంఖ్యను తీస్తుంది.',
+    'how.3': 'ప్రతి మందు జాతీయ జాబితాతో సరిపోల్చబడుతుంది. AI ఎప్పుడూ మందు కోడ్‌ను సృష్టించదు.',
+    'how.4': 'మీరు విని అవును అంటారు. స్పష్టంగా లేనిది ఫార్మసిస్ట్ కోసం ఆగుతుంది.',
+    'reason.overstock': 'రికార్డులో ఉన్న స్టాక్ కంటే ఎక్కువ ఇచ్చారు',
   },
   bn: {
     'report.title': 'স্টক জানান',
@@ -393,8 +525,8 @@ const REPORT_STRINGS = {
     'offline.now': 'এখন নেটওয়ার্ক নেই।',
     'offline.unsent': 'রিপোর্ট এই ফোন থেকে পাঠানো বাকি।',
     'online.unsent': 'রিপোর্ট এখনও পাঠানো বাকি।',
-    'voice.hold': 'চেপে ধরে বলুন',
-    'voice.listening': 'শুনছি… বলা হলে ছেড়ে দিন',
+    'voice.hold': 'বোতাম চেপে বলুন',
+    'voice.listening': 'শুনছি… বলা শেষ হলে আবার চাপুন',
     'voice.working': 'বুঝছি…',
     'voice.hint': 'বাংলা, হিন্দি, ইংরেজি বা মিশিয়ে। যেমন: “প্যারাসিটামল ২০০টা ট্যাবলেট এসেছে”',
     'voice.denied': 'মাইক্রোফোনের অনুমতি পাওয়া যায়নি',
@@ -440,6 +572,39 @@ const REPORT_STRINGS = {
     'beds.save': 'বেডের সংখ্যা সেভ করুন',
     'unit.bed': 'বেড',
     'beds.inuse': 'ব্যবহারে',
+    'voice.short': 'খুব ছোট ছিল। চাপুন, বলুন, তারপর আবার চাপুন।',
+    'voice.unsupported': 'এই ফোন এখানে রেকর্ড করতে পারে না। চাপুন বা লিখুন ব্যবহার করুন।',
+    'rv.approve': 'অনুমোদন',
+    'rv.reject': 'বাতিল',
+    'rv.qty': 'সংখ্যা',
+    'rv.type': 'কী হয়েছে',
+    'rv.sure': 'নিশ্চিত',
+    'rv.notstated': 'বলা হয়নি',
+    'rv.empty': 'কিছুই বাকি নেই। সাম্প্রতিক প্রতিটি রিপোর্ট সরাসরি সেভ হয়েছে।',
+    'rv.loading': 'লোড হচ্ছে…',
+    'rv.loaderror': 'তালিকা লোড হয়নি। নেটওয়ার্ক দেখে আবার চেষ্টা করুন।',
+    'rv.askqty': 'কতগুলো? সংখ্যা পরিষ্কার না থাকায় এই রিপোর্টটি আটকে আছে।',
+    'rv.cannot': 'এটি অনুমোদন করা যায়নি।',
+    'rv.ago.min': 'মিনিট আগে',
+    'rv.ago.hr': 'ঘণ্টা আগে',
+    'rv.ago.day': 'দিন আগে',
+    'reason.noqty': 'সংখ্যা বলা হয়নি',
+    'reason.lowconf': 'সিস্টেম ঠিকমতো বুঝতে পারেনি',
+    'reason.nomatch': 'ওষুধের নাম চেনা যায়নি',
+    'reason.badevent': 'স্টকের কী হয়েছে তা পরিষ্কার ছিল না',
+    'photo.error': 'ছবিটি পড়া যায়নি। ভালো আলোয়, পাতা সোজা রেখে আবার তুলুন।',
+    'scan.matching': 'স্ক্যান হয়েছে। ওষুধ খোঁজা হচ্ছে…',
+    'scan.askqty': 'কতগুলো?',
+    'scan.denied': 'ক্যামেরা খোলা যায়নি।',
+    'work.busy': 'কাজ চলছে… কয়েক সেকেন্ড লাগবে',
+    'work.retry': 'সিস্টেম ব্যস্ত। কিছুই হারায়নি; এক মিনিট পরে আবার চেষ্টা করুন।',
+    'chat.ph': 'যেমন: প্যারাসিটামল ২০০টা ট্যাবলেট এসেছে, ORS অর্ধেক বাক্স বাকি',
+    'how.title': 'এটি কীভাবে কাজ করে',
+    'how.1': 'আপনার রিপোর্ট চেপে, বলে, ছবি তুলে, স্ক্যান করে বা লিখে দিন।',
+    'how.2': 'Gemini কথা, লেখা বা রেজিস্টারের ছবি থেকে ওষুধ আর সংখ্যা বের করে।',
+    'how.3': 'প্রতিটি ওষুধ জাতীয় তালিকার সঙ্গে মেলানো হয়। AI কখনও ওষুধের কোড বানায় না।',
+    'how.4': 'আপনি শুনে হ্যাঁ বলেন। যা পরিষ্কার নয় তা ফার্মাসিস্টের জন্য অপেক্ষা করে।',
+    'reason.overstock': 'রেকর্ডে থাকা স্টকের চেয়ে বেশি দেওয়া হয়েছে',
   },
 };
 
@@ -478,6 +643,7 @@ function setLang(code) {
   renderBedsForm();
   renderCentre();
   updateOfflineLine();
+  if (typeof loadReviewQueue === 'function' && rq('review-list')) loadReviewQueue();
   // A read-back on screen is re-spoken in the new language, so the worker
   // who switched because they did not follow it hears it again.
   const rb = rq('report-readback');
@@ -794,7 +960,7 @@ function showReadback(rows, source, transcript, resourceType = 'medicine') {
     <ul class="rb-rows">${rows.map((r, i) => `
       <li class="rb-row ${r.review_reason ? 'rb-held' : ''}">
         <span class="rb-text">${escapeHtml(rowSentence(r))}</span>
-        ${r.review_reason ? `<span class="rb-reason">${escapeHtml(r.review_reason)}</span>` : ''}
+        ${r.review_reason ? `<span class="rb-reason">${escapeHtml(reasonText(r.review_reason))}</span>` : ''}
         <button class="rb-remove" onclick="removeReadbackRow(${i})" aria-label="${t('rb.remove')}">✕</button>
       </li>`).join('')}</ul>
     <div class="rb-actions">
@@ -813,16 +979,54 @@ function removeReadbackRow(i) {
 function hideReadback() {
   const host = rq('report-readback');
   if (host) { host.hidden = true; host.innerHTML = ''; }
+  stopSpeech();
+}
+
+// Why a report was held, in the worker's language. The server gives the
+// reason in English for the audit trail; the page shows it translated.
+function reasonText(reason) {
+  const r = String(reason || '');
+  if (/no quantity/i.test(r)) return t('reason.noqty');
+  if (/confidence/i.test(r)) return t('reason.lowconf');
+  if (/did not match/i.test(r)) return t('reason.nomatch');
+  if (/not a stock movement/i.test(r)) return t('reason.badevent');
+  if (/on record/i.test(r)) return t('reason.overstock');
+  return r;
+}
+window.reasonText = reasonText;
+
+// The read-back is spoken by Cloud Text-to-Speech. Phones have no Telugu,
+// Marathi or Bengali voice of their own: the phone engine skipped every word
+// it could not say and read out only the digits. The phone engine stays as
+// the fallback when the network call fails.
+let rbAudio = null;
+function stopSpeech() {
+  if (rbAudio) { try { rbAudio.pause(); } catch (e) { /* ignore */ } rbAudio = null; }
   if (window.speechSynthesis) window.speechSynthesis.cancel();
 }
-function speakReadback() {
-  if (!window.speechSynthesis || !readbackRows.length) return;
-  window.speechSynthesis.cancel();
-  const text = t('rb.title') + ' ' + readbackRows.map(rowSentence).join('. ');
+function speakWithPhone(text) {
+  if (!window.speechSynthesis) return;
   const u = new SpeechSynthesisUtterance(text);
   u.lang = (REPORT_LANGS.find(l => l[0] === reportLang) || REPORT_LANGS[0])[2];
   u.rate = 0.95;
   window.speechSynthesis.speak(u);
+}
+async function speakReadback() {
+  if (!readbackRows.length) return;
+  stopSpeech();
+  const text = t('rb.title') + ' ' + readbackRows.map(rowSentence).join('. ');
+  let blob = null;
+  try {
+    const res = await fetch('/api/v1/speak', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, lang: reportLang }) });
+    if (res.ok) blob = await res.blob();
+  } catch (e) { blob = null; }
+  if (!blob) { speakWithPhone(text); return; }
+  rbAudio = new Audio(URL.createObjectURL(blob));
+  // A phone may refuse to play sound the worker did not tap for; the
+  // Listen button is that tap.
+  rbAudio.play().catch(() => {});
 }
 window.removeReadbackRow = removeReadbackRow; window.hideReadback = hideReadback;
 window.speakReadback = speakReadback;
@@ -869,16 +1073,23 @@ window.confirmReadback = confirmReadback;
 // The server's preview reply becomes read-back rows. Called by app.js after a
 // voice or typed note, and here after a photo.
 function handlePreviewResponse(data, source, transcript) {
-  if (data.error) { setReportNote(data.error); return; }
+  if (data.error) {
+    setReportNote(data.retryable ? t('work.retry') : (source === 'photo' ? t('photo.error') : t('work.retry')), 'error');
+    return;
+  }
+  setReportNote('');
   const rows = [].concat(data.events || [], data.review_queue || []);
   showReadback(rows, source, transcript || data.raw_transcript || null);
 }
 window.handlePreviewResponse = handlePreviewResponse;
 
-function setReportNote(text) {
+function setReportNote(text, kind) {
   const el = rq('report-note');
-  if (el) el.textContent = text || '';
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'report-note' + (text && kind ? ' ' + kind : '');
 }
+window.setReportNote = setReportNote;
 
 // ===== Photo of the register =====
 async function onPhotoChosen(input) {
@@ -887,22 +1098,38 @@ async function onPhotoChosen(input) {
   if (!file) return;
   const prev = rq('photo-preview');
   if (prev) { prev.src = URL.createObjectURL(file); prev.hidden = false; }
-  setReportNote(t('photo.reading'));
+  setReportNote(t('photo.reading'), 'busy');
   try {
+    const small = await shrinkImage(file);
     const fd = new FormData();
-    fd.append('file', file, file.name || 'register.jpg');
+    fd.append('file', small, 'register.jpg');
     fd.append('facility_id', reportFacilityId());
     const res = await fetch('/api/v1/photo-note', { method: 'POST', body: fd });
     const data = await res.json();
-    setReportNote('');
     handlePreviewResponse(data, 'photo', null);
   } catch (e) {
-    setReportNote(t('error'));
+    setReportNote(t('error'), 'error');
   } finally {
     input.value = '';
   }
 }
 window.onPhotoChosen = onPhotoChosen;
+
+// A phone photo is 3-12 MB. Sent as it is, it crawls over a rural data
+// connection; the model needs nothing like that resolution to read a page.
+async function shrinkImage(file, maxSide = 1600, quality = 0.85) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', quality));
+    return blob && blob.size < file.size ? blob : file;
+  } catch (e) {
+    return file;
+  }
+}
 
 // ===== Staff on duty today =====
 // The one attendance figure the system will hold: what a centre reports,

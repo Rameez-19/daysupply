@@ -385,6 +385,80 @@ def write_to_ledger(records: list[dict]) -> tuple[int, str | None]:
         return 0, str(exc)
 
 
+# Movements that take stock off the shelf. Mirrors
+# ingestion.build_current_stock.CONSUMING_EVENT_TYPES, which is what the batch
+# view subtracts.
+CONSUMING = ("dispensed", "expired", "dispatched", "lost")
+
+
+def recorded_balance(pairs: list[tuple[str, str]]) -> dict[tuple[str, str], int]:
+    """Received minus consumed, per (facility, medicine), from the ledger."""
+    if not pairs:
+        return {}
+    from google.cloud import bigquery
+    from app.bq import run_query
+    keys = sorted({f"{f}|{i}" for f, i in pairs})
+    rows = run_query(f"""
+        SELECT facility_id, item_id,
+               SUM(IF(event_type = 'received', quantity, 0))
+                 - SUM(IF(event_type IN UNNEST(@consuming), quantity, 0)) AS balance
+        FROM `{os.getenv("GCP_PROJECT", "daysupply")}.{os.getenv("BQ_DATASET", "daysupply")}.resource_events`
+        WHERE resource_type = 'medicine'
+          AND CONCAT(facility_id, '|', item_id) IN UNNEST(@keys)
+        GROUP BY facility_id, item_id
+    """, [bigquery.ArrayQueryParameter("keys", "STRING", keys),
+          bigquery.ArrayQueryParameter("consuming", "STRING", list(CONSUMING))])
+    return {(r["facility_id"], r["item_id"]): int(r["balance"] or 0) for r in rows}
+
+
+def hold_overdraws(result: dict, balance_fn=None) -> dict:
+    """Hold any report that takes off the shelf more than the ledger holds.
+
+    Found in the first week of real phone captures: "Salbutamol ke pachas
+    tablet khatam ho gaye" at a centre with no Salbutamol on record wrote a
+    dispensing of 50 against a balance of 0. The ledger went negative, which
+    no shelf can be, and batch stock stopped reconciling with it. A report
+    like that usually means a receipt was never recorded, and deciding which
+    is exactly what the pharmacist's review is for. Receipts in the same
+    report are counted first, in order.
+
+    If the balance cannot be read, nothing is held: a lookup failure must not
+    lose a report.
+    """
+    events = result.get("events", [])
+    wanted = [(e["facility_id"], e["item_id"]) for e in events
+              if e.get("resource_type", "medicine") == "medicine"
+              and e.get("event_type") in CONSUMING and e.get("item_id")
+              and e.get("quantity") is not None]
+    if not wanted:
+        return result
+    try:
+        running = dict((balance_fn or recorded_balance)(wanted))
+    except Exception as exc:  # never block a capture on a read
+        log.warning("Could not read balances for the overdraw check: %s", exc)
+        return result
+    keep = []
+    for e in events:
+        key = (e.get("facility_id"), e.get("item_id"))
+        qty = e.get("quantity")
+        if e.get("resource_type", "medicine") != "medicine" or qty is None or not e.get("item_id"):
+            keep.append(e)
+            continue
+        have = running.get(key, 0)
+        if e.get("event_type") == "received":
+            running[key] = have + int(qty)
+        elif e.get("event_type") in CONSUMING:
+            if int(qty) > have:
+                e["review_reason"] = (f"{qty} {e.get('unit') or ''} {e['event_type']} is "
+                                      f"more than the {max(have, 0)} on record").replace("  ", " ")
+                result.setdefault("review_queue", []).append(e)
+                continue
+            running[key] = have - int(qty)
+        keep.append(e)
+    result["events"] = keep
+    return result
+
+
 def persist(result: dict) -> dict:
     """Store a capture, synchronously, above the confidence gate.
 
@@ -403,6 +477,7 @@ def persist(result: dict) -> dict:
     the extraction, so the result comes back either way with flags saying what
     was stored where.
     """
+    hold_overdraws(result)
     events = result.get("events", [])
     reviews = result.get("review_queue", [])
 

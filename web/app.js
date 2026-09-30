@@ -59,6 +59,46 @@ window.addEventListener('hashchange', () => {
 });
 // Reachable from the inline onclick in panelError().
 
+// ===== Lean view and the Explain switch =====
+// The officer pages are opened every day. After the first week nobody reads
+// the paragraph under a number; they read the number, what changed, and what
+// to do. So explanations are hidden by default and one switch, remembered on
+// this browser, brings every one of them back. The Report page and Evidence
+// are exempt: a health worker needs the instructions, and Evidence is the
+// explanation.
+const EXPLAIN_KEY = 'stockpulse.explain';
+function applyExplain(on) {
+  document.body.classList.toggle('lean', !on);
+  document.querySelectorAll('.explain-toggle').forEach(b => {
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.classList.toggle('on', on);
+  });
+}
+function toggleExplain() {
+  const on = document.body.classList.contains('lean');
+  try { localStorage.setItem(EXPLAIN_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+  applyExplain(on);
+}
+window.toggleExplain = toggleExplain;
+(function () {
+  let on = false;
+  try { on = localStorage.getItem(EXPLAIN_KEY) === '1'; } catch (e) { on = false; }
+  if (document.body) applyExplain(on);
+  else document.addEventListener('DOMContentLoaded', () => applyExplain(on));
+})();
+
+// ===== Auto-refresh =====
+// Stock moves all day. Pages that show the live position refresh themselves
+// every five minutes while the tab is visible, instead of relying on the
+// user to know that they should.
+const AUTO_REFRESH_VIEWS = ['today2-view', 'action-view', 'plan-view', 'map-view', 'network-view'];
+setInterval(() => {
+  if (document.visibilityState !== 'visible') return;
+  if (!AUTO_REFRESH_VIEWS.includes(activeViewId())) return;
+  if (document.querySelector('.brief-row:not([hidden])')) return;   // do not wipe a note being read
+  refreshAll();
+}, 5 * 60 * 1000);
+
 // ===== Online / Offline =====
 function updateSyncUI(online) {
   document.querySelectorAll('.sync-dot').forEach(d => d.className = online ? 'sync-dot online' : 'sync-dot offline');
@@ -369,36 +409,39 @@ function renderDashboardAlerts(alerts) {
 
 // ===== Review Queue =====
 async function loadReviewQueue() {
-  reviewList.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
+  reviewList.innerHTML = `<div class="empty-state"><p>${T('rv.loading', 'Loading…')}</p></div>`;
   try {
     const res = await fetch(`/api/v1/review-queue?${getFilterParams()}`);
     const data = await res.json();
     const countEl = document.getElementById('review-count');
     if (countEl) countEl.textContent = data.items && data.items.length ? String(data.items.length) : '';
     if (!data.items || !data.items.length) {
-      reviewList.innerHTML = '<div class="empty-state"><p>Nothing is waiting. Every recent report was confident enough to record directly.</p></div>';
+      reviewList.innerHTML = `<div class="empty-state"><p>${T('rv.empty', 'Nothing is waiting.')}</p></div>`;
       return;
     }
+    const unit = u => (typeof unitWord === 'function' ? unitWord(u) : (u && u !== 'unknown' ? u : ''));
+    const reason = r => (typeof reasonText === 'function' ? reasonText(r) : r);
     reviewList.innerHTML = data.items.map(item => `
       <div class="item-card" id="item-${item.event_id}">
         <div class="card-header">
-          <span style="font-weight:700; color:var(--gray-900);">${item.item_name || item.item_id}</span>
-          <span class="card-badge ${item.confidence < 0.4 ? 'badge-danger' : 'badge-warning'}">${Math.round(item.confidence * 100)}% confident</span>
+          <span class="card-title">${esc2(item.item_name || item.local_name || item.item_id || '?')}</span>
+          <span class="card-badge ${item.confidence < 0.4 ? 'badge-danger' : 'badge-warning'}">${Math.round(item.confidence * 100)}% ${T('rv.sure', 'sure')}</span>
         </div>
-        <div class="card-facility">${item.facility_name || item.facility_id} · ${timeAgo(item.created_at || item.event_ts)}</div>
-        <div class="card-transcript">"${item.raw_transcript}"</div>
+        ${item.review_reason ? `<div class="card-reason">${esc2(reason(item.review_reason))}</div>` : ''}
+        <div class="card-facility">${esc2(item.facility_name || item.facility_id)} · ${timeAgo(item.created_at || item.event_ts)}</div>
+        ${item.raw_transcript ? `<div class="card-transcript">“${esc2(item.raw_transcript)}”</div>` : ''}
         <div class="card-details">
-          <span class="card-detail-label">Quantity</span><span class="card-detail-value">${item.quantity === null || item.quantity === undefined ? 'not stated' : item.quantity} ${item.unit && item.unit !== 'unknown' ? item.unit : ''}</span>
-          <span class="card-detail-label">Type</span><span class="card-detail-value">${item.event_type}</span>
+          <span class="card-detail-label">${T('rv.qty', 'Quantity')}</span><span class="card-detail-value">${item.quantity === null || item.quantity === undefined ? T('rv.notstated', 'not said') : item.quantity} ${unit(item.unit)}</span>
+          <span class="card-detail-label">${T('rv.type', 'What happened')}</span><span class="card-detail-value">${T('evs.' + item.event_type, item.event_type)}</span>
         </div>
         <div class="card-actions">
-          <button class="btn btn-primary" onclick="approveItem('${item.event_id}')">✓ Approve</button>
-          <button class="btn btn-danger" onclick="rejectItem('${item.event_id}')">✗ Reject</button>
+          <button class="btn btn-primary" onclick="approveItem('${item.event_id}')">✓ ${T('rv.approve', 'Approve')}</button>
+          <button class="btn btn-danger" onclick="rejectItem('${item.event_id}')">✗ ${T('rv.reject', 'Reject')}</button>
         </div>
       </div>
     `).join('');
   } catch (e) {
-    reviewList.innerHTML = '<div class="empty-state"><p>Could not load review queue.</p></div>';
+    reviewList.innerHTML = `<div class="empty-state"><p>${T('rv.loaderror', 'Could not load the list.')}</p></div>`;
   }
 }
 
@@ -444,9 +487,7 @@ async function advanceTransfer(id, step) {
 
 async function approveItem(id) {
   const el = document.getElementById('item-' + id);
-  const qty = window.prompt(
-    "Quantity to record?\n\nThis item is in review because the amount was "
-    + "unclear. Approving needs the number.", "");
+  const qty = window.prompt(T('rv.askqty', 'How many?'), "");
   if (qty === null) return;
   try {
     const url = `/api/v1/review-queue/${id}/approve`
@@ -455,13 +496,13 @@ async function approveItem(id) {
     const data = await res.json();
     if (!res.ok) {
       const detail = data.detail || {};
-      alert(detail.reason || 'Could not approve this item.');
+      alert(T('rv.cannot', 'Could not approve this.'));
       return;
     }
     if (el) { el.style.opacity = '0.35'; el.style.pointerEvents = 'none'; }
     refreshAll();
   } catch (e) {
-    alert('Could not reach the server.');
+    alert(T('error', 'Could not reach the server.'));
   }
 }
 
@@ -478,8 +519,9 @@ function timeAgo(iso) {
   const ms = Date.now() - new Date(iso).getTime();
   if (isNaN(ms)) return '';
   const hrs = ms / 3600000;
-  if (hrs < 1) return Math.round(hrs * 60) + 'm ago';
-  return Math.floor(hrs / 24) + 'd ago';
+  if (hrs < 1) return Math.max(1, Math.round(hrs * 60)) + ' ' + T('rv.ago.min', 'min ago');
+  if (hrs < 24) return Math.floor(hrs) + ' ' + T('rv.ago.hr', 'h ago');
+  return Math.floor(hrs / 24) + ' ' + T('rv.ago.day', 'd ago');
 }
 
 // ===== Alerts =====
@@ -675,35 +717,67 @@ async function loadTransfers() {
 }
 
 // ===== MediaRecorder =====
-let mediaRecorder, audioChunks = [];
-micBtn.addEventListener('mousedown',  startRecording);
-micBtn.addEventListener('mouseup',    stopRecording);
-micBtn.addEventListener('touchstart', startRecording);
-micBtn.addEventListener('touchend',   stopRecording);
+// Tap to start, tap to stop. Press-and-hold failed on phones: the microphone
+// permission prompt interrupts the hold, so the release fired before the
+// recorder existed and the clip was a second long or never stopped. The
+// format is whatever the phone records (webm on Android, mp4 on iPhone),
+// labelled truthfully so the model is told what it is receiving.
+const T = (k, d) => (typeof t === 'function' ? t(k) : d);
+let mediaRecorder = null, audioChunks = [], recStart = 0, recTimer = null;
+if (micBtn) micBtn.addEventListener('click', toggleRecording);
 
-async function startRecording(e) {
-  e.preventDefault();
-  if (typeof requireCentre === 'function' && !requireCentre()) return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
-    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-    mediaRecorder.onstop = () => processAudio(new Blob(audioChunks, { type: 'audio/webm' }));
-    mediaRecorder.start();
-    micBtn.classList.add('recording'); micRing.classList.add('recording');
-    micStatus.textContent = typeof t === 'function' ? t('voice.listening') : 'Listening… release when done';
-    captureResult.classList.add('hidden');
-  } catch (err) { micStatus.textContent = typeof t === 'function' ? t('voice.denied') : 'Microphone access was refused'; }
+function pickAudioType() {
+  if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+  return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+    .find(m => MediaRecorder.isTypeSupported(m)) || '';
 }
 
-function stopRecording(e) {
-  e.preventDefault();
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop(); mediaRecorder.stream.getTracks().forEach(t => t.stop());
-    micBtn.classList.remove('recording'); micRing.classList.remove('recording');
-    micStatus.textContent = typeof t === 'function' ? t('voice.working') : 'Understanding…';
+async function toggleRecording(e) {
+  if (e) e.preventDefault();
+  if (mediaRecorder && mediaRecorder.state === 'recording') { stopRecording(); return; }
+  if (typeof requireCentre === 'function' && !requireCentre()) return;
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    micStatus.textContent = T('voice.unsupported', 'This phone cannot record here.');
+    return;
   }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    micStatus.textContent = T('voice.denied', 'Microphone access was refused');
+    return;
+  }
+  const type = pickAudioType();
+  mediaRecorder = type ? new MediaRecorder(stream, { mimeType: type }) : new MediaRecorder(stream);
+  audioChunks = [];
+  mediaRecorder.ondataavailable = ev => { if (ev.data && ev.data.size > 0) audioChunks.push(ev.data); };
+  mediaRecorder.onstop = () => {
+    stream.getTracks().forEach(tk => tk.stop());
+    const secs = (Date.now() - recStart) / 1000;
+    const mime = (mediaRecorder.mimeType || type || 'audio/webm').split(';')[0];
+    if (secs < 1 || !audioChunks.length) {
+      micStatus.textContent = T('voice.short', 'That was too short.');
+      return;
+    }
+    processAudio(new Blob(audioChunks, { type: mime }), mime);
+  };
+  mediaRecorder.start();
+  recStart = Date.now();
+  micBtn.classList.add('recording'); micRing.classList.add('recording');
+  captureResult.classList.add('hidden');
+  const tick = () => {
+    const s = Math.floor((Date.now() - recStart) / 1000);
+    micStatus.textContent = `${T('voice.listening', 'Listening… tap again when you finish')}  ${s}s`;
+    if (s >= 60) stopRecording();
+  };
+  tick(); recTimer = setInterval(tick, 500);
+}
+
+function stopRecording() {
+  clearInterval(recTimer);
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+  micBtn.classList.remove('recording'); micRing.classList.remove('recording');
+  micStatus.textContent = T('voice.hold', 'Tap the button and speak');
 }
 
 // The facility comes from the chooser on the Report page (remembered on the
@@ -713,9 +787,10 @@ function captureFacilityId() {
   return currentPHC || '';
 }
 
-async function processAudio(blob) {
+async function processAudio(blob, mime) {
   const facility_id = captureFacilityId();
-  const idle = typeof t === 'function' ? t('voice.hold') : 'Press and hold to speak';
+  const idle = T('voice.hold', 'Tap the button and speak');
+  const ext = /mp4/.test(mime || '') ? 'm4a' : /ogg/.test(mime || '') ? 'ogg' : 'webm';
   if (!navigator.onLine) {
     // No read-back is possible offline: the recording waits on the phone and
     // is extracted when the network returns, through the confidence gate.
@@ -727,14 +802,18 @@ async function processAudio(blob) {
   try {
     const fd = new FormData();
     fd.append("facility_id", facility_id);
-    fd.append("file", blob, "recording.webm");
+    fd.append("file", blob, "recording." + ext);
     fd.append("preview", "true");
+    if (typeof setReportNote === 'function') setReportNote(T('work.busy', 'Working…'), 'busy');
     const res = await fetch("/api/v1/voice-note", { method: "POST", body: fd });
     const data = await res.json();
     micStatus.textContent = idle;
     if (typeof handlePreviewResponse === 'function') handlePreviewResponse(data, 'voice', data.raw_transcript || null);
     else showCaptureResult(data);
-  } catch (e) { micStatus.textContent = typeof t === 'function' ? t('error') : 'Could not reach the server'; }
+  } catch (e) {
+    micStatus.textContent = idle;
+    if (typeof setReportNote === 'function') setReportNote(T('error', 'Could not reach the server'), 'error');
+  }
 }
 
 // What was written, in the worker's words: saved, or held for the
@@ -953,7 +1032,7 @@ async function sendChatNote() {
   if (!message) return;
   if (typeof requireCentre === 'function' && !requireCentre()) return;
   const note = document.getElementById('report-note');
-  if (note) note.textContent = typeof t === 'function' ? t('voice.working') : 'Understanding…';
+  if (typeof setReportNote === 'function') setReportNote(T('work.busy', 'Working…'), 'busy');
   try {
     const fd = new FormData();
     fd.append('message', message);
@@ -961,12 +1040,11 @@ async function sendChatNote() {
     fd.append('preview', 'true');
     const res = await fetch('/api/v1/chat-note', { method: 'POST', body: fd });
     const data = await res.json();
-    if (note) note.textContent = '';
     if (typeof handlePreviewResponse === 'function') handlePreviewResponse(data, 'chat', message);
     else showCaptureResult(data);
     if (!data.error) box.value = '';
   } catch (e) {
-    if (note) note.textContent = typeof t === 'function' ? t('error') : 'Could not reach the server.';
+    if (typeof setReportNote === 'function') setReportNote(T('error', 'Could not reach the server.'), 'error');
   }
 }
 window.sendChatNote = sendChatNote;
@@ -976,7 +1054,7 @@ function startScanner() {
   html5QrcodeScanner = new Html5Qrcode("reader");
   const config = { fps: 10, qrbox: { width: 250, height: 250 } };
   html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
-    .catch(err => { alert("Camera access denied or unavailable."); });
+    .catch(err => { alert(T('scan.denied', 'The camera could not be opened.')); });
 }
 
 function stopScanner() {
@@ -992,14 +1070,12 @@ async function onScanSuccess(decodedText) {
   stopScanner();
   if (typeof requireCentre === 'function' && !requireCentre()) return;
   const status = document.getElementById('report-note');
-  if (status) status.textContent = `Scanned ${decodedText.substring(0, 24)} — matching…`;
+  if (status) status.textContent = T('scan.matching', 'Scanned. Finding the medicine…');
   try {
     const fd = new FormData();
     fd.append('code', decodedText);
     fd.append('facility_id', captureFacilityId());
-    const qty = window.prompt(`Scanned ${decodedText}
-
-How many units?`, '');
+    const qty = window.prompt(T('scan.askqty', 'How many?') + '  (' + decodedText + ')', '');
     if (qty !== null && qty !== '') fd.append('quantity', parseInt(qty, 10));
     const res = await fetch('/api/v1/barcode-scan', { method: 'POST', body: fd });
     showCaptureResult(await res.json());
@@ -1244,7 +1320,7 @@ function triageRow(r, showDeadline) {
       ${showDeadline ? `<td class="net-num">${r.lead_time_days}d</td>` : ''}
       <td class="net-num">${(r.shortfall || 0).toLocaleString('en-IN')} ${esc2(r.unit || '')}</td>
       ${showDeadline ? `<td class="net-act"><button class="btn btn-secondary btn-brief"
-          onclick="draftBrief('${esc2(r.facility_id)}','${esc2(r.item_id)}',this)">Draft note</button></td>` : ''}
+          onclick="draftBrief('${esc2(r.facility_id)}','${esc2(r.item_id)}',this)" title="Draft an escalation note with Gemini">✎ Draft</button></td>` : ''}
     </tr>
     ${showDeadline ? `<tr class="brief-row" id="brief-${esc2(r.facility_id)}-${esc2(r.item_id)}" hidden><td colspan="6"></td></tr>` : ''}`;
 }

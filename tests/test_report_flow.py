@@ -166,7 +166,7 @@ def gemini(monkeypatch):
     models = _Models('[{"local_name": "paracetamol", "event_type": "received",'
                      ' "quantity": 200, "unit": "tablet", "confidence": 0.9}]')
     monkeypatch.setattr(capture, "_get_client",
-                        lambda: type("C", (), {"models": models})())
+                        lambda *a, **k: type("C", (), {"models": models})())
     return models
 
 
@@ -223,7 +223,7 @@ class TestSms:
                          '"received", "quantity": null, "unit": "tablet", '
                          '"confidence": 0.9}]')
         monkeypatch.setattr(capture, "_get_client",
-                            lambda: type("C", (), {"models": models})())
+                            lambda *a, **k: type("C", (), {"models": models})())
         out = capture.handle_sms("", "IN-155740 paracetamol kuch aaye")
         assert out["reply"].startswith("HELD Paracetamol: no quantity")
 
@@ -315,3 +315,43 @@ class TestTheReportPageStrings:
         sw = (WEB / "sw.js").read_text(encoding="utf-8")
         assert '<script src="report.js">' in html
         assert "'/report.js'" in sw
+
+
+
+class TestNothingTakesTheShelfBelowZero:
+    """A report of more given out than the ledger holds is held for review."""
+
+    def _result(self, *events):
+        return {"events": [dict(e) for e in events], "review_queue": []}
+
+    def _ev(self, event_type, qty, item="SALBUTAMOL"):
+        return {"facility_id": "IN-1", "item_id": item, "resource_type": "medicine",
+                "event_type": event_type, "quantity": qty, "unit": "tablet"}
+
+    def test_dispensing_more_than_is_on_record_is_held(self):
+        out = capture_pipeline.hold_overdraws(
+            self._result(self._ev("dispensed", 50)), balance_fn=lambda p: {})
+        assert not out["events"]
+        assert "more than the 0 on record" in out["review_queue"][0]["review_reason"]
+
+    def test_a_receipt_in_the_same_report_counts_first(self):
+        out = capture_pipeline.hold_overdraws(
+            self._result(self._ev("received", 100), self._ev("dispensed", 60)),
+            balance_fn=lambda p: {})
+        assert [e["event_type"] for e in out["events"]] == ["received", "dispensed"]
+
+    def test_within_the_balance_is_written(self):
+        out = capture_pipeline.hold_overdraws(
+            self._result(self._ev("lost", 5)),
+            balance_fn=lambda p: {("IN-1", "SALBUTAMOL"): 20})
+        assert out["events"] and not out["review_queue"]
+
+    def test_a_failed_lookup_never_loses_a_report(self):
+        def boom(p):
+            raise RuntimeError("bigquery down")
+        out = capture_pipeline.hold_overdraws(self._result(self._ev("dispensed", 9)), balance_fn=boom)
+        assert out["events"]
+
+    def test_the_page_translates_the_reason(self):
+        src = (WEB / "report.js").read_text(encoding="utf-8")
+        assert "on record" in src and "reason.overstock" in src

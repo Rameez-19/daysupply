@@ -65,6 +65,10 @@
         <!-- Stamped by the server with the hash of the front end it served,
              so the build the BROWSER is running is visible rather than
              guessed at. app.js compares it with /api/v1/build. -->
+        <button class="explain-toggle" id="explain-toggle" onclick="toggleExplain()"
+                aria-pressed="false" title="Show or hide the explanations under each number">
+          <span class="explain-i">i</span><span class="explain-label">Explain</span>
+        </button>
         <div class="build-stamp" id="build-stamp"
              title="The front-end build this browser is running">__BUILD__</div>
       </div>
@@ -79,6 +83,8 @@
           <img src="logo.jpg" alt="StockPulse" class="topbar-logo">
           <h1 class="topbar-title">StockPulse</h1>
         </div>
+        <button class="explain-toggle compact" id="explain-toggle-mobile" onclick="toggleExplain()"
+                aria-pressed="false" title="Show or hide explanations"><span class="explain-i">i</span></button>
         <div class="sync-badge" id="sync-status-mobile">
           <span class="sync-dot online"></span>
           <span class="sync-label">Online</span>
@@ -160,6 +166,11 @@
 
         <!-- One graded verdict for the whole network, before the tiles that
              break it down. Medicines only; hidden for beds and staff. -->
+        <!-- Today's work, as buttons with live counts. The first thing a
+             user sees every visit is what to do next, not how it was worked
+             out. -->
+        <div id="v2-tasks" class="task-bar"></div>
+
         <div id="v2-verdict" hidden></div>
 
         <div id="v2-kpis" class="v2-kpi-row"></div>
@@ -422,11 +433,11 @@
         <div class="capture-card report-card" id="mode-voice" hidden>
           <div class="capture-visual">
             <div class="mic-ring" id="mic-ring">
-              <button id="mic-btn" class="mic-btn" aria-label="Hold to record">
+              <button id="mic-btn" class="mic-btn" aria-label="Tap to record">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
               </button>
             </div>
-            <p class="mic-instruction" id="mic-status" data-i18n="voice.hold">Press and hold to speak</p>
+            <p class="mic-instruction" id="mic-status" data-i18n="voice.hold">Tap the button and speak</p>
             <p class="mic-hint" data-i18n="voice.hint">Hindi, English or both. Example: “Paracetamol ke 200 tablet aaye hain”</p>
           </div>
         </div>
@@ -451,8 +462,8 @@
 
         <div class="capture-card report-card" id="mode-chat" hidden>
           <p class="capture-hint" data-i18n="chat.hint">Type it the way you would say it.</p>
-          <textarea id="chat-input" rows="3" class="chat-input"
-            placeholder="paracetamol ke do sau tablet aaye hain, ORS ka packet khatam ho gaya"></textarea>
+          <textarea id="chat-input" rows="3" class="chat-input" data-i18n-ph="chat.ph"
+            placeholder="e.g. paracetamol 200 tablets came in, ORS half a box left"></textarea>
           <button class="btn btn-primary btn-full" onclick="sendChatNote()" data-i18n="chat.send">Send</button>
         </div>
 
@@ -482,24 +493,12 @@
         </div>
 
         <details class="how-it-works">
-          <summary>How it works</summary>
+          <summary data-i18n="how.title">How it works</summary>
           <div class="steps">
-            <div class="step">
-              <div class="step-num">1</div>
-              <div class="step-text"><strong>Tap, speak, photograph, scan or type.</strong> Six ways in, one pipeline.</div>
-            </div>
-            <div class="step">
-              <div class="step-num">2</div>
-              <div class="step-text"><strong>Gemini</strong> turns speech, text or a photographed register page into item, quantity and event type. Tapped tiles and barcodes need no model.</div>
-            </div>
-            <div class="step">
-              <div class="step-num">3</div>
-              <div class="step-text"><strong>Matched server-side</strong> against the full National List of Essential Medicines. The model is never asked for a drug code.</div>
-            </div>
-            <div class="step">
-              <div class="step-num">4</div>
-              <div class="step-text"><strong>Read back and confirmed</strong> in Hindi or English. Confident, confirmed rows go straight into the stock position; anything doubtful waits for the pharmacist.</div>
-            </div>
+            <div class="step"><div class="step-num">1</div><div class="step-text" data-i18n="how.1">Tap, speak, photograph, scan or type your report.</div></div>
+            <div class="step"><div class="step-num">2</div><div class="step-text" data-i18n="how.2">Gemini turns speech, text or a photo of the register into medicines and amounts.</div></div>
+            <div class="step"><div class="step-num">3</div><div class="step-text" data-i18n="how.3">Every medicine is matched to the national list. The AI never invents a drug code.</div></div>
+            <div class="step"><div class="step-num">4</div><div class="step-text" data-i18n="how.4">You hear it read back and say yes. Anything unclear waits for the pharmacist.</div></div>
           </div>
         </details>
       </section>

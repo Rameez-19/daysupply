@@ -45,9 +45,11 @@ class TestMedicinePathUnchanged:
         "beds and personnel were loaded" now proves beds are there and
         generated attendance has not come back.
         """
+        # Scoped to generated rows: since 2026-09-29 centres report who is on
+        # duty through the Report page, and those captured counts are real.
         other = run_query("""
             SELECT COUNTIF(resource_type = 'bed') AS bed,
-                   COUNTIF(resource_type = 'personnel') AS personnel
+                   COUNTIF(resource_type = 'personnel' AND source = 'seed') AS personnel
             FROM `daysupply.daysupply.resource_events`
         """)[0]
         assert other["bed"] > 0, "bed events were never loaded"
