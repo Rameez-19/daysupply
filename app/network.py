@@ -263,7 +263,7 @@ def medicine_comparison(state: str = "", vital_only: bool = False) -> dict:
     where = _geo(state) + (" AND ven_class = 'Vital'" if vital_only else "")
     rows = run_query(f"""
     WITH d AS (
-      SELECT district, ANY_VALUE(state) AS state,
+      SELECT district, state,
              COUNT(*) AS tracked,
              COUNT(DISTINCT facility_id) AS centres,
              ROUND(100 * SAFE_DIVIDE(COUNTIF(NOT needs_reorder), COUNT(*)), 1) AS score,
@@ -275,7 +275,7 @@ def medicine_comparison(state: str = "", vital_only: bool = False) -> dict:
              ROUND(AVG(distance_to_hq_km), 0) AS km
       FROM `{D}.reorder_status`
       WHERE {where}
-      GROUP BY district
+      GROUP BY state, district
       HAVING tracked >= {MIN_FOR_RATE})
     SELECT * FROM d ORDER BY score
     """, _params(state), cache_key=f"net:med:{state}:{int(vital_only)}", ttl=300)
@@ -288,7 +288,7 @@ def medicine_comparison(state: str = "", vital_only: bool = False) -> dict:
              AVG(distance_to_hq_km) AS km
       FROM `{D}.reorder_status`
       WHERE {where}
-      GROUP BY district
+      GROUP BY state, district
       HAVING tracked >= {MIN_FOR_RATE})
     SELECT band, sort_order, COUNT(*) AS districts,
            ROUND(AVG(score), 1) AS mean_score,
@@ -318,7 +318,7 @@ def medicine_comparison(state: str = "", vital_only: bool = False) -> dict:
 def bed_comparison(state: str = "") -> dict:
     where = _geo(state)
     rows = run_query(f"""
-    SELECT district, ANY_VALUE(state) AS state,
+    SELECT district, state,
            COUNT(*) AS tracked, COUNT(*) AS centres,
            ROUND(100 * SAFE_DIVIDE(SUM(free_beds), SUM(bed_capacity)), 1) AS score,
            ROUND(100 * SAFE_DIVIDE(COUNTIF(status = 'over_capacity'), COUNT(*)), 1) AS secondary,
@@ -327,7 +327,7 @@ def bed_comparison(state: str = "") -> dict:
            CAST(NULL AS FLOAT64) AS km
     FROM `{D}.bed_status`
     WHERE {where}
-    GROUP BY district
+    GROUP BY state, district
     ORDER BY score
     """, _params(state), cache_key=f"net:bed:{state}", ttl=300)
 

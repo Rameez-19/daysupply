@@ -124,7 +124,14 @@ def invalidate(*keys: str) -> None:
 STOCK_DEPENDENT_PREFIXES = (
     "alerts:", "recs:", "subs:", "health:", "shortages:",
     "supply-sum:", "transfer-sum:", "impact", "quality:captures",
+    # The officer pages: Today, the Action queue, the access scorecard, the
+    # Network page and the transfers on the map; and bed and staff status,
+    # which a bed or staff report changes.
+    "v2:", "v2bed:", "v2staff:", "reported:", "triage:", "access:", "net:",
+    "map:", "beds:", "staff:",
 )
+# Under a stock-dependent prefix, but a capture cannot change it.
+STOCK_INDEPENDENT_KEYS = frozenset({"v2:geography"})
 
 
 def invalidate_stock_reads() -> None:
@@ -142,7 +149,8 @@ def invalidate_stock_reads() -> None:
     """
     with _cache_lock:
         for key in [k for k in _cache
-                    if k.startswith(STOCK_DEPENDENT_PREFIXES)]:
+                    if k.startswith(STOCK_DEPENDENT_PREFIXES)
+                    and k not in STOCK_INDEPENDENT_KEYS]:
             del _cache[key]
 
 
