@@ -6,6 +6,10 @@ notes, keeps the stock ledger and the forecasting model in **BigQuery**, and
 holds reports awaiting review in **Firestore** (Firebase). Everything runs in
 the Google Cloud project `daysupply`, region `asia-south1` (Mumbai).
 
+![StockPulse architecture: every tool and technology, and the path one report takes](architecture-google-cloud.png)
+
+The diagram's source is [`architecture-google-cloud.html`](architecture-google-cloud.html). The data behind it is listed in [`DATA_SOURCES.md`](DATA_SOURCES.md).
+
 ```mermaid
 flowchart TD
     subgraph Phone["Health worker's phone (PWA, works offline)"]
@@ -60,7 +64,7 @@ flowchart TD
    the numbers within seconds.
 6. **Forecast and act.** BigQuery ML ARIMA_PLUS forecasts demand per centre
    and medicine; the reorder point is `μ × L + 1.65 σ √L` with L from
-   BigQuery GIS road distance. Shortages are split into transfer, order or
+   BigQuery GIS straight-line distance. Shortages are split into transfer, order or
    escalate, and Gemini drafts the escalation note from the row's own figures
    (`prompts/escalation_note_system.txt`), with every number checked.
 

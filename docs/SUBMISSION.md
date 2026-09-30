@@ -8,9 +8,9 @@ solo submission.
 | Requirement | Where it is met |
 |---|---|
 | **Theme alignment** | Resilience, Track 3. Every line of the track's brief maps to a working feature: medicine stock, beds and staff, demand forecasting, early warning, cross-district redistribution, and modelling shared across states. See the deck, slide 4. |
-| **Public GitHub repository**, with the app logic, prompt configuration and running instructions | App logic in [`app/`](../app) and [`web/`](../web); every Gemini prompt and the model chain in [`prompts/`](../prompts), with an edge-case eval in [`evals/`](../evals); running instructions in [README → Running StockPulse](../README.md#running-stockpulse) |
-| **Architecture overview**: Google Cloud (Cloud Run, Firebase) with the Gemini API | [`ARCHITECTURE.md`](ARCHITECTURE.md): Cloud Run hosts the app and API, Gemini on Vertex AI reads reports and drafts notes, Firestore (Firebase) holds the review queue, BigQuery and BigQuery ML hold the ledger and the forecasts, Cloud Text-to-Speech reads reports back. Deck, slide 7. |
-| **Project pitch deck** | 13 slides, organised by the judging criteria (kept outside the repository with the video) |
+| **Public GitHub repository**, with the app logic, prompt configuration and running instructions | App logic in [`app/`](../app) and [`web/`](../web); every Gemini prompt and the model chain in [`prompts/`](../prompts), with an edge-case eval in [`evals/`](../evals); running instructions in [README → Running StockPulse](../README.md#running-stockpulse); every dataset in [`DATA_SOURCES.md`](DATA_SOURCES.md) |
+| **Architecture overview**: Google Cloud (Cloud Run, Firebase) with the Gemini API | [`ARCHITECTURE.md`](ARCHITECTURE.md): Cloud Run hosts the app and API, Gemini on Vertex AI reads reports and drafts notes, Firestore (Firebase) holds the review queue, BigQuery and BigQuery ML hold the ledger and the forecasts, Cloud Text-to-Speech reads reports back. Diagram: [`architecture-google-cloud.png`](architecture-google-cloud.png). Deck, slide 7. |
+| **Project pitch deck** | 14 slides and a 4-slide appendix (data sources, all of India, what is real, every tool), organised by the judging criteria (kept outside the repository with the video) |
 
 Before submitting:
 

@@ -12,6 +12,7 @@ Built for **Build with AI: Code for Communities, 2nd Edition**.
 | **Google AI** | Gemini Flash on Vertex AI (reads voice, text and register photos; drafts escalation notes) · BigQuery ML ARIMA_PLUS (demand forecasting) · Cloud Text-to-Speech (read-back in five Indian languages) |
 | **Google Cloud** | Cloud Run · BigQuery · BigQuery GIS · Firestore (Firebase) |
 | **Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| **Data sources** | [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md): every dataset, its publisher, and how much is loaded |
 | **Prompts** | [`prompts/`](prompts/) — every Gemini instruction and the model chain, as files |
 | **Running it** | [Running StockPulse](#running-stockpulse) below |
 
@@ -164,6 +165,8 @@ the forecasting model in **BigQuery**, speaks read-backs with **Cloud
 Text-to-Speech**, and holds reports awaiting review in **Firestore**. The full
 diagram and the path of one report are in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+![StockPulse architecture: every tool and technology, and the path one report takes](docs/architecture-google-cloud.png)
 
 ```
 Health worker's phone (PWA, offline queue)      Officer's browser

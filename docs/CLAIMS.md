@@ -102,6 +102,7 @@ Verified against the live BigQuery dataset on **2026-09-02**, after
 | Staff posts filled | 77.8% | **71.6%** of 1,361 sanctioned posts, 23 state-and-cadre roles | REAL SOURCE, DERIVED | `today_v2.staff_scorecard` |
 | Worst state and role | Rajasthan pharmacist, 56.2% vacant | **Uttar Pradesh health assistant, 81.5% vacant** | REAL (RHS 2021-22) | same |
 | Nurses below the bed norm | 11 | **86** | REAL SOURCE, DERIVED | same |
+| National forecast scope, if every PHC ran | — | **29,733 PHCs × 39 forecast medicines = 1,159,587 candidate series; at today's training rate (3,818 of 275 × 39 = 10,725, 35.6%) about 413,000 trained series, over 80× the 5,000-series cost guard.** HMIS files for every state and UT are on disk; only six are parsed, ledgered and trained | DERIVED (arithmetic on the rows above) | `docs/DATA_SOURCES.md`, `ingestion/train_forecast.py` ceiling check |
 | Gemini backend and models | AI Studio API key; gemini-3.6-flash, fallback gemini-2.5-flash | **Vertex AI, as the Cloud Run service identity. Newest Flash first (prompts/models.json): gemini-3.8, 3.7, 3.6-flash (global), then gemini-3.5 and 2.5-flash (asia-south1, Mumbai).** SDK-internal retries off; the chain is the only retry policy The API key's quota ran out on 2026-09-30 and voice notes took 140-176 s; each call now has a 25 s timeout | REAL config | `app/capture.py` |
 | Languages verified end to end through Vertex AI, 2026-09-30 | — | **Telugu voice; Bengali, Marathi and Telugu text: every medicine extracted and matched to the catalogue.** Names now come back in Latin letters; in Telugu script they failed to match | MEASURED (live calls) | `app/capture.py` SYSTEM_PROMPT |
 | Spoken read-back | the phone's own speech engine | **Cloud Text-to-Speech in en-IN, hi-IN, mr-IN, te-IN, bn-IN**, phone engine as fallback. Phones lacked Telugu, Marathi and Bengali voices and read only the digits | REAL feature | `app/speech.py`, `POST /api/v1/speak` |
@@ -411,7 +412,7 @@ genuinely means the same tablet count. **34 distinct volumes across 36 classes.*
 | Figure | Derived from | Status | Computed in |
 |---|---|---|---|
 | **1,157,367 stock events**, 200 facilities × 39 items × 365 days | generated ledger, 2025-08-30 → 2026-08-29 | **GENERATED**, HMIS-anchored | `ingestion/generate_usage.py` |
-| **Lead times 7–19 days** | real road distance to district HQ; days-per-km is a **documented proxy** | **REAL DISTANCE, ASSUMED CONVERSION** | `ingestion/set_lead_times.py` |
+| **Lead times 7–19 days** | real straight-line distance to district HQ (`ST_DISTANCE`, so a floor on the road journey); days-per-km is a **documented proxy** | **REAL DISTANCE, ASSUMED CONVERSION** | `ingestion/set_lead_times.py` |
 | **2,794 reorder rows** | one per forecast facility-item; stable | **MEASURED** | `ingestion/build_supply_plan.py` (view) |
 | **597 open alerts** | `on_hand <= μ×L + 1.65σ√L` | **MEASURED — LIVE** | same; was 599 before two test captures cleared two |
 | **527 transfer recommendations**, **64,218 units** | FEFO batch selection, donor protection, 150 km radius | **MEASURED — LIVE** | same; was 525 / 64,211 before captures added stock |
@@ -668,7 +669,7 @@ those existed the whole time, in row three hundred of a list nobody could work
 through.
 
 **"Too late" means `days_of_cover < lead_time_days`** — the stock runs out
-before a delivery could physically arrive. Lead time comes from real road
+before a delivery could physically arrive. Lead time comes from real straight-line
 distance to the district headquarters with a documented days-per-km conversion:
 the distance is real, the conversion is a stated proxy.
 

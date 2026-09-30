@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>StockPulse Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  :root {
+    --ink: #0E2A33; --teal: #0B7A75; --tealDark: #0A5C58; --tint: #E6F3F1; --tint2: #F3F8F7;
+    --saffron: #E8A33D; --saffronTint: #FDF3E3; --saffronDark: #9A5B12;
+    --blue: #2F6FB5; --blueTint: #EAF1FA; --coral: #D9603B; --coralTint: #FCEDE7;
+    --text: #1B2B32; --muted: #5A6B72; --line: #D5E3E1; --bg: #F7FAF9; --white: #FFFFFF;
+  }
+  @page { size: 1600px 1200px; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1600px; height: 1200px; background: var(--bg); }
+  body { font-family: Inter, "Segoe UI", sans-serif; color: var(--text); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .canvas { position: relative; width: 1600px; height: 1200px; overflow: hidden; }
+  .abs { position: absolute; }
+  svg.wires { position: absolute; left: 0; top: 0; z-index: 0; }
+  .box { position: absolute; z-index: 1; border-radius: 14px; }
+
+  /* header */
+  .logo { left: 40px; top: 30px; width: 70px; height: 70px; border-radius: 50%; background: var(--white);
+          border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; }
+  .logo img { width: 62px; height: 62px; object-fit: contain; }
+  h1 { position: absolute; left: 128px; top: 30px; font-size: 34px; font-weight: 800; letter-spacing: -0.5px; color: var(--ink); }
+  .sub { position: absolute; left: 128px; top: 76px; font-size: 16px; color: var(--muted); }
+  .pills { position: absolute; right: 40px; top: 34px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .pill { font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 999px; background: var(--tint); color: var(--tealDark); }
+  .pill.dark { background: var(--ink); color: var(--saffron); }
+
+  .colhead { position: absolute; top: 128px; font-size: 12px; font-weight: 700; letter-spacing: 1.6px; color: var(--muted); text-transform: uppercase; }
+
+  /* people */
+  .person { width: 260px; height: 152px; background: var(--white); border: 1px solid var(--line); padding: 14px 16px; }
+  .person .ic { width: 34px; height: 34px; border-radius: 50%; background: var(--teal); color: #fff; display: grid; place-items: center; font-size: 15px; }
+  .person h3 { font-size: 15.5px; font-weight: 700; margin-top: 8px; }
+  .person .pg { font-size: 12px; font-weight: 700; color: var(--tealDark); margin-top: 2px; }
+  .person p { font-size: 12.5px; color: var(--muted); margin-top: 5px; line-height: 1.35; }
+
+  /* front end */
+  .pwa { left: 360px; top: 160px; width: 280px; height: 670px; background: var(--white); border: 1.5px solid var(--teal); padding: 20px 20px; }
+  .pwa .ic, .run .ic { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; font-size: 21px; }
+  .pwa .ic { background: var(--teal); color: #fff; }
+  .pwa h2, .run h2 { font-size: 20px; font-weight: 800; margin-top: 12px; }
+  .pwa .kind { font-size: 12.5px; color: var(--tealDark); font-weight: 600; margin-top: 3px; }
+  ul.feat { list-style: none; margin-top: 16px; display: flex; flex-direction: column; gap: 11px; }
+  ul.feat li { display: grid; grid-template-columns: 22px 1fr; font-size: 12.5px; line-height: 1.32; color: var(--text); }
+  ul.feat li i { color: var(--teal); font-size: 13px; margin-top: 2px; }
+  ul.feat li b { font-weight: 700; }
+  .langs { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--tint2); font-size: 12.5px; line-height: 1.5; }
+  .langs b { display: block; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+
+  /* back end */
+  .run { left: 700px; top: 160px; width: 300px; height: 670px; background: var(--ink); color: #fff; padding: 20px 20px; }
+  .run .ic { background: var(--saffron); color: var(--ink); }
+  .run .kind { font-size: 12.5px; color: var(--saffron); font-weight: 600; margin-top: 3px; line-height: 1.45; }
+  .run .mods { margin-top: 16px; display: flex; flex-direction: column; gap: 7px; }
+  .mod { background: #163D48; border: 1px solid #1F5260; border-radius: 9px; padding: 7px 10px; font-size: 12.5px; line-height: 1.3; color: #D6E7E5; }
+  .mod b { color: #fff; font-weight: 700; }
+  .run .sdk { position: absolute; left: 20px; right: 20px; bottom: 18px; font-size: 11.5px; color: #A9C9C6; line-height: 1.45; border-top: 1px solid #1F5260; padding-top: 10px; }
+
+  /* services */
+  .svc { left: 1070px; width: 490px; height: 100px; background: var(--white); border: 1px solid var(--line); padding: 12px 14px 10px 14px;
+         display: grid; grid-template-columns: 56px 1fr; column-gap: 12px; }
+  .svc .ic { width: 52px; height: 52px; border-radius: 12px; display: grid; place-items: center; font-size: 22px; color: #fff; margin-top: 4px; }
+  .svc .t { display: flex; align-items: center; gap: 8px; }
+  .svc h3 { font-size: 16px; font-weight: 700; }
+  .tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; }
+  .svc p { font-size: 12.5px; color: var(--muted); line-height: 1.36; margin-top: 3px; }
+  .svc.ai { background: var(--saffronTint); border-color: var(--saffron); }
+  .svc.ai .ic { background: var(--saffron); }
+  .svc.ai .tag { background: var(--saffron); color: var(--ink); }
+  .svc.fb .ic { background: var(--coral); }
+  .svc.fb .tag { background: var(--coralTint); color: var(--coral); }
+  .svc.db .ic { background: var(--blue); }
+  .svc.db .tag { background: var(--blueTint); color: var(--blue); }
+  .chain { display: flex; align-items: center; gap: 4px; margin-top: 5px; font-size: 11.5px; font-weight: 700; }
+  .chain span.m { padding: 2px 7px; border-radius: 6px; background: var(--white); border: 1px solid #EBC98E; color: var(--saffronDark); }
+  .chain span.loc { font-weight: 500; color: var(--muted); margin: 0 4px 0 2px; }
+  .chain i { color: var(--saffron); font-size: 9px; }
+
+  /* bottom band */
+  .band { top: 880px; height: 184px; background: var(--white); border: 1px solid var(--line); padding: 16px 20px; }
+  .band h4 { font-size: 13px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+  .band h4 span { text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip { display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 8px 11px; font-size: 12.5px; line-height: 1.25; background: var(--tint2); border: 1px solid var(--line); }
+  .chip i { color: var(--teal); font-size: 14px; }
+  .chip b { font-weight: 700; }
+  .chip small { display: block; color: var(--muted); font-size: 11.5px; }
+  .src .chip i { color: var(--blue); }
+
+  /* path strip */
+  .path { position: absolute; left: 40px; top: 1092px; width: 1520px; height: 84px; background: var(--ink); border-radius: 14px; padding: 12px 18px;
+          display: grid; grid-template-columns: 150px repeat(6, 1fr); gap: 14px; align-items: center; z-index: 1; }
+  .path .lbl { color: var(--saffron); font-size: 13px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; line-height: 1.3; }
+  .step { display: grid; grid-template-columns: 28px 1fr; gap: 9px; align-items: center; color: #D6E7E5; font-size: 12.5px; line-height: 1.3; }
+  .num { width: 26px; height: 26px; border-radius: 50%; background: var(--saffron); color: var(--ink); font-weight: 800; font-size: 13px; display: grid; place-items: center; }
+  .step b { color: #fff; }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <svg class="wires" width="1600" height="1200" viewBox="0 0 1600 1200">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#0B7A75"/>
+      </marker>
+      <marker id="ahb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#2F6FB5"/>
+      </marker>
+    </defs>
+    <g stroke="#0B7A75" stroke-width="2.2" fill="none">
+      <!-- people -> web app -->
+      <line x1="300" y1="236" x2="354" y2="236" marker-end="url(#ah)"/>
+      <line x1="300" y1="408" x2="354" y2="408" marker-end="url(#ah)"/>
+      <line x1="300" y1="580" x2="354" y2="580" marker-end="url(#ah)"/>
+      <line x1="300" y1="752" x2="354" y2="752" marker-end="url(#ah)"/>
+      <!-- web app <-> cloud run -->
+      <line x1="646" y1="470" x2="694" y2="470" stroke-width="3" marker-start="url(#ah)" marker-end="url(#ah)"/>
+      <!-- cloud run -> services -->
+      <line x1="1000" y1="495" x2="1036" y2="495" stroke-width="3"/>
+      <line x1="1036" y1="210" x2="1036" y2="780" stroke-width="3"/>
+      <line x1="1036" y1="210" x2="1064" y2="210" marker-end="url(#ah)"/>
+      <line x1="1036" y1="324" x2="1064" y2="324" marker-end="url(#ah)"/>
+      <line x1="1036" y1="438" x2="1064" y2="438" marker-end="url(#ah)"/>
+      <line x1="1036" y1="552" x2="1064" y2="552" marker-end="url(#ah)"/>
+      <line x1="1036" y1="666" x2="1064" y2="666" marker-end="url(#ah)"/>
+      <line x1="1036" y1="780" x2="1064" y2="780" marker-end="url(#ah)"/>
+    </g>
+    <g stroke="#2F6FB5" stroke-width="2.2" fill="none">
+      <!-- BigQuery ML <-> BigQuery -->
+      <path d="M1560,666 H1583 V780 H1566" marker-end="url(#ahb)"/>
+      <!-- ingestion -> BigQuery -->
+      <line x1="1315" y1="880" x2="1315" y2="836" marker-end="url(#ahb)"/>
+    </g>
+    <text x="1327" y="862" font-family="Inter" font-size="11.5" font-weight="600" fill="#2F6FB5">batch load</text>
+    <text x="671" y="452" font-family="Inter" font-size="11" font-weight="700" fill="#0A5C58" text-anchor="middle">HTTPS</text>
+    <text x="671" y="494" font-family="Inter" font-size="11" font-weight="600" fill="#5A6B72" text-anchor="middle">/api/v1</text>
+    <!-- step badges on the wires -->
+    <g font-family="Inter" font-size="12.5" font-weight="800" text-anchor="middle">
+      <circle cx="327" cy="236" r="12" fill="#E8A33D"/><text x="327" y="240.5" fill="#0E2A33">1</text>
+      <circle cx="671" cy="470" r="12" fill="#E8A33D"/><text x="671" y="474.5" fill="#0E2A33">2</text>
+      <circle cx="1050" cy="210" r="11" fill="#E8A33D"/><text x="1050" y="214.5" fill="#0E2A33">3</text>
+      <circle cx="1050" cy="438" r="11" fill="#E8A33D"/><text x="1050" y="442.5" fill="#0E2A33">4</text>
+      <circle cx="1050" cy="324" r="11" fill="#E8A33D"/><text x="1050" y="328.5" fill="#0E2A33">5</text>
+      <circle cx="1050" cy="780" r="11" fill="#E8A33D"/><text x="1050" y="784.5" fill="#0E2A33">6</text>
+    </g>
+  </svg>
+
+  <!-- header -->
+  <div class="abs logo"><img src="../web/logo.jpg" alt=""></div>
+  <h1>StockPulse architecture</h1>
+  <div class="sub">Every tool and technology in the product, and the path one stock report takes. Everything runs on Google Cloud.</div>
+  <div class="pills">
+    <div class="pill dark">Build with AI: Code for Communities · Theme: Resilience · Track 3</div>
+    <div class="pill">Google Cloud project daysupply · asia-south1 (Mumbai)</div>
+  </div>
+
+  <div class="colhead" style="left:40px">People</div>
+  <div class="colhead" style="left:360px">Front end</div>
+  <div class="colhead" style="left:700px">Back end</div>
+  <div class="colhead" style="left:1070px">Google AI and data</div>
+
+  <!-- people -->
+  <div class="box person" style="left:40px; top:160px">
+    <div class="ic"><i class="fa-solid fa-user-nurse"></i></div>
+    <h3>ASHA or pharmacist</h3><div class="pg">Report stock</div>
+    <p>Taps, speaks, photographs the register, scans or types.</p>
+  </div>
+  <div class="box person" style="left:40px; top:332px">
+    <div class="ic"><i class="fa-solid fa-user-doctor"></i></div>
+    <h3>Medical officer</h3><div class="pg">Review queue</div>
+    <p>Checks only what the model was unsure of, with the reason it was held.</p>
+  </div>
+  <div class="box person" style="left:40px; top:504px">
+    <div class="ic"><i class="fa-solid fa-user-tie"></i></div>
+    <h3>District programme officer</h3><div class="pg">Today · Action queue</div>
+    <p>Every shortage sorted into move, order or escalate.</p>
+  </div>
+  <div class="box person" style="left:40px; top:676px">
+    <div class="ic"><i class="fa-solid fa-landmark"></i></div>
+    <h3>State supply-chain cell</h3><div class="pg">Plan ahead · Map</div>
+    <p>Sees demand ahead, surge warnings and transfers across district lines.</p>
+  </div>
+
+  <!-- front end -->
+  <div class="box pwa">
+    <div class="ic"><i class="fa-solid fa-mobile-screen-button"></i></div>
+    <h2>Web app, any phone</h2>
+    <div class="kind">Progressive Web App · HTML, CSS, JavaScript · nothing to install</div>
+    <ul class="feat">
+      <li><i class="fa-solid fa-wifi"></i><span><b>Service worker</b>: opens and works offline</span></li>
+      <li><i class="fa-solid fa-inbox"></i><span><b>IndexedDB queue</b>: reports sync when the signal returns</span></li>
+      <li><i class="fa-solid fa-microphone"></i><span><b>MediaRecorder</b>: voice notes in the phone's own audio format</span></li>
+      <li><i class="fa-solid fa-camera"></i><span><b>Camera</b>: photo of the register, shrunk on the phone</span></li>
+      <li><i class="fa-solid fa-barcode"></i><span><b>html5-qrcode</b>: barcode scan</span></li>
+      <li><i class="fa-solid fa-chart-line"></i><span><b>Chart.js</b>: demand and forecast charts</span></li>
+      <li><i class="fa-solid fa-map-location-dot"></i><span><b>Leaflet</b>: centres, risk and transfers on a map</span></li>
+      <li><i class="fa-solid fa-font"></i><span><b>Inter</b> via Google Fonts</span></li>
+    </ul>
+    <div class="langs"><b>Five languages</b>English · हिंदी · मराठी · తెలుగు · বাংলা<br>for the page, the read-back and the drafted note</div>
+  </div>
+
+  <!-- back end -->
+  <div class="box run">
+    <div class="ic"><i class="fa-solid fa-cloud"></i></div>
+    <h2>Google Cloud Run</h2>
+    <div class="kind">FastAPI · Python 3.11 · uvicorn · Docker<br>1 warm instance · runs as its own service account</div>
+    <div class="mods">
+      <div class="mod"><b>Capture pipeline</b>: tap, voice, photo, scan, text, SMS</div>
+      <div class="mod"><b>Catalogue matcher</b>: 385 NLEM 2022 medicines</div>
+      <div class="mod"><b>Gate</b>: low confidence, no match or overdraw → review</div>
+      <div class="mod"><b>Read-back</b> in the worker's language</div>
+      <div class="mod"><b>Escalation note</b>, every number checked</div>
+      <div class="mod"><b>Today</b> scorecard · <b>Action queue</b> triage</div>
+      <div class="mod"><b>Surge detector</b>: modified z on HMIS</div>
+      <div class="mod"><b>Plan ahead</b> · <b>Map</b> · <b>Evidence</b></div>
+    </div>
+    <div class="sdk">google-genai · google-cloud-bigquery · google-cloud-firestore · google-auth · pandas · thefuzz</div>
+  </div>
+
+  <!-- services -->
+  <div class="box svc ai" style="top:160px">
+    <div class="ic"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+    <div>
+      <div class="t"><h3>Vertex AI · Gemini Flash</h3><span class="tag">Google AI</span></div>
+      <p>Voice, text and register photos → JSON stock events; drafts escalation notes. Thinking low · 25 s per call · no API key.</p>
+      <div class="chain"><span class="m">3.8</span><i class="fa-solid fa-chevron-right"></i><span class="m">3.7</span><i class="fa-solid fa-chevron-right"></i><span class="m">3.6</span><span class="loc">global</span><i class="fa-solid fa-chevron-right"></i><span class="m">3.5</span><i class="fa-solid fa-chevron-right"></i><span class="m">2.5</span><span class="loc">Mumbai</span></div>
+    </div>
+  </div>
+  <div class="box svc ai" style="top:274px">
+    <div class="ic"><i class="fa-solid fa-volume-high"></i></div>
+    <div>
+      <div class="t"><h3>Cloud Text-to-Speech</h3><span class="tag">Google AI</span></div>
+      <p>Reads every report back before anything is saved. Indian voices: en-IN, hi-IN, mr-IN, te-IN, bn-IN.</p>
+    </div>
+  </div>
+  <div class="box svc fb" style="top:388px">
+    <div class="ic"><i class="fa-solid fa-fire"></i></div>
+    <div>
+      <div class="t"><h3>Firestore</h3><span class="tag">Firebase</span></div>
+      <p>The review queue for doubtful reports, an audit copy of every capture, and the districts' shared seasonal patterns.</p>
+    </div>
+  </div>
+  <div class="box svc db" style="top:502px">
+    <div class="ic"><i class="fa-solid fa-route"></i></div>
+    <div>
+      <div class="t"><h3>BigQuery GIS</h3><span class="tag">Data</span></div>
+      <p>Straight-line distance to the district headquarters becomes a lead time of 7–19 days; transfers stay within 150 km; the map.</p>
+    </div>
+  </div>
+  <div class="box svc ai" style="top:616px">
+    <div class="ic"><i class="fa-solid fa-chart-line"></i></div>
+    <div>
+      <div class="t"><h3>BigQuery ML · ARIMA_PLUS</h3><span class="tag">Google AI</span></div>
+      <p>3,818 demand series, one per centre and medicine. ML.FORECAST sets the reorder point μ × L + 1.65 σ √L.</p>
+    </div>
+  </div>
+  <div class="box svc db" style="top:730px">
+    <div class="ic"><i class="fa-solid fa-database"></i></div>
+    <div>
+      <div class="t"><h3>BigQuery</h3><span class="tag">Data</span></div>
+      <p>The stock ledger and live views over it: stock, reorder status, transfers, surge signals. 200,438 facilities; HMIS demand.</p>
+    </div>
+  </div>
+
+  <!-- bottom band -->
+  <div class="box band" style="left:40px; width:700px">
+    <h4>Build, deploy and check</h4>
+    <div class="chips">
+      <div class="chip"><i class="fa-brands fa-github"></i><div><b>GitHub</b><small>code, prompts/, evals/</small></div></div>
+      <div class="chip"><i class="fa-solid fa-hammer"></i><div><b>Cloud Build + Artifact Registry</b><small>gcloud run deploy --source</small></div></div>
+      <div class="chip"><i class="fa-solid fa-key"></i><div><b>IAM service account</b><small>no API keys anywhere</small></div></div>
+      <div class="chip"><i class="fa-solid fa-file-lines"></i><div><b>Cloud Logging</b><small>every model fallback logged</small></div></div>
+      <div class="chip"><i class="fa-solid fa-list-check"></i><div><b>pytest · smoke test 22 / 22 · prompt eval 20 / 20</b><small>unit and data tests · live endpoints · Gemini edge cases</small></div></div>
+    </div>
+  </div>
+  <div class="box band src" style="left:760px; width:800px">
+    <h4>Public data in <span>· loaded into BigQuery by Python batch jobs (pandas, openpyxl, BeautifulSoup)</span></h4>
+    <div class="chips">
+      <div class="chip"><i class="fa-solid fa-hospital"></i><div><b>NHM facility directory</b><small>200,438 facilities</small></div></div>
+      <div class="chip"><i class="fa-solid fa-notes-medical"></i><div><b>HMIS, MoHFW</b><small>demand, 212 districts</small></div></div>
+      <div class="chip"><i class="fa-solid fa-pills"></i><div><b>NLEM 2022</b><small>385 essential medicines</small></div></div>
+      <div class="chip"><i class="fa-solid fa-user-group"></i><div><b>RHS 2021-22</b><small>sanctioned and filled posts</small></div></div>
+      <div class="chip"><i class="fa-solid fa-indian-rupee-sign"></i><div><b>NPPA</b><small>ceiling prices</small></div></div>
+      <div class="chip"><i class="fa-solid fa-people-group"></i><div><b>Census 2011</b><small>population served</small></div></div>
+    </div>
+  </div>
+
+  <!-- the path of one report -->
+  <div class="path">
+    <div class="lbl">The path of one report</div>
+    <div class="step"><div class="num">1</div><div><b>Captured</b> on the phone, queued if offline</div></div>
+    <div class="step"><div class="num">2</div><div><b>Sent</b> to Cloud Run over HTTPS</div></div>
+    <div class="step"><div class="num">3</div><div><b>Gemini</b> turns it into stock events</div></div>
+    <div class="step"><div class="num">4</div><div><b>Matched</b> to the catalogue; doubtful ones to Firestore</div></div>
+    <div class="step"><div class="num">5</div><div><b>Read back</b> aloud; the worker confirms</div></div>
+    <div class="step"><div class="num">6</div><div><b>Written</b> to BigQuery; forecast and transfers update</div></div>
+  </div>
+</div>
+</body>
+</html>
