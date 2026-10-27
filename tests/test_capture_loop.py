@@ -88,6 +88,31 @@ class TestRetryOn503:
             assert config is not None
             assert "VAGUE QUANTITIES" in config.system_instruction
 
+    def test_each_input_has_its_own_time_limit(self, monkeypatch, fast_backoff):
+        """A report is answered in 2-6 s and a photo in 7-11 s. At one shared
+        25 s limit, a stalled primary cost a worker 25 s before the next model
+        was tried, which reads on a phone as 'the mic does not work'."""
+        seen = {}
+        for name, call in (("voice", lambda: capture.process_audio(b"x", "audio/webm")),
+                           ("text", lambda: capture.process_text("kuch bhi")),
+                           ("photo", lambda: capture.process_image(b"x"))):
+            models = _FakeModels(failures=1, exc=_Boom(504, "DEADLINE_EXCEEDED"), reply="[]")
+            _install(monkeypatch, models)
+            call()
+            # Every attempt, the fallback included, carries the input's limit.
+            limits = {c.http_options.timeout for c in models.configs}
+            assert len(limits) == 1, (name, limits)
+            seen[name] = limits.pop()
+        assert seen["voice"] == capture.TIMEOUTS_MS["voice"] < capture.TIMEOUT_MS
+        assert seen["text"] == capture.TIMEOUTS_MS["text"] < capture.TIMEOUT_MS
+        assert seen["voice"] <= seen["photo"] <= capture.TIMEOUT_MS
+
+    def test_the_escalation_note_keeps_the_long_limit(self, monkeypatch):
+        models = _FakeModels(failures=0, exc=_Boom(0, "unused"), reply="note")
+        _install(monkeypatch, models)
+        capture._generate("facts", system_instruction="draft a note")
+        assert models.configs[0].http_options.timeout == capture.TIMEOUT_MS
+
     def test_vague_quantity_rules_are_in_the_prompt(self):
         """The 'teen char' gap: a range must be treated like 'aadha dabba'."""
         for phrase in ("teen char", "do teen", "lagbhag", "aas paas", "kuch"):

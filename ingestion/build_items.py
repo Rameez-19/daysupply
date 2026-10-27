@@ -280,7 +280,7 @@ FLAT_BASELINE_ITEMS: dict[str, str] = {}
 SPOKEN_VARIANTS: dict[str, list[str]] = {
     "Paracetamol": ["paracetamol", "para", "pcm", "crocin", "dolo",
                     "bukhar ki goli", "पैरासिटामोल"],
-    "Amoxicillin": ["amoxicillin", "amoxy", "amox", "मोक्सिसिलिन"],
+    "Amoxicillin": ["amoxicillin", "amoxy", "amox", "अमोक्सिसिलिन"],
     "Oral rehydration salts": ["ors", "o r s", "oral rehydration", "ors packet",
                                "ors ka packet", "जीवन रक्षक घोल"],
     "Zinc Sulphate": ["zinc", "zinc tablet", "जिंक"],

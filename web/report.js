@@ -1072,22 +1072,50 @@ window.confirmReadback = confirmReadback;
 
 // The server's preview reply becomes read-back rows. Called by app.js after a
 // voice or typed note, and here after a photo.
-function handlePreviewResponse(data, source, transcript) {
+async function handlePreviewResponse(data, source, transcript) {
   if (data.error) {
     setReportNote(data.retryable ? t('work.retry') : (source === 'photo' ? t('photo.error') : t('work.retry')), 'error');
     return;
   }
   setReportNote('');
   const rows = [].concat(data.events || [], data.review_queue || []);
+  // The server's rows carry no Devanagari name, so a spoken or typed report
+  // read back "Paracetamol" in Hindi and Marathi while a tapped one read
+  // "पैरासिटामोल". Some also come without a unit ("ORS, 50 , came in"). The
+  // tile list has the catalogue's name and unit; use them.
+  const needsName = DEVANAGARI_LANGS.includes(reportLang) && rows.some(r => !r.hindi_name);
+  const needsUnit = rows.some(r => !r.unit || r.unit === 'unknown');
+  if (needsName || needsUnit) {
+    const items = await loadQuickItems();
+    const byId = new Map(items.map(i => [i.item_id, i]));
+    rows.forEach(r => {
+      const it = byId.get(r.item_id);
+      if (!it) return;
+      if (!r.hindi_name) r.hindi_name = it.hindi_name;
+      if (!r.unit || r.unit === 'unknown') r.unit = it.unit;
+    });
+  }
   showReadback(rows, source, transcript || data.raw_transcript || null);
 }
 window.handlePreviewResponse = handlePreviewResponse;
 
+// While the phone waits, the note counts the seconds after the first three.
+// A slow answer with a frozen "Working…" looked like the microphone had not
+// worked at all.
+let reportBusyTimer = null;
 function setReportNote(text, kind) {
   const el = rq('report-note');
   if (!el) return;
+  if (reportBusyTimer) { clearInterval(reportBusyTimer); reportBusyTimer = null; }
   el.textContent = text || '';
   el.className = 'report-note' + (text && kind ? ' ' + kind : '');
+  if (text && kind === 'busy') {
+    const started = Date.now();
+    reportBusyTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - started) / 1000);
+      if (s >= 3) el.textContent = `${text} ${s}s`;
+    }, 1000);
+  }
 }
 window.setReportNote = setReportNote;
 

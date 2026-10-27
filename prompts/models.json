@@ -1,5 +1,5 @@
 {
-  "about": "Gemini models the app calls through Vertex AI, newest Flash first. Each entry is model@location. The newest models are served only on the global endpoint; gemini-3.5-flash and gemini-2.5-flash also run in asia-south1 (Mumbai) and are used there. The first attempt goes to the primary; each later attempt moves one step down the list. A retired model (404) is skipped at once. Environment variables GEMINI_MODEL and GEMINI_FALLBACK_MODELS override this file. thinking_level applies to Gemini 3 models only: reading a stock report or drafting a short note needs little reasoning, and default thinking made gemini-3.8-flash overrun the timeout on escalation notes.",
+  "about": "Gemini models the app calls through Vertex AI, newest Flash first. Each entry is model@location. The newest models are served only on the global endpoint; gemini-3.5-flash and gemini-2.5-flash also run in asia-south1 (Mumbai) and are used there. The first attempt goes to the primary; each later attempt moves one step down the list. A retired model (404) is skipped at once. Environment variables GEMINI_MODEL and GEMINI_FALLBACK_MODELS override this file. thinking_level applies to Gemini 3 models only: reading a stock report or drafting a short note needs little reasoning, and default thinking made gemini-3.8-flash overrun the timeout on escalation notes. timeouts_ms sets a shorter limit for what a health worker waits on: a voice or typed report is answered in 2-6 s and a register photo in 7-11 s, so a stalled call moves to the next model instead of using the full timeout_ms, which the escalation note keeps.",
   "primary": "gemini-3.8-flash@global",
   "fallbacks": [
     "gemini-3.7-flash@global",
@@ -9,5 +9,10 @@
   ],
   "attempts_on_primary": 1,
   "timeout_ms": 25000,
+  "timeouts_ms": {
+    "voice": 12000,
+    "text": 12000,
+    "photo": 20000
+  },
   "thinking_level": "low"
 }

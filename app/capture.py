@@ -52,6 +52,13 @@ FALLBACK_MODEL = FALLBACK_MODELS[0]
 # Per call. A voice note is a few seconds of audio; anything slower than this
 # is better answered by the next model than waited for.
 TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", str(_MODELS.get("timeout_ms", 25000))))
+# Shorter limits for what a worker is waiting on. gemini-3.8-flash answers a
+# report in 2-6 s and a register photo in 7-11 s, but on 27 Oct it stalled on
+# about one call in six and ran out the 25 s limit before the next model was
+# tried. On a phone that reads as "the mic does not work". The escalation note
+# keeps TIMEOUT_MS: a Hindi note took 19 s and succeeded.
+TIMEOUTS_MS = {"voice": 12000, "text": 12000, "photo": 20000,
+               **{k: int(v) for k, v in _MODELS.get("timeouts_ms", {}).items()}}
 # Gemini 3 models think before answering by default. A stock report or a short
 # note needs little of it, and at the default level gemini-3.8-flash overran
 # the timeout on escalation notes. Gemini 2.5 takes no thinking level.
@@ -186,16 +193,22 @@ def model_for_attempt(attempt: int) -> str:
     return FALLBACK_MODELS[i]
 
 
-def config_for(model: str, system_instruction: str) -> types.GenerateContentConfig:
-    """The call's config; the thinking level only where the model takes one."""
+def config_for(model: str, system_instruction: str,
+               timeout_ms: int | None = None) -> types.GenerateContentConfig:
+    """The call's config: its time limit, and the thinking level only where
+    the model takes one."""
+    http = types.HttpOptions(timeout=timeout_ms or TIMEOUT_MS,
+                             retry_options=types.HttpRetryOptions(attempts=1))
     if THINKING_LEVEL and model.startswith("gemini-3"):
         return types.GenerateContentConfig(
-            system_instruction=system_instruction,
+            system_instruction=system_instruction, http_options=http,
             thinking_config=types.ThinkingConfig(thinking_level=THINKING_LEVEL))
-    return types.GenerateContentConfig(system_instruction=system_instruction)
+    return types.GenerateContentConfig(system_instruction=system_instruction,
+                                       http_options=http)
 
 
-def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
+def _generate(contents, system_instruction: str = SYSTEM_PROMPT,
+              timeout_ms: int | None = None) -> str:
     """One extraction call, retried on transient failure, then degraded.
 
     Exponential backoff with jitter. After `FALLBACK_AFTER_ATTEMPTS` the model
@@ -220,7 +233,7 @@ def _generate(contents, system_instruction: str = SYSTEM_PROMPT) -> str:
             client = _get_client(location)
             response = client.models.generate_content(
                 model=model, contents=contents,
-                config=config_for(model, system_instruction))
+                config=config_for(model, system_instruction, timeout_ms))
             _used.model = model
             if attempt > 1:
                 log.info("Extraction succeeded on attempt %d using %s",
@@ -251,12 +264,12 @@ def process_audio(audio_bytes: bytes, mime_type: str = "audio/mp3") -> str:
     """Send audio to Gemini and return its raw reply."""
     return _generate([
         types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
-    ])
+    ], timeout_ms=TIMEOUTS_MS["voice"])
 
 
 def process_text(message: str) -> str:
     """Send a typed message through the same extraction rules."""
-    return _generate(CHAT_INSTRUCTION + message)
+    return _generate(CHAT_INSTRUCTION + message, timeout_ms=TIMEOUTS_MS["text"])
 
 
 def process_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> str:
@@ -264,7 +277,7 @@ def process_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> str:
     return _generate([
         PHOTO_INSTRUCTION,
         types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-    ])
+    ], timeout_ms=TIMEOUTS_MS["photo"])
 
 
 def handle_capture(audio_bytes: bytes, facility_id: str,
