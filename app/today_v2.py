@@ -717,7 +717,7 @@ STAFF_LABELS = {
         {"name": "Nurses below the bed norm", "kind": "norm",
          "source": "IPHS 2022 beds against the Indian Nursing Council "
                    "nurse-to-bed ratio."},
-        {"name": "Centres reporting staff on duty today", "kind": "reported",
+        {"name": "Centres reporting attendance today", "kind": "reported",
          "source": "Counts entered by centres on the Report page. Nothing is "
                    "estimated."},
         {"name": "Health centres and districts", "kind": "real",
