@@ -664,19 +664,26 @@ function v2FourthPanel(d) {
   if (v2Charts.shock) { v2Charts.shock.destroy(); v2Charts.shock = null; }
 
   const rows = d.absorption || [];
+  const card = note ? note.parentElement : null;
   if (!rows.length) {
     if (box) box.style.display = 'none';
     v2SetHeading('v2-t4', 'v2-n4', {
       title: 'What these numbers are based on',
       note: 'Nothing on this page is presented as counted when it is modelled.'
     });
+    // This text IS the panel here, not an explanation of a chart, so it must
+    // not carry a class the lean view hides: with Explain off the panel used
+    // to show only its title.
     if (note) {
-      note.innerHTML = `<p class="section-note">`
-        + `${v2Esc((d.labels || {}).provenance || '')}</p>`;
+      note.className = 'v2-provenance';
+      note.innerHTML = `<p>${v2Esc((d.labels || {}).provenance || '')}</p>`;
     }
+    if (card) card.classList.add('v2-provenance-card');
     return;
   }
 
+  if (note) note.className = 'chart-caption';
+  if (card) card.classList.remove('v2-provenance-card');
   if (box) box.style.display = '';
   v2SetHeading('v2-t4', 'v2-n4', {
     title: 'Could the network take a shock?',

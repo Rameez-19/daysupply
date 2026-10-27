@@ -1106,6 +1106,23 @@ button { font-family: inherit; cursor: pointer; }
 
 #today2-view .chart-box { height: 300px; }
 
+/* Rows of panels sat flush on top of each other: .dashboard-row spaces its
+   panels sideways (gap 16px) but nothing spaced one row from the next. The
+   same 16px, vertically. */
+#today2-view .dashboard-row + .dashboard-row,
+#today2-view .dashboard-row + .dashboard-section,
+#today2-view .dashboard-section + .dashboard-row { margin-top: 16px; }
+
+/* The warning the Today banner's button opened, outlined for a moment. */
+.alert-card.flash { box-shadow: 0 0 0 3px var(--info); transition: box-shadow .3s; }
+
+/* Beds and staff have no shock chart; the fourth panel says what the numbers
+   rest on. That text is the panel, so it fills the card. */
+#today2-view .v2-provenance-card { display: flex; flex-direction: column; }
+.v2-provenance { flex: 1; display: flex; align-items: center; }
+.v2-provenance p { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--gray-600);
+  border-left: 3px solid var(--border); padding: 4px 0 4px 14px; }
+
 @media (max-width: 640px) {
   .v2-kpi-value { font-size: 27px; }
   #today2-view .chart-box { height: 250px; }

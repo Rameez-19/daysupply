@@ -53,7 +53,8 @@ async function loadSurgeSignals() {
     document.getElementById('surge-thresh-abs').textContent = first.threshold_absolute;
 
     el.innerHTML = signals.map(s => `
-      <div class="alert-card severity-warning">
+      <div class="alert-card severity-warning"
+           data-district="${surgeAttr(s.district_key)}" data-atc="${surgeAttr(s.atc_class)}">
         <div class="alert-icon warning">&#128200;</div>
         <div class="alert-body">
           <div class="alert-title">${signalBadge(s.signal_class)} ${s.signal_indicator || s.atc_class}</div>
@@ -268,6 +269,29 @@ async function openScenarioFor(districtKey, atcClass) {
 }
 window.openScenarioFor = openScenarioFor;
 
+// Opens Plan ahead at one early warning: scrolled to its card, briefly
+// outlined. Used by the Today banner when no scenario can run for it.
+async function openSurgeWarning(districtKey, atcClass) {
+  switchTab('plan-view');
+  const list = document.getElementById('surge-signal-list');
+  if (!list) return;
+  const want = String(districtKey || '').toUpperCase();
+  const find = () => [...list.querySelectorAll('.alert-card')].find(c =>
+    (c.dataset.district || '').toUpperCase() === want && c.dataset.atc === atcClass);
+  let card = find();
+  for (let i = 0; i < 100 && !card; i++) {
+    await new Promise(r => setTimeout(r, 150));
+    card = find();
+  }
+  const target = card || list.closest('.dashboard-section') || list;
+  if (target.scrollIntoView) target.scrollIntoView({ block: 'center' });
+  if (card) {
+    card.classList.add('flash');
+    setTimeout(() => card.classList.remove('flash'), 2400);
+  }
+}
+window.openSurgeWarning = openSurgeWarning;
+
 
 // ===== Surge banner on Today =====
 // Surge is not a separate mode. During an emergency this IS the daily view, so
@@ -278,6 +302,14 @@ window.openScenarioFor = openScenarioFor;
 // is 14.11x expected" (early warning) and "Albendazole is 22.64x expected"
 // (National Deworming Day) demand completely different responses, and a banner
 // that showed only a multiplier would flatten that distinction.
+// For a value placed inside a double-quoted attribute. The button used to put
+// JSON.stringify output there, whose own double quotes ended the attribute, so
+// the click handler was "openScenarioFor(" and did nothing.
+function surgeAttr(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 async function loadSurgeBanner(hostId = 'v2-surge-banner') {
   const el = document.getElementById(hostId);
   if (!el) return;
@@ -295,6 +327,15 @@ async function loadSurgeBanner(hostId = 'v2-surge-banner') {
     const s = signals[0];
     const others = signals.length - 1;
 
+    // A scenario runs only against stock the district holds. Etawah's centre
+    // stocks no antimalarials, so for its malaria warning the button used to
+    // open a paragraph saying the scenario could not run. Where there is
+    // nothing to compute, the button opens the warning itself.
+    await loadScenarioOptions();
+    const want = String(s.district_key || '').toUpperCase();
+    const runnable = scenarioCombos.some(c =>
+      String(c.district || '').toUpperCase() === want && c.atc_class === s.atc_class);
+
     el.innerHTML = `
       <div class="surge-banner ${s.signal_class}">
         <div class="surge-banner-head">
@@ -308,8 +349,9 @@ async function loadSurgeBanner(hostId = 'v2-surge-banner') {
           ${others > 0 ? `${others} other signal${others > 1 ? 's' : ''} in this scope.` : ''}
         </p>
         <button class="btn btn-primary"
-                onclick="openScenarioFor(${JSON.stringify(s.district_key || '')}, ${JSON.stringify(s.atc_class || '')})">
-          See what it changes
+                data-district="${surgeAttr(s.district_key)}" data-atc="${surgeAttr(s.atc_class)}"
+                onclick="${runnable ? 'openScenarioFor' : 'openSurgeWarning'}(this.dataset.district, this.dataset.atc)">
+          ${runnable ? 'See what it changes' : 'See the warning'}
         </button>
       </div>`;
   } catch (e) {
