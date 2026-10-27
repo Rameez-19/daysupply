@@ -15,10 +15,12 @@ report as a health worker would.
 
 ## Testing a change
 
-`evals/extraction_cases.json` holds 20 edge cases: corrections ("200, nahi
+`evals/extraction_cases.json` holds 24 edge cases: corrections ("200, nahi
 nahi, 150"), negations ("ORS nahi aaya"), questions, chatter, brand and
 colloquial names, vague ranges, fraction words ("dedh sau"), native numerals,
-Telugu, Bengali and Marathi. Score the prompt against them:
+Telugu, Bengali and Marathi, and requests ("paracetamol ke 100 tablet chahiye"),
+which must be recognised as a request and never written. Score the prompt
+against them:
 
 ```
 python -m scripts.eval_prompts
@@ -32,6 +34,7 @@ Results on 2026-09-30:
 | Before refinement | gemini-3.5-flash, Mumbai | 17 / 20 | 4.0 s |
 | After refinement | gemini-3.8-flash, global | 20 / 20 | 7.5 s |
 | After refinement, thinking level low | gemini-3.8-flash, global | 20 / 20 | 3.2 s |
+| With the request rule (27 Oct, 24 cases) | 3.8-flash, 12 s limit, falling back to 3.7 | 24 / 24 | 9.6 s |
 
 The three cases the refinement fixed: a negation recorded as a receipt of 0,
 a question held as if it were a report, and "iron ki goli dedh sau" (150

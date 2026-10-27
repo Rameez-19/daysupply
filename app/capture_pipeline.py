@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -54,6 +55,12 @@ CONFIDENCE_THRESHOLD = 0.6
 EVENT_TYPES = frozenset({
     "received", "dispensed", "count", "lost", "dispatched", "expired",
 })
+
+# What the model may also return, which is not a movement and is never
+# written, with the list each one is returned in. "request": a worker asking
+# for stock ("chahiye"); "identify": a medicine read off a pack photo, which
+# says what the medicine is but not what happened to it.
+NOT_MOVEMENTS = {"request": "requests", "identify": "identified"}
 
 # Reasons a health worker actually gives. `unknown` is deliberately a first-
 # class member: "it's gone and I don't know why" is a real and common answer,
@@ -192,6 +199,7 @@ def route(extractions: list[dict], facility_id: str, source: str,
 
     now = datetime.now(timezone.utc).isoformat()
     result: dict = {"events": [], "review_queue": [], "errors": [],
+                    "requests": [], "identified": [],
                     "source": source, "resource_type": resource_type}
 
     for raw in extractions:
@@ -244,6 +252,18 @@ def route(extractions: list[dict], facility_id: str, source: str,
             "resource_subtype": normalise_loss_reason(event_type, loss_reason),
         }
 
+        # A request ("paracetamol ke 100 tablet chahiye") and a medicine read
+        # off a pack photo are not movements. They are named for the phone,
+        # which answers the first and asks what happened to the second, and
+        # are never written: neither is in `events` or `review_queue`, the
+        # only two lists `persist` reads.
+        if event_type in NOT_MOVEMENTS:
+            result[NOT_MOVEMENTS[event_type]].append({
+                "item_id": item_id, "local_name": local_name,
+                "quantity": quantity, "unit": unit,
+                "resource_type": resource_type})
+            continue
+
         # The event type was previously passed through unchecked, straight from
         # the model into the ledger. A single hallucinated word — "issued",
         # "consumed" — would have written an event type that the balance
@@ -282,7 +302,8 @@ def route(extractions: list[dict], facility_id: str, source: str,
 def describe(result: dict) -> dict:
     """Add the catalogue's display name to every record, for a screen or a
     read-back. Purely additive: the ledger projection ignores it."""
-    for record in result.get("events", []) + result.get("review_queue", []):
+    for record in (result.get("events", []) + result.get("review_queue", [])
+                   + result.get("requests", []) + result.get("identified", [])):
         if record.get("resource_type", "medicine") == "medicine" and record.get("item_id"):
             record["item_name"] = item_catalog.display_name(record["item_id"])
     return result
@@ -307,7 +328,8 @@ def preview(extractions: list[dict], facility_id: str, source: str,
 
 def confirm(rows: list[dict], facility_id: str, source: str,
             raw_transcript: str | None = None,
-            resource_type: str = "medicine") -> dict:
+            resource_type: str = "medicine",
+            barcode: str | None = None) -> dict:
     """Write rows a human has confirmed, through the one pipeline.
 
     Confidence is set to `CONFIRMED_CONFIDENCE` because the doubt the gate
@@ -333,6 +355,13 @@ def confirm(rows: list[dict], facility_id: str, source: str,
                            raw_transcript=raw_transcript,
                            resource_type=resource_type))
     result["confirmed_by"] = "health worker"
+    # A scanned pack the worker has named and confirmed teaches its code, so
+    # the next scan of that pack, at any centre, names the medicine at once.
+    # Only when the confirmed report is about exactly one medicine.
+    result["barcode_learned"] = False
+    items = {e.get("item_id") for e in result.get("events", []) if e.get("item_id")}
+    if barcode and source == "barcode" and len(items) == 1:
+        result["barcode_learned"] = learn_barcode(barcode, items.pop(), facility_id)
     return describe(result)
 
 
@@ -588,6 +617,54 @@ def approve_review_item(event_id: str, quantity: int | None = None) -> dict:
     return {"approved": True, "event_id": event_id,
             "written_to_ledger": written, "item_id": record.get("item_id"),
             "quantity": resolved_quantity}
+
+
+# Pack barcodes (EAN-13 and the like) name a manufacturer's product, and the
+# National List carries no such codes, so a scanned code could never match a
+# medicine. The worker says once which medicine a pack is; the code is kept in
+# Firestore and every later scan of it, at any centre, names the medicine.
+BARCODE_COLLECTION = "barcode_items"
+_BARCODE = re.compile(r"[0-9A-Za-z.\-]{4,64}")
+
+
+def _firestore():
+    from google.cloud import firestore
+    return firestore.Client(
+        project=os.getenv("GCP_PROJECT", os.getenv("GOOGLE_CLOUD_PROJECT", "daysupply")))
+
+
+def _clean_code(code) -> str | None:
+    code = str(code or "").strip()
+    return code if _BARCODE.fullmatch(code) else None
+
+
+def lookup_barcode(code: str) -> dict | None:
+    """The medicine a pack's code was taught as, or None."""
+    clean = _clean_code(code)
+    if not clean:
+        return None
+    snap = _firestore().collection(BARCODE_COLLECTION).document(clean).get()
+    if not snap.exists:
+        return None
+    item_id = (snap.to_dict() or {}).get("item_id")
+    if not item_id or not item_catalog.known(item_id):
+        return None
+    unit = next((i.get("unit") for i in item_catalog.catalog()
+                 if i["item_id"] == item_id), None) or "unknown"
+    return {"code": clean, "item_id": item_id,
+            "item_name": item_catalog.display_name(item_id), "unit": unit}
+
+
+def learn_barcode(code: str, item_id: str, facility_id: str) -> bool:
+    """Remember which medicine a code is. Only a catalogue medicine; latest
+    teaching wins, and records who taught it."""
+    clean = _clean_code(code)
+    if not clean or not item_id or not item_catalog.known(item_id):
+        return False
+    _firestore().collection(BARCODE_COLLECTION).document(clean).set({
+        "item_id": item_id, "facility_id": facility_id,
+        "taught_at": datetime.now(timezone.utc).isoformat()})
+    return True
 
 
 def handle_barcode(code: str, facility_id: str, quantity: int | None = None,

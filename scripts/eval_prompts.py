@@ -49,8 +49,12 @@ def run_case(case: dict) -> tuple[bool, str, float]:
 
     held = sorted({r["item_id"] for r in routed["review_queue"] if r.get("item_id")})
     want_held = sorted(case.get("held", []))
-    ok = norm(got) == norm(want) and held == want_held
-    detail = f"wrote {got}" + (f" held {held}" if held else "")
+    # A request is recognised as one, and never written.
+    asked = sorted({r["item_id"] for r in routed.get("requests", []) if r.get("item_id")})
+    want_asked = sorted(case.get("requests", []))
+    ok = norm(got) == norm(want) and held == want_held and asked == want_asked
+    detail = (f"wrote {got}" + (f" held {held}" if held else "")
+              + (f" requested {asked}" if asked else ""))
     return ok, detail, time.time() - t0
 
 

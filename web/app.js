@@ -1014,7 +1014,6 @@ function pct(v) { return v === null || v === undefined ? '—' : `${Math.round(v
 
 
 // ===== Barcode Scanner =====
-let html5QrcodeScanner = null;
 
 const CAPTURE_MODES = ['voice', 'scan', 'chat'];
 
@@ -1049,45 +1048,108 @@ async function sendChatNote() {
 }
 window.sendChatNote = sendChatNote;
 
-function startScanner() {
-  if (html5QrcodeScanner) stopScanner();
-  html5QrcodeScanner = new Html5Qrcode("reader");
-  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-  html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
-    .catch(err => { alert(T('scan.denied', 'The camera could not be opened.')); });
+// A medicine pack carries a 1D barcode (EAN-13 in India): 95 thin bars. The
+// html5-qrcode live loop shrank the camera picture to the on-screen box (about
+// 300 x 84 px on a phone) before decoding, which loses the bars; it never read
+// a pack code, though the same frame at full size reads at once. So the
+// camera is opened here, full-resolution frames are taken a few times a
+// second, and each is read by the phone's own barcode reader (BarcodeDetector,
+// on Android Chrome) or, where there is none, by html5-qrcode on the full frame.
+const SCAN_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39',
+                      'itf', 'data_matrix', 'qr_code'];
+let scanStream = null, scanTimer = null, scanDetector = null, scanDecoder = null, scanReading = false;
+
+async function startScanner() {
+  stopScanner();
+  const host = document.getElementById('reader');
+  if (!host) return;
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
+      facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+  } catch (e) {
+    if (typeof setReportNote === 'function') setReportNote(T('scan.denied', 'The camera could not be opened.'), 'error');
+    return;
+  }
+  host.innerHTML = '<video class="scan-video" playsinline muted autoplay></video><div class="scan-guide"></div>';
+  const video = host.querySelector('video');
+  video.srcObject = scanStream;
+  try { await video.play(); } catch (e) { /* autoplay with muted is allowed */ }
+
+  scanDetector = null; scanDecoder = null;
+  if ('BarcodeDetector' in window) {
+    try {
+      const have = await BarcodeDetector.getSupportedFormats();
+      const formats = SCAN_FORMATS.filter(f => have.includes(f));
+      if (formats.length) scanDetector = new BarcodeDetector({ formats });
+    } catch (e) { scanDetector = null; }
+  }
+  if (!scanDetector && window.Html5Qrcode) {
+    const F = window.Html5QrcodeSupportedFormats;
+    scanDecoder = new Html5Qrcode('scan-decode', { verbose: false, formatsToSupport: F ? [
+      F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.DATA_MATRIX, F.QR_CODE] : undefined });
+  }
+  const canvas = document.createElement('canvas');
+  scanTimer = setInterval(async () => {
+    if (scanReading || !video.videoWidth || !scanStream) return;
+    scanReading = true;
+    try {
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      let code = null;
+      if (scanDetector) {
+        const found = await scanDetector.detect(canvas);
+        code = found && found[0] ? found[0].rawValue : null;
+      } else if (scanDecoder) {
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+        try { code = await scanDecoder.scanFile(new File([blob], 'frame.jpg', { type: 'image/jpeg' }), false); }
+        catch (e) { code = null; }   // no code in this frame
+      }
+      if (code && scanStream) onScanSuccess(code);
+    } finally {
+      scanReading = false;
+    }
+  }, 300);
 }
 
 function stopScanner() {
-  if (html5QrcodeScanner) {
-    html5QrcodeScanner.stop().then(() => { html5QrcodeScanner.clear(); html5QrcodeScanner = null; }).catch(err => console.error(err));
-  }
+  if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  const host = document.getElementById('reader');
+  if (host) host.innerHTML = '';
 }
+window.startScanner = startScanner;
+window.stopScanner = stopScanner;
 
-// The scanned code is resolved server-side against the catalogue, exactly like
-// a spoken name. It is never turned into an item in the browser: an
-// unrecognised code has to reach the review queue, not the ledger.
+// A scanned code leads into the same tap flow as every other report: what
+// happened, how many, read back, confirmed. It used to save at once after a
+// browser pop-up asked for the quantity. A pack the system knows names its
+// medicine; a new one asks which medicine it is, and confirming the report
+// teaches the code (server-side, catalogue medicines only).
+let scanBusy = false;
 async function onScanSuccess(decodedText) {
+  if (scanBusy) return;
+  scanBusy = true;
   stopScanner();
-  if (typeof requireCentre === 'function' && !requireCentre()) return;
-  const status = document.getElementById('report-note');
-  if (status) status.textContent = T('scan.matching', 'Scanned. Finding the medicine…');
   try {
-    const fd = new FormData();
-    fd.append('code', decodedText);
-    fd.append('facility_id', captureFacilityId());
-    const qty = window.prompt(T('scan.askqty', 'How many?') + '  (' + decodedText + ')', '');
-    if (qty !== null && qty !== '') fd.append('quantity', parseInt(qty, 10));
-    const res = await fetch('/api/v1/barcode-scan', { method: 'POST', body: fd });
-    showCaptureResult(await res.json());
-    if (typeof loadReviewQueue === 'function') loadReviewQueue();
-  } catch (e) {
-    showCaptureResult({ error: e.message, events: [], review_queue: [] });
+    if (typeof requireCentre === 'function' && !requireCentre()) return;
+    if (typeof setReportNote === 'function') setReportNote(T('scan.matching', 'Scanned. Finding the medicine…'), 'busy');
+    let found = null;
+    try {
+      const res = await fetch('/api/v1/barcode/' + encodeURIComponent(decodedText));
+      if (res.ok) found = (await res.json()).item;
+    } catch (e) { found = null; }   // offline: treat it as a new pack
+    if (typeof setReportNote === 'function') setReportNote('');
+    if (found) {
+      const item = await tapItemFor(found);
+      startTapWith(item, { note: tf('scan.known', { name: tileName(item) }), barcode: decodedText });
+    } else {
+      startTapWith(null, { note: tf('scan.new', { code: decodedText }), barcode: decodedText });
+    }
   } finally {
-    if (status) status.textContent = '';
+    scanBusy = false;
   }
 }
 
-function onScanFailure(error) { /* Silently ignore scan misses */ }
 
 
 // ===== Evidence =====

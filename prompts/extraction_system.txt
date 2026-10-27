@@ -11,7 +11,7 @@ movement mentioned:
 [{
   "local_name": "<drug name as spoken, written in English (Latin) letters>",
   "generic_name": "<the medicine's generic name in English if the words clearly identify one, else null>",
-  "event_type": "dispensed" | "received" | "count" | "lost",
+  "event_type": "dispensed" | "received" | "count" | "lost" | "request",
   "loss_reason": "<only when event_type is lost; the speaker's own word:
                   damaged | broken | expired | spilled | stolen | unknown>",
   "quantity": <integer or null>,
@@ -28,6 +28,13 @@ movement of stock:
 - chatter or anything unrelated to stock: "haan ji boliye", "doctor sahab
   nahi aaye". Staff presence is not a medicine movement.
 If a report mixes these with real movements, return only the real movements.
+
+A REQUEST IS NOT A RECEIPT. Asking for stock moves nothing: "paracetamol ke
+100 tablet chahiye" (100 are needed), "ORS bhej do" (send ORS), "we need 200
+IFA", "zinc mangwana hai". Return it as one object with event_type "request",
+the medicine, and the quantity asked for (null if none). Never record a
+request as "received". A report may mix a request with real movements; return
+both.
 
 NAMES.
 - Write local_name in English (Latin) letters exactly as it sounds, even when

@@ -442,7 +442,8 @@ async def post_confirm_note(rows: str = Form(...),
                             facility_id: str = Form(...),
                             source: str = Form("tap"),
                             raw_transcript: str = Form(None),
-                            resource_type: str = Form("medicine")):
+                            resource_type: str = Form("medicine"),
+                            barcode: str = Form(None)):
     """Write what a health worker has confirmed.
 
     `rows` is a JSON array of {item_id, local_name, event_type, quantity,
@@ -465,7 +466,18 @@ async def post_confirm_note(rows: str = Form(...),
                             detail=f"unknown resource type {resource_type}")
     return capture_pipeline.confirm(parsed, facility_id, source,
                                     raw_transcript=raw_transcript,
-                                    resource_type=resource_type)
+                                    resource_type=resource_type,
+                                    barcode=barcode)
+
+
+@app.get("/api/v1/barcode/{code}")
+async def get_barcode(code: str):
+    """The medicine a scanned pack is, if a worker has named it before.
+
+    Writes nothing. An unknown code returns `item: null`, and the phone asks
+    the worker which medicine it is; confirming that report teaches the code.
+    """
+    return {"code": code, "item": capture_pipeline.lookup_barcode(code)}
 
 
 @app.post("/api/v1/sms-note")

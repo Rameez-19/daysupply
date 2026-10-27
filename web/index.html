@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -454,6 +454,7 @@
         <div class="capture-card report-card" id="mode-scan" hidden>
           <p class="capture-hint" data-i18n="scan.hint">Point the camera at the barcode on the pack.</p>
           <div id="reader" class="scan-reader"></div>
+          <div id="scan-decode" hidden></div>
           <div class="scan-actions">
             <button class="btn btn-primary" onclick="startScanner()" data-i18n="scan.start">Start camera</button>
             <button class="btn btn-danger" onclick="stopScanner()" data-i18n="scan.stop">Stop</button>

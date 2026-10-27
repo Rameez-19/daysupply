@@ -58,7 +58,7 @@ const REPORT_STRINGS = {
     'voice.working': 'Understanding…',
     'voice.hint': 'Hindi, English or both. Example: “Paracetamol ke 200 tablet aaye hain”',
     'voice.denied': 'Microphone access was refused',
-    'photo.hint': 'Photograph the stock register page. Each row is shown for you to check; nothing is saved until you say yes.',
+    'photo.hint': 'Photograph the stock register page, or a medicine pack. Each row is shown for you to check; nothing is saved until you say yes.',
     'photo.take': 'Take photo', 'photo.reading': 'Reading the page…',
     'scan.hint': 'Point the camera at the barcode on the pack.',
     'scan.start': 'Start camera', 'scan.stop': 'Stop',
@@ -106,6 +106,13 @@ const REPORT_STRINGS = {
     'scan.matching': 'Scanned. Finding the medicine…',
     'scan.askqty': 'How many?',
     'scan.denied': 'The camera could not be opened.',
+    'rb.request': 'That sounds like a request for {name}, so nothing was saved. StockPulse works out orders from what is on the shelf: say how many are left, for example "paracetamol ki 40 goli bachi hain".',
+    'rb.request.also': 'A request for {name} was not saved: say how many are left instead.',
+    'rb.ok': 'OK',
+    'photo.pack': 'This pack is {name}. What happened to it?',
+    'scan.known': 'Scanned: {name}. What happened to it?',
+    'scan.new': 'New pack ({code}). Choose what happened, then which medicine it is. StockPulse will remember this pack.',
+    'scan.taught': 'This pack is now remembered as {name}.',
     'work.busy': 'Working… this takes a few seconds',
     'work.retry': 'The system is busy. Nothing was lost; try again in a minute.',
     'chat.ph': 'e.g. paracetamol 200 tablets came in, ORS half a box left',
@@ -152,7 +159,7 @@ const REPORT_STRINGS = {
     'voice.working': 'समझ रहे हैं…',
     'voice.hint': 'हिंदी, अंग्रेज़ी या दोनों। जैसे: “Paracetamol ke 200 tablet aaye hain”',
     'voice.denied': 'माइक्रोफ़ोन की अनुमति नहीं मिली',
-    'photo.hint': 'स्टॉक रजिस्टर का पन्ना फ़ोटो लें। हर पंक्ति आपको जाँचने के लिए दिखेगी; आपके हाँ कहने तक कुछ सेव नहीं होगा।',
+    'photo.hint': 'स्टॉक रजिस्टर का पन्ना या दवा का पैकेट फ़ोटो लें। हर पंक्ति आपको जाँचने के लिए दिखेगी; आपके हाँ कहने तक कुछ सेव नहीं होगा।',
     'photo.take': 'फ़ोटो लें', 'photo.reading': 'पन्ना पढ़ रहे हैं…',
     'scan.hint': 'पैकेट के बारकोड पर कैमरा रखें।',
     'scan.start': 'कैमरा चालू करें', 'scan.stop': 'बंद करें',
@@ -200,6 +207,13 @@ const REPORT_STRINGS = {
     'scan.matching': 'स्कैन हो गया। दवा ढूँढ रहे हैं…',
     'scan.askqty': 'कितनी?',
     'scan.denied': 'कैमरा नहीं खुल सका।',
+    'rb.request': 'यह {name} की माँग लगती है, इसलिए कुछ सेव नहीं हुआ। StockPulse शेल्फ़ पर बचे स्टॉक से ऑर्डर तय करता है: बताइए कितनी बची हैं, जैसे "पैरासिटामोल की 40 गोली बची हैं"।',
+    'rb.request.also': '{name} की माँग सेव नहीं हुई: इसके बजाय बताइए कितनी बची हैं।',
+    'rb.ok': 'ठीक है',
+    'photo.pack': 'यह पैकेट {name} का है। इसके साथ क्या हुआ?',
+    'scan.known': 'स्कैन हुआ: {name}। इसके साथ क्या हुआ?',
+    'scan.new': 'नया पैकेट ({code})। पहले चुनें क्या हुआ, फिर कौन सी दवा है। StockPulse यह पैकेट याद रखेगा।',
+    'scan.taught': 'यह पैकेट अब {name} के रूप में याद है।',
     'work.busy': 'काम हो रहा है… कुछ सेकंड लगेंगे',
     'work.retry': 'सिस्टम व्यस्त है। कुछ खोया नहीं; एक मिनट बाद फिर कोशिश करें।',
     'chat.ph': 'जैसे: पैरासिटामोल की 200 गोलियाँ आईं, ORS आधा डिब्बा बचा',
@@ -266,7 +280,7 @@ const REPORT_STRINGS = {
     'voice.working': 'समजून घेत आहे…',
     'voice.hint': 'मराठी, हिंदी, इंग्रजी किंवा मिसळून. उदा.: “पॅरासिटामॉलच्या २०० गोळ्या आल्या”',
     'voice.denied': 'मायक्रोफोनची परवानगी मिळाली नाही',
-    'photo.hint': 'साठा रजिस्टरच्या पानाचा फोटो काढा. प्रत्येक ओळ तुम्हाला तपासायला दिसेल; तुम्ही हो म्हणेपर्यंत काहीही जतन होणार नाही.',
+    'photo.hint': 'साठा रजिस्टरच्या पानाचा किंवा औषधाच्या पाकिटाचा फोटो काढा. प्रत्येक ओळ तुम्हाला तपासायला दिसेल; तुम्ही हो म्हणेपर्यंत काहीही जतन होणार नाही.',
     'photo.take': 'फोटो काढा',
     'photo.reading': 'पान वाचत आहे…',
     'scan.hint': 'पाकिटावरील बारकोडकडे कॅमेरा धरा.',
@@ -332,6 +346,13 @@ const REPORT_STRINGS = {
     'scan.matching': 'स्कॅन झाले. औषध शोधत आहे…',
     'scan.askqty': 'किती?',
     'scan.denied': 'कॅमेरा उघडता आला नाही.',
+    'rb.request': 'ही {name} ची मागणी वाटते, म्हणून काहीही जतन झाले नाही. StockPulse शेल्फवर उरलेल्या साठ्यावरून ऑर्डर ठरवते: किती उरल्या ते सांगा, उदा. "पॅरासिटामॉलच्या 40 गोळ्या उरल्या आहेत".',
+    'rb.request.also': '{name} ची मागणी जतन झाली नाही: त्याऐवजी किती उरल्या ते सांगा.',
+    'rb.ok': 'ठीक आहे',
+    'photo.pack': 'हे पाकीट {name} चे आहे. त्याचे काय झाले?',
+    'scan.known': 'स्कॅन झाले: {name}. त्याचे काय झाले?',
+    'scan.new': 'नवीन पाकीट ({code}). आधी काय झाले ते निवडा, मग कोणते औषध आहे. StockPulse हे पाकीट लक्षात ठेवेल.',
+    'scan.taught': 'हे पाकीट आता {name} म्हणून लक्षात आहे.',
     'work.busy': 'काम सुरू आहे… काही सेकंद लागतील',
     'work.retry': 'प्रणाली व्यस्त आहे. काहीही हरवले नाही; एका मिनिटाने पुन्हा प्रयत्न करा.',
     'chat.ph': 'उदा.: पॅरासिटामॉलच्या 200 गोळ्या आल्या, ORS अर्धा डबा उरला',
@@ -398,7 +419,7 @@ const REPORT_STRINGS = {
     'voice.working': 'అర్థం చేసుకుంటోంది…',
     'voice.hint': 'తెలుగు, హిందీ, ఇంగ్లీష్ లేదా కలిపి. ఉదా: “పారాసిటమాల్ 200 మాత్రలు వచ్చాయి”',
     'voice.denied': 'మైక్రోఫోన్ అనుమతి లభించలేదు',
-    'photo.hint': 'స్టాక్ రిజిస్టర్ పేజీని ఫోటో తీయండి. ప్రతి వరుస మీరు తనిఖీ చేయడానికి చూపబడుతుంది; మీరు అవును అనే వరకు ఏదీ సేవ్ కాదు.',
+    'photo.hint': 'స్టాక్ రిజిస్టర్ పేజీని లేదా మందు ప్యాక్‌ను ఫోటో తీయండి. ప్రతి వరుస మీరు తనిఖీ చేయడానికి చూపబడుతుంది; మీరు అవును అనే వరకు ఏదీ సేవ్ కాదు.',
     'photo.take': 'ఫోటో తీయండి',
     'photo.reading': 'పేజీని చదువుతోంది…',
     'scan.hint': 'ప్యాక్‌పై ఉన్న బార్‌కోడ్ వైపు కెమెరా పెట్టండి.',
@@ -464,6 +485,13 @@ const REPORT_STRINGS = {
     'scan.matching': 'స్కాన్ అయింది. మందు కోసం వెతుకుతోంది…',
     'scan.askqty': 'ఎన్ని?',
     'scan.denied': 'కెమెరా తెరవలేకపోయాము.',
+    'rb.request': 'ఇది {name} కోసం అభ్యర్థనలా ఉంది, అందుకే ఏదీ సేవ్ కాలేదు. షెల్ఫ్‌లో మిగిలిన స్టాక్ నుండి StockPulse ఆర్డర్లు లెక్కిస్తుంది: ఎన్ని మిగిలాయో చెప్పండి, ఉదా. "పారాసిటమాల్ 40 మాత్రలు మిగిలాయి".',
+    'rb.request.also': '{name} అభ్యర్థన సేవ్ కాలేదు: బదులుగా ఎన్ని మిగిలాయో చెప్పండి.',
+    'rb.ok': 'సరే',
+    'photo.pack': 'ఈ ప్యాక్ {name}. దీనికి ఏమైంది?',
+    'scan.known': 'స్కాన్ అయింది: {name}. దీనికి ఏమైంది?',
+    'scan.new': 'కొత్త ప్యాక్ ({code}). ముందు ఏమైందో ఎంచుకోండి, తర్వాత ఏ మందో ఎంచుకోండి. StockPulse ఈ ప్యాక్‌ను గుర్తుంచుకుంటుంది.',
+    'scan.taught': 'ఈ ప్యాక్ ఇప్పుడు {name}గా గుర్తుంది.',
     'work.busy': 'పని జరుగుతోంది… కొన్ని సెకన్లు పడుతుంది',
     'work.retry': 'వ్యవస్థ బిజీగా ఉంది. ఏదీ పోలేదు; ఒక నిమిషం తర్వాత మళ్ళీ ప్రయత్నించండి.',
     'chat.ph': 'ఉదా: పారాసిటమాల్ 200 మాత్రలు వచ్చాయి, ORS సగం పెట్టె మిగిలింది',
@@ -530,7 +558,7 @@ const REPORT_STRINGS = {
     'voice.working': 'বুঝছি…',
     'voice.hint': 'বাংলা, হিন্দি, ইংরেজি বা মিশিয়ে। যেমন: “প্যারাসিটামল ২০০টা ট্যাবলেট এসেছে”',
     'voice.denied': 'মাইক্রোফোনের অনুমতি পাওয়া যায়নি',
-    'photo.hint': 'স্টক রেজিস্টারের পাতার ছবি তুলুন। প্রতিটি সারি আপনাকে যাচাই করতে দেখানো হবে; আপনি হ্যাঁ না বলা পর্যন্ত কিছুই সেভ হবে না।',
+    'photo.hint': 'স্টক রেজিস্টারের পাতার বা ওষুধের প্যাকের ছবি তুলুন। প্রতিটি সারি আপনাকে যাচাই করতে দেখানো হবে; আপনি হ্যাঁ না বলা পর্যন্ত কিছুই সেভ হবে না।',
     'photo.take': 'ছবি তুলুন',
     'photo.reading': 'পাতা পড়ছি…',
     'scan.hint': 'প্যাকেটের বারকোডের দিকে ক্যামেরা ধরুন।',
@@ -596,6 +624,13 @@ const REPORT_STRINGS = {
     'scan.matching': 'স্ক্যান হয়েছে। ওষুধ খোঁজা হচ্ছে…',
     'scan.askqty': 'কতগুলো?',
     'scan.denied': 'ক্যামেরা খোলা যায়নি।',
+    'rb.request': 'এটা {name}-এর অনুরোধ মনে হচ্ছে, তাই কিছু সেভ হয়নি। তাকে যা আছে তা থেকে StockPulse অর্ডার ঠিক করে: কতগুলো বাকি আছে বলুন, যেমন "প্যারাসিটামল ৪০টা ট্যাবলেট বাকি আছে"।',
+    'rb.request.also': '{name}-এর অনুরোধ সেভ হয়নি: বরং কতগুলো বাকি আছে বলুন।',
+    'rb.ok': 'ঠিক আছে',
+    'photo.pack': 'এই প্যাকটি {name}। এটার কী হয়েছে?',
+    'scan.known': 'স্ক্যান হয়েছে: {name}। এটার কী হয়েছে?',
+    'scan.new': 'নতুন প্যাক ({code})। আগে কী হয়েছে বেছে নিন, তারপর কোন ওষুধ। StockPulse এই প্যাকটি মনে রাখবে।',
+    'scan.taught': 'এই প্যাকটি এখন {name} হিসেবে মনে আছে।',
     'work.busy': 'কাজ চলছে… কয়েক সেকেন্ড লাগবে',
     'work.retry': 'সিস্টেম ব্যস্ত। কিছুই হারায়নি; এক মিনিট পরে আবার চেষ্টা করুন।',
     'chat.ph': 'যেমন: প্যারাসিটামল ২০০টা ট্যাবলেট এসেছে, ORS অর্ধেক বাক্স বাকি',
@@ -629,6 +664,10 @@ try {
 function t(key) {
   const table = REPORT_STRINGS[reportLang] || REPORT_STRINGS.en;
   return table[key] !== undefined ? table[key] : (REPORT_STRINGS.en[key] || key);
+}
+// t() with {name}-style placeholders filled in.
+function tf(key, vars) {
+  return t(key).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? vars[k] : m));
 }
 
 function rq(id) { return document.getElementById(id); }
@@ -837,7 +876,7 @@ function renderTapStep() {
   const crumbHtml = crumbs.length ? `<div class="tap-crumbs">${crumbs.map(escapeHtml).join(' › ')}</div>` : '';
 
   if (s.step === 'what') {
-    host.innerHTML = `
+    host.innerHTML = `${crumbHtml}
       <div class="tap-question">${t('step.what')}</div>
       <div class="tap-events">
         <button class="tap-event ev-received" onclick="tapEvent('received')"><span class="tap-ico">📦</span>${t('ev.received')}</button>
@@ -886,7 +925,35 @@ function renderTapStep() {
 
 function tileName(it) { return DEVANAGARI_LANGS.includes(reportLang) && it.hindi_name ? it.hindi_name : it.display_name; }
 
-function tapEvent(ev) { tapState.event_type = ev; tapState.step = 'which'; renderTapStep(); }
+function tapEvent(ev) {
+  tapState.event_type = ev;
+  // A medicine already named by a pack photo or a scan skips "which one".
+  tapState.step = tapState.preset && tapState.item ? (ev === 'lost' ? 'why' : 'howmany') : 'which';
+  renderTapStep();
+}
+
+// Opens the tap flow at "what happened?", with the medicine already chosen
+// (a pack photo, a known barcode) or still to choose (a new barcode, which is
+// remembered once the report is confirmed).
+function startTapWith(item, opts = {}) {
+  setReportMode('tap');
+  tapState.item = item || null;
+  tapState.preset = !!item;
+  tapState.barcode = opts.barcode || null;
+  renderTapStep();
+  if (opts.note) setReportNote(opts.note, 'info');
+}
+window.startTapWith = startTapWith;
+
+// A catalogue row for a medicine the server named: the tile's own entry when
+// it is a tile, so the name and unit match what a tap would show.
+async function tapItemFor(found) {
+  const items = await loadQuickItems();
+  return items.find(i => i.item_id === found.item_id)
+    || { item_id: found.item_id, display_name: found.item_name || found.local_name,
+         unit: found.unit || 'unknown', hindi_name: null };
+}
+window.tapItemFor = tapItemFor;
 function tapItem(i) {
   tapState.item = quickItems[i];
   tapState.step = tapState.event_type === 'lost' ? 'why' : 'howmany';
@@ -896,9 +963,10 @@ function tapItem(i) {
 function tapWhy(r) { tapState.loss_reason = r; tapState.step = 'howmany'; renderTapStep(); }
 function tapBack() {
   const s = tapState;
+  const pick = s.preset ? 'what' : 'which';
   if (s.step === 'which') s.step = 'what';
-  else if (s.step === 'why') s.step = 'which';
-  else if (s.step === 'howmany') s.step = s.event_type === 'lost' ? 'why' : 'which';
+  else if (s.step === 'why') s.step = pick;
+  else if (s.step === 'howmany') s.step = s.event_type === 'lost' ? 'why' : pick;
   renderTapStep();
 }
 function kpPress(k) {
@@ -918,7 +986,9 @@ function tapReadback() {
     event_type: s.event_type, quantity: s.qty === '' ? null : parseInt(s.qty, 10),
     unit: s.item.unit, loss_reason: s.loss_reason, hindi_name: s.item.hindi_name,
   }];
-  showReadback(rows, 'tap', null);
+  showReadback(rows, s.barcode ? 'barcode' : 'tap', null);
+  // A scanned pack: confirming this report teaches its code.
+  readbackBarcode = s.barcode || null;
 }
 window.tapReadback = tapReadback;
 
@@ -929,6 +999,7 @@ let readbackRows = [];
 let readbackSource = 'tap';
 let readbackTranscript = null;
 let readbackResourceType = 'medicine';
+let readbackBarcode = null;
 
 function rowSentence(r) {
   const name = DEVANAGARI_LANGS.includes(reportLang) && r.hindi_name ? r.hindi_name : (r.item_name || r.local_name || '?');
@@ -943,7 +1014,7 @@ function rowSentence(r) {
 
 function showReadback(rows, source, transcript, resourceType = 'medicine') {
   readbackRows = rows; readbackSource = source; readbackTranscript = transcript;
-  readbackResourceType = resourceType;
+  readbackResourceType = resourceType; readbackBarcode = null;
   const host = rq('report-readback');
   if (!host) return;
   const result = rq('capture-result'); if (result) result.classList.add('hidden');
@@ -1040,6 +1111,10 @@ async function confirmReadback() {
   const source = readbackSource;
   const transcript = readbackTranscript;
   const resourceType = readbackResourceType;
+  const barcode = readbackBarcode;
+  const first = readbackRows[0];
+  const firstName = first ? (DEVANAGARI_LANGS.includes(reportLang) && first.hindi_name
+    ? first.hindi_name : (first.item_name || first.local_name || '')) : '';
   hideReadback();
   const facility_id = reportFacilityId();
   if (!navigator.onLine) {
@@ -1056,10 +1131,11 @@ async function confirmReadback() {
     fd.append('source', source);
     fd.append('resource_type', resourceType);
     if (transcript) fd.append('raw_transcript', transcript);
+    if (barcode) fd.append('barcode', barcode);
     const res = await fetch('/api/v1/confirm-note', { method: 'POST', body: fd });
     const data = await res.json();
     if (!res.ok) { setReportNote((data.detail && (data.detail.reason || data.detail)) || t('error')); return; }
-    setReportNote('');
+    setReportNote(data.barcode_learned ? tf('scan.taught', { name: firstName }) : '');
     showCaptureResult(data);
     if (typeof refreshAll === 'function' && source !== 'tap') { /* other views refresh on their own next open */ }
     if (typeof loadReviewQueue === 'function') loadReviewQueue();
@@ -1095,9 +1171,46 @@ async function handlePreviewResponse(data, source, transcript) {
       if (!r.unit || r.unit === 'unknown') r.unit = it.unit;
     });
   }
+
+  // A pack photo names a medicine but not what happened to it: ask, with the
+  // medicine already chosen.
+  const named = (data.identified || []).find(i => i.item_id);
+  if (!rows.length && named) {
+    const item = await tapItemFor(named);
+    startTapWith(item, { note: tf('photo.pack', { name: tileName(item) }) });
+    return;
+  }
+
+  // "Paracetamol ke 100 tablet chahiye" is a request. It is never saved, and
+  // the worker is told why instead of hearing "nothing was recognised".
+  const asked = data.requests || [];
+  if (asked.length) {
+    const items = await loadQuickItems();
+    const nameOf = r => {
+      const it = items.find(i => i.item_id === r.item_id);
+      return it ? tileName(it) : (r.item_name || r.local_name || '');
+    };
+    const names = [...new Set(asked.map(nameOf).filter(Boolean))].join(', ');
+    if (!rows.length) { showReadbackMessage(tf('rb.request', { name: names })); return; }
+    showReadback(rows, source, transcript || data.raw_transcript || null);
+    setReportNote(tf('rb.request.also', { name: names }), 'info');
+    return;
+  }
   showReadback(rows, source, transcript || data.raw_transcript || null);
 }
 window.handlePreviewResponse = handlePreviewResponse;
+
+// The read-back panel with a sentence and a close button, for an answer that
+// is not a list of rows to confirm.
+function showReadbackMessage(text) {
+  const host = rq('report-readback');
+  if (!host) return;
+  readbackRows = [];
+  host.hidden = false;
+  host.innerHTML = `<p class="rb-nothing">${escapeHtml(text)}</p>
+    <div class="rb-actions"><button class="btn btn-secondary" onclick="hideReadback()">${t('rb.ok')}</button></div>`;
+  host.scrollIntoView({ block: 'nearest' });
+}
 
 // While the phone waits, the note counts the seconds after the first three.
 // A slow answer with a frozen "Working…" looked like the microphone had not
