@@ -674,9 +674,22 @@ function v2FourthPanel(d) {
     // This text IS the panel here, not an explanation of a chart, so it must
     // not carry a class the lean view hides: with Explain off the panel used
     // to show only its title.
+    // One sentence alone in a card as tall as its neighbour read as a panel
+    // that had failed to load. Each figure on the page, what kind of number
+    // it is, and where it comes from.
+    const KIND = { real: 'Real', norm: 'Government norm',
+                   reported: 'Reported by centres', modelled: 'Modelled' };
+    const sources = (d.labels || {}).sources || [];
     if (note) {
       note.className = 'v2-provenance';
-      note.innerHTML = `<p>${v2Esc((d.labels || {}).provenance || '')}</p>`;
+      note.innerHTML = sources.length
+        ? `<ul class="v2-sources">${sources.map(s => `
+            <li>
+              <div class="v2-src-head"><strong>${v2Esc(s.name)}</strong>
+                <span class="v2-src-kind ${v2Esc(s.kind)}">${v2Esc(KIND[s.kind] || s.kind)}</span></div>
+              <div class="v2-src-from">${v2Esc(s.source)}</div>
+            </li>`).join('')}</ul>`
+        : `<p>${v2Esc((d.labels || {}).provenance || '')}</p>`;
     }
     if (card) card.classList.add('v2-provenance-card');
     return;

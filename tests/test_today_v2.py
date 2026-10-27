@@ -505,6 +505,22 @@ class TestBedsAndStaffAreGraded:
         assert "state-and-cadre" in prov
         assert "modelled" not in prov and "attendance" not in prov.lower()
 
+    def test_the_fourth_panel_lists_where_each_figure_comes_from(self):
+        """On beds and staff the fourth panel was one sentence in a tall empty
+        card, which looked broken. It lists each figure on the page, what kind
+        of number it is, and its source."""
+        kinds = {"real", "norm", "reported", "modelled"}
+        beds = today_v2.bed_scorecard()["labels"]["sources"]
+        staff = today_v2.staff_scorecard()["labels"]["sources"]
+        for rows in (beds, staff):
+            assert len(rows) >= 3
+            for r in rows:
+                assert r["name"] and r["source"] and r["kind"] in kinds, r
+        # Bed occupancy is modelled and must say so; staffing has nothing
+        # modelled left to disclose.
+        assert any(r["kind"] == "modelled" for r in beds)
+        assert all(r["kind"] != "modelled" for r in staff)
+
     def test_staff_ranking_is_by_role_not_by_facility(self):
         """"Male health assistants are 38% vacant" is a recruitment decision;
         no per-facility list adds up to that sentence."""

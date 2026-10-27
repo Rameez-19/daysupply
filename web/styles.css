@@ -1116,12 +1116,23 @@ button { font-family: inherit; cursor: pointer; }
 /* The warning the Today banner's button opened, outlined for a moment. */
 .alert-card.flash { box-shadow: 0 0 0 3px var(--info); transition: box-shadow .3s; }
 
-/* Beds and staff have no shock chart; the fourth panel says what the numbers
-   rest on. That text is the panel, so it fills the card. */
+/* Beds and staff have no shock chart; the fourth panel lists each figure on
+   the page, what kind of number it is, and where it comes from. */
 #today2-view .v2-provenance-card { display: flex; flex-direction: column; }
-.v2-provenance { flex: 1; display: flex; align-items: center; }
 .v2-provenance p { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--gray-600);
   border-left: 3px solid var(--border); padding: 4px 0 4px 14px; }
+.v2-sources { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.v2-sources li { padding: 11px 0; border-top: 1px solid var(--border); }
+.v2-sources li:first-child { border-top: 0; padding-top: 2px; }
+.v2-src-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.v2-src-head strong { font-size: 0.88rem; color: var(--gray-800); font-weight: 600; }
+.v2-src-from { font-size: 0.82rem; color: var(--gray-500); line-height: 1.45; margin-top: 3px; }
+.v2-src-kind { flex: none; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.v2-src-kind.real { background: #dcfce7; color: #166534; }
+.v2-src-kind.norm { background: #dbeafe; color: #1e40af; }
+.v2-src-kind.reported { background: #e0f2fe; color: #075985; }
+.v2-src-kind.modelled { background: #fef3c7; color: #92400e; }
 
 @media (max-width: 640px) {
   .v2-kpi-value { font-size: 27px; }

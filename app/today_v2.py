@@ -648,6 +648,22 @@ BED_LABELS = {
     "provenance": "Bed numbers are the IPHS 2022 government norm, which is "
                   "real. How full they are is modelled from real HMIS "
                   "admission volumes.",
+    # The fourth panel on beds: each figure on the page, the kind of number it
+    # is, and where it comes from. One sentence alone in a tall card read as a
+    # panel that had failed to load.
+    "sources": [
+        {"name": "Beds per centre", "kind": "norm",
+         "source": "IPHS 2022: 2 essential and 4 desirable beds at a PHC; "
+                   "6 and 4 at a 24x7 PHC."},
+        {"name": "Beds free, centres over capacity, patients turned away",
+         "kind": "modelled",
+         "source": "Estimated from real HMIS admission volumes and an assumed "
+                   "length of stay. No centre publishes daily occupancy."},
+        {"name": "Centres reporting beds today", "kind": "reported",
+         "source": "Beds in use, as counted by centres on the Report page."},
+        {"name": "Health centres and districts", "kind": "real",
+         "source": "National Health Mission facility directory."},
+    ],
 }
 
 STAFF_LABELS = {
@@ -694,6 +710,19 @@ STAFF_LABELS = {
     "provenance": "Vacancy and sanctioned strength are from Rural Health "
                   "Statistics 2021-22 at state-and-cadre grain, which is the "
                   "grain this panel reports. Nothing here is per-facility.",
+    "sources": [
+        {"name": "Sanctioned posts and vacancies", "kind": "real",
+         "source": "Rural Health Statistics 2021-22 (MoHFW), as on 31 March "
+                   "2022, by state and role. Not per centre."},
+        {"name": "Nurses below the bed norm", "kind": "norm",
+         "source": "IPHS 2022 beds against the Indian Nursing Council "
+                   "nurse-to-bed ratio."},
+        {"name": "Centres reporting staff on duty today", "kind": "reported",
+         "source": "Counts entered by centres on the Report page. Nothing is "
+                   "estimated."},
+        {"name": "Health centres and districts", "kind": "real",
+         "source": "National Health Mission facility directory."},
+    ],
 }
 
 
