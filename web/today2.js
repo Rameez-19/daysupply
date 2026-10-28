@@ -657,6 +657,63 @@ function v2Quadrant(d) {
 // the provenance panel, which matters more for them anyway: occupancy and
 // attendance are modelled, and a reader would otherwise assume both were
 // counted.
+// Beds and staff: the fourth panel was a list of sources with no graph. It is
+// now a breakdown, by state (by district, or by role for staff, once a state
+// is chosen): beds in use against free, posts filled against empty. The
+// sources stay underneath as one line of tagged chips, so "modelled" is still
+// said where it applies.
+const V2_SRC_KIND = { real: 'Real', norm: 'Government norm',
+                      reported: 'Reported by centres', modelled: 'Modelled' };
+function v2Breakdown(d, el, box, note, card) {
+  const lab = (d.labels || {}).breakdown || {};
+  const rows = d.breakdown || [];
+  const by = { state: 'by state', district: 'by district', cadre: 'by role' }[d.breakdown_by] || '';
+  if (box) box.style.display = '';
+  if (card) card.classList.remove('v2-provenance-card');
+  v2SetHeading('v2-t4', 'v2-n4', { title: `${lab.title || ''} ${by}`.trim(), note: lab.note || '' });
+  const staff = d.resource === 'personnel';
+  const colourA = '#1e3a8a';
+  const colourB = staff ? '#f87171' : '#86efac';
+  const unit = lab.unit || '';
+  v2Charts.shock = new Chart(el.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.name),
+      datasets: [
+        { label: lab.a || 'A', data: rows.map(r => r.a), backgroundColor: colourA, maxBarThickness: 26 },
+        { label: lab.b || 'B', data: rows.map(r => r.b), backgroundColor: colourB, maxBarThickness: 26 },
+      ]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 }, color: V2_INK } },
+        tooltip: { callbacks: {
+          label: c => {
+            const r = rows[c.dataIndex];
+            const total = (r.a || 0) + (r.b || 0);
+            const pct = total ? Math.round(100 * c.raw / total) : 0;
+            return `${c.dataset.label}: ${v2n(c.raw)} ${unit} (${pct}%)`;
+          }
+        } }
+      },
+      scales: {
+        x: { stacked: true, beginAtZero: true, grid: { color: V2_GRID },
+             ticks: { color: V2_INK, font: { size: 11 } } },
+        y: { stacked: true, grid: { display: false }, ticks: { color: V2_INK, font: { size: 11 } } }
+      }
+    }
+  });
+  const sources = (d.labels || {}).sources || [];
+  if (note) {
+    note.className = 'v2-src-chips';
+    note.innerHTML = sources.map(s => `
+      <span class="v2-src-chip" title="${v2Esc(s.source)}">
+        <span class="v2-src-kind ${v2Esc(s.kind)}">${v2Esc(V2_SRC_KIND[s.kind] || s.kind)}</span>${v2Esc(s.name)}
+      </span>`).join('');
+  }
+}
+
 function v2FourthPanel(d) {
   const el = document.getElementById('v2-shock');
   const note = document.getElementById('v2-shock-note');
@@ -665,6 +722,10 @@ function v2FourthPanel(d) {
 
   const rows = d.absorption || [];
   const card = note ? note.parentElement : null;
+  if (!rows.length && (d.breakdown || []).length && el && typeof Chart !== 'undefined') {
+    v2Breakdown(d, el, box, note, card);
+    return;
+  }
   if (!rows.length) {
     if (box) box.style.display = 'none';
     v2SetHeading('v2-t4', 'v2-n4', {

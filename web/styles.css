@@ -1133,6 +1133,11 @@ button { font-family: inherit; cursor: pointer; }
 .v2-src-kind.norm { background: #dbeafe; color: #1e40af; }
 .v2-src-kind.reported { background: #e0f2fe; color: #075985; }
 .v2-src-kind.modelled { background: #fef3c7; color: #92400e; }
+/* Under the beds and staff breakdown: what each figure rests on, one line. */
+.v2-src-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.v2-src-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.74rem;
+  color: var(--gray-600); background: var(--gray-50); border: 1px solid var(--border);
+  border-radius: 999px; padding: 2px 9px 2px 3px; cursor: help; }
 
 @media (max-width: 640px) {
   .v2-kpi-value { font-size: 27px; }

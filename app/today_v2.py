@@ -648,6 +648,12 @@ BED_LABELS = {
     "provenance": "Bed numbers are the IPHS 2022 government norm, which is "
                   "real. How full they are is modelled from real HMIS "
                   "admission volumes.",
+    "breakdown": {
+        "title": "Beds in use and free",
+        "note": "Average beds in use against beds free, from the IPHS bed "
+                "norm. How many are in use is modelled from real admissions.",
+        "a": "In use (modelled)", "b": "Free", "unit": "beds",
+    },
     # The fourth panel on beds: each figure on the page, the kind of number it
     # is, and where it comes from. One sentence alone in a tall card read as a
     # panel that had failed to load.
@@ -710,6 +716,13 @@ STAFF_LABELS = {
     "provenance": "Vacancy and sanctioned strength are from Rural Health "
                   "Statistics 2021-22 at state-and-cadre grain, which is the "
                   "grain this panel reports. Nothing here is per-facility.",
+    "breakdown": {
+        "title": "Posts filled and empty",
+        "note": "Sanctioned posts at the forecasting centres, split by each "
+                "state's published vacancy rate for the role (Rural Health "
+                "Statistics 2021-22).",
+        "a": "Filled", "b": "Empty", "unit": "posts",
+    },
     "sources": [
         {"name": "Sanctioned posts and vacancies", "kind": "real",
          "source": "Rural Health Statistics 2021-22 (MoHFW), as on 31 March "
@@ -726,6 +739,11 @@ STAFF_LABELS = {
 }
 
 
+# Bars in the fourth panel's breakdown: six states fit; a large state's
+# districts are cut to the biggest.
+BREAKDOWN_N = 12
+
+
 def bed_scorecard(state: str = "", district: str = "", phc: str = "") -> dict:
     """Bed availability, graded.
 
@@ -736,6 +754,7 @@ def bed_scorecard(state: str = "", district: str = "", phc: str = "") -> dict:
     """
     where = _geo_where(state, district, phc)
     params = _geo_params(state, district, phc)
+    by = "district" if state else "state"
 
     rows = run_query(f"""
     SELECT
@@ -779,7 +798,16 @@ def bed_scorecard(state: str = "", district: str = "", phc: str = "") -> dict:
                COUNT(*) AS tracked,
                SUM(turned_away) > 0 AND AVG(occupancy_rate) >= 0.5 AS critical
         FROM `{D}.bed_status` WHERE {where}
-        GROUP BY district)) AS quadrant
+        GROUP BY district)) AS quadrant,
+
+      -- The fourth panel: beds in use against free, by state, or by
+      -- district once a state is chosen. In use is the modelled average.
+      ARRAY(SELECT AS STRUCT name, a, b FROM (
+        SELECT {by} AS name,
+               ROUND(SUM(LEAST(mean_occupied, bed_capacity))) AS a,
+               ROUND(SUM(GREATEST(bed_capacity - mean_occupied, 0))) AS b
+        FROM `{D}.bed_status` WHERE {where}
+        GROUP BY name ORDER BY SUM(bed_capacity) DESC LIMIT {BREAKDOWN_N})) AS breakdown
     """, params, cache_key=f"v2bed:{state}:{district}:{phc}", ttl=300)
 
     if not rows:
@@ -851,6 +879,8 @@ def bed_scorecard(state: str = "", district: str = "", phc: str = "") -> dict:
         "distribution": [dict(x) for x in (r.get("distribution") or [])],
         "ranking": [dict(x) for x in (r.get("ranking") or [])],
         "quadrant": [dict(x) for x in (r.get("quadrant") or [])],
+        "breakdown": [dict(x) for x in (r.get("breakdown") or [])],
+        "breakdown_by": by,
     }
 
 
@@ -879,6 +909,7 @@ def staff_scorecard(state: str = "", district: str = "",
     """
     where = _geo_where(state, district, phc)
     params = _geo_params(state, district, phc)
+    by = "cadre" if state else "state"
 
     rows = run_query(f"""
     SELECT
@@ -955,7 +986,17 @@ def staff_scorecard(state: str = "", district: str = "",
                ANY_VALUE(vacancy_rate) >= 0.3 AS critical
         FROM `{D}.staff_status`
         WHERE {where} AND vacancy_rate IS NOT NULL
-        GROUP BY state, cadre)) AS quadrant
+        GROUP BY state, cadre)) AS quadrant,
+
+      -- The fourth panel: sanctioned posts filled against empty, by state,
+      -- or by role once a state is chosen (vacancy has no district grain).
+      -- Weighted exactly like the "Posts filled" tile, so the two agree.
+      ARRAY(SELECT AS STRUCT name, a, b FROM (
+        SELECT {by} AS name,
+               ROUND(SUM(sanctioned_posts * (1 - vacancy_rate))) AS a,
+               ROUND(SUM(sanctioned_posts * vacancy_rate)) AS b
+        FROM `{D}.staff_status` WHERE {where} AND vacancy_rate IS NOT NULL
+        GROUP BY name ORDER BY SUM(sanctioned_posts) DESC LIMIT {BREAKDOWN_N})) AS breakdown
     """, params, cache_key=f"v2staff:{state}:{district}:{phc}", ttl=300)
 
     if not rows:
@@ -1053,4 +1094,6 @@ def staff_scorecard(state: str = "", district: str = "",
         "distribution": [dict(x) for x in (r.get("distribution") or [])],
         "ranking": [dict(x) for x in (r.get("ranking") or [])],
         "quadrant": [dict(x) for x in (r.get("quadrant") or [])],
+        "breakdown": [dict(x) for x in (r.get("breakdown") or [])],
+        "breakdown_by": by,
     }

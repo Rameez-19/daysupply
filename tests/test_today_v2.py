@@ -521,6 +521,31 @@ class TestBedsAndStaffAreGraded:
         assert any(r["kind"] == "modelled" for r in beds)
         assert all(r["kind"] != "modelled" for r in staff)
 
+    def test_the_fourth_panel_draws_a_breakdown_that_adds_up(self):
+        """Beds and staff get a graph in the fourth panel: in use against free
+        beds, and filled against empty posts, by state (by district or role
+        once a state is chosen). The bars must add up to the page's totals."""
+        beds = today_v2.bed_scorecard()
+        rows = beds["breakdown"]
+        assert len(rows) >= 2 and beds["labels"]["breakdown"]["title"]
+        assert abs(sum(r["a"] + r["b"] for r in rows) - beds["scorecard"]["beds"]) <= len(rows)
+
+        staff = today_v2.staff_scorecard()
+        rows = staff["breakdown"]
+        assert len(rows) >= 2 and staff["labels"]["breakdown"]["title"]
+        filled = sum(r["a"] for r in rows)
+        posts = sum(r["a"] + r["b"] for r in rows)
+        # The same weighting as the "Posts filled" tile, so they agree.
+        tile = next(k for k in staff["kpis"] if k["label"] == "Posts filled")
+        assert abs(100 * filled / posts - tile["value"]) < 1.0
+
+    def test_a_chosen_state_breaks_down_by_district_and_role(self):
+        beds = today_v2.bed_scorecard(state="Assam")["breakdown"]
+        staff = today_v2.staff_scorecard(state="Assam")["breakdown"]
+        assert "Assam" not in {r["name"] for r in beds}      # districts, not the state
+        assert {r["name"] for r in staff} <= {
+            "Doctor (allopathic)", "Nursing staff", "Pharmacist", "Health assistant"}
+
     def test_staff_ranking_is_by_role_not_by_facility(self):
         """"Male health assistants are 38% vacant" is a recruitment decision;
         no per-facility list adds up to that sentence."""
