@@ -1009,13 +1009,13 @@ Rendered to a canvas with hit-detection off. 35,000 SVG nodes is a frozen tab.
 |---|---|
 | **Six ways in, one pipeline**: tap, barcode, voice, chat, register photo, SMS | `capture_pipeline.SOURCES`; every source ends in `route()` |
 | **Nothing is written until the worker has heard it read back and said yes** — voice, chat and photo all preview first; `preview()` never persists | `capture_pipeline.preview()`; `tests/test_report_flow.py::TestPreviewNeverWrites` |
-| The one exception is the **offline queue**, which syncs with nobody holding the phone and so goes straight through the confidence gate | `app.js syncQueue()`; `TestVoiceAndChatPreview::test_voice_without_preview_still_writes` |
+| **No exception offline.** Every report that cannot be sent (no network, a failed request, a busy system) waits on the phone. On reconnect, confirmed tap, scan, staff and bed rows are sent as they are; voice, photo and typed reports are read in preview and shown to the worker to check and confirm. A queued report leaves the phone only when the server has taken it or the worker has answered it; one sync runs at a time. (Until 28 Oct the queue sent recordings without preview and deleted them on any 200, including a 200 carrying a Gemini error) | `report.js` offline queue: `syncOfflineQueue()`, `checkNextOffline()`; checked end to end in a browser switched offline, 28 Oct |
 | A **confirmed row cannot skip the gate**: an unrecognised item, an event type the ledger does not record, or a missing quantity is still held for the pharmacist | `TestConfirmWritesThroughTheGate` |
 | A client-supplied item id is **verified against the catalogue, never trusted** | `route()`; `test_a_client_supplied_id_is_verified_not_trusted` |
 | **A register photo can never write unconfirmed** — `handle_photo()` has no non-preview path | `app/capture.py`; `TestPhotoIsAlwaysAPreview` |
 | **39 tap tiles** — the forecast items; **16 carry a Devanagari name** from the catalogue's `spoken_variants`, the rest show their shortest spoken variant. Nothing is machine-transliterated | `items.quick_list()`; `GET /api/v1/items/quick` |
 | The page reads in **Hindi or English** from one dictionary; both languages carry the same keys, tested | `REPORT_STRINGS`; `TestTheReportPageStrings` |
-| The read-back is **spoken** in the chosen language via the browser's speech synthesis (`hi-IN` / `en-IN`). No cloud TTS call is made | `speakReadback()` |
+| The read-back is **spoken** in the chosen language by Cloud Text-to-Speech, with the phone's own voice as the fallback (offline, or if the call fails) | `speakReadback()`, `app/speech.py` |
 | The centre is **chosen once and remembered on the phone**; the old page posted every voice note against a hardcoded facility id | `report.js`; `test_the_page_no_longer_posts_against_a_hardcoded_centre` |
 | **Offline** is a sentence and a count of what the phone still holds | `updateOfflineLine()` |
 | **Staff on duty today** is captured as personnel `count` events through the same pipeline. It is the only attendance figure the system holds | `staffReadback()`; `test_staff_on_duty_goes_through_as_personnel` |

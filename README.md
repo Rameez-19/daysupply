@@ -48,8 +48,9 @@ extract  →  match against all 385 NLEM medicines  →  read back  →  confide
 The Report page is built for the person holding the phone at the end of a
 shift, not for an analyst: it reads in English, Hindi, Marathi, Telugu or Bengali from one picker, the
 default mode needs no typing beyond a number, and **nothing is written until
-the worker has heard it read back and said yes** (the offline queue is the one
-exception, because nobody is holding the phone when it syncs).
+the worker has heard it read back and said yes**. Offline too: a report made
+with no network waits on the phone, and when the network returns it is read
+and shown to the worker to check, as if the network had been there.
 
 | Rank | Mode | When it wins | Needs | Extraction confidence |
 |---|---|---|---|---|

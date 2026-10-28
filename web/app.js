@@ -104,39 +104,13 @@ function updateSyncUI(online) {
   document.querySelectorAll('.sync-dot').forEach(d => d.className = online ? 'sync-dot online' : 'sync-dot offline');
   document.querySelectorAll('.sync-label').forEach(l => l.textContent = online ? 'Online' : 'Offline');
 }
-window.addEventListener('online',  () => { updateSyncUI(true);  syncQueue(); });
+window.addEventListener('online',  () => { updateSyncUI(true); });
 window.addEventListener('offline', () => { updateSyncUI(false); });
-function checkOnlineStatus() { updateSyncUI(navigator.onLine); if (navigator.onLine) syncQueue(); }
-
-async function syncQueue() {
-  if (!db) return;
-  const tx = db.transaction(["offline-queue"], "readwrite");
-  const req = tx.objectStore("offline-queue").getAll();
-  req.onsuccess = async () => {
-    for (const item of req.result) {
-      try {
-        const fd = new FormData();
-        fd.append("facility_id", item.facility_id);
-        let url = "/api/v1/voice-note";
-        if (item.kind === 'rows') {
-          // Rows the worker already confirmed before the network went.
-          url = "/api/v1/confirm-note";
-          fd.append("rows", JSON.stringify(item.rows));
-          fd.append("source", item.source || 'tap');
-          fd.append("resource_type", item.resource_type || 'medicine');
-          if (item.raw_transcript) fd.append("raw_transcript", item.raw_transcript);
-        } else {
-          // A recording made offline. Nobody is holding the phone when this
-          // syncs, so it goes through the confidence gate without a read-back.
-          fd.append("file", item.audioBlob, "recording.webm");
-        }
-        const res = await fetch(url, { method: "POST", body: fd });
-        if (res.ok) db.transaction(["offline-queue"], "readwrite").objectStore("offline-queue").delete(item.id);
-      } catch (e) { console.error(e); }
-    }
-    if (typeof updateOfflineLine === 'function') setTimeout(updateOfflineLine, 500);
-  };
-}
+// The queue itself, its sync and its checking live in report.js
+// (syncOfflineQueue), which runs on "online", on the page coming back into
+// view, and every minute while anything waits.
+function checkOnlineStatus() { updateSyncUI(navigator.onLine); syncQueue(); }
+function syncQueue() { if (typeof syncOfflineQueue === 'function') syncOfflineQueue(); }
 
 // ===== Cascading Filters =====
 // The landing view is the national picture, so it opens on All India.
@@ -787,32 +761,16 @@ function captureFacilityId() {
   return currentPHC || '';
 }
 
+// Read by Gemini and read back for the worker to confirm. With no network, a
+// failed request or a busy system, the recording waits on the phone and the
+// same reading and read-back happen when it can (report.js, offline queue).
 async function processAudio(blob, mime) {
-  const facility_id = captureFacilityId();
   const idle = T('voice.hold', 'Tap the button and speak');
-  const ext = /mp4/.test(mime || '') ? 'm4a' : /ogg/.test(mime || '') ? 'ogg' : 'webm';
-  if (!navigator.onLine) {
-    // No read-back is possible offline: the recording waits on the phone and
-    // is extracted when the network returns, through the confidence gate.
-    if (typeof queueOffline === 'function') queueOffline({ kind: 'audio', facility_id, audioBlob: blob });
-    micStatus.textContent = typeof t === 'function' ? t('offline.saved') : 'Saved on this phone; sent when the network returns';
-    if (typeof updateOfflineLine === 'function') updateOfflineLine();
-    return;
-  }
   try {
-    const fd = new FormData();
-    fd.append("facility_id", facility_id);
-    fd.append("file", blob, "recording." + ext);
-    fd.append("preview", "true");
-    if (typeof setReportNote === 'function') setReportNote(T('work.busy', 'Working…'), 'busy');
-    const res = await fetch("/api/v1/voice-note", { method: "POST", body: fd });
-    const data = await res.json();
+    await sendForReading({ kind: 'audio', facility_id: captureFacilityId(), audioBlob: blob, mime },
+                         'voice', null);
+  } finally {
     micStatus.textContent = idle;
-    if (typeof handlePreviewResponse === 'function') handlePreviewResponse(data, 'voice', data.raw_transcript || null);
-    else showCaptureResult(data);
-  } catch (e) {
-    micStatus.textContent = idle;
-    if (typeof setReportNote === 'function') setReportNote(T('error', 'Could not reach the server'), 'error');
   }
 }
 
@@ -1030,21 +988,11 @@ async function sendChatNote() {
   const message = (box.value || '').trim();
   if (!message) return;
   if (typeof requireCentre === 'function' && !requireCentre()) return;
-  const note = document.getElementById('report-note');
-  if (typeof setReportNote === 'function') setReportNote(T('work.busy', 'Working…'), 'busy');
-  try {
-    const fd = new FormData();
-    fd.append('message', message);
-    fd.append('facility_id', captureFacilityId());
-    fd.append('preview', 'true');
-    const res = await fetch('/api/v1/chat-note', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (typeof handlePreviewResponse === 'function') handlePreviewResponse(data, 'chat', message);
-    else showCaptureResult(data);
-    if (!data.error) box.value = '';
-  } catch (e) {
-    if (typeof setReportNote === 'function') setReportNote(T('error', 'Could not reach the server.'), 'error');
-  }
+  // Shown for checking, or kept on the phone until it can be: either way the
+  // worker's words are safe, so the box is cleared.
+  const outcome = await sendForReading({ kind: 'text', facility_id: captureFacilityId(), message },
+                                       'chat', message);
+  if (outcome !== 'error') box.value = '';
 }
 window.sendChatNote = sendChatNote;
 

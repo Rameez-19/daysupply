@@ -401,8 +401,9 @@ async def post_voice_note(
 
     `preview=true` extracts and matches but writes nothing; the client reads
     the result back to the worker and posts what they confirm to
-    `/api/v1/confirm-note`. The offline queue syncs without `preview`, since
-    nobody is there to confirm hours later.
+    `/api/v1/confirm-note`. A recording kept in the phone's offline queue is
+    sent here with `preview` too when the network returns, and the worker
+    checks and confirms it like any other report.
     """
     audio_bytes = await file.read()
     # "audio/webm;codecs=opus" (Android) or "audio/mp4" (iPhone): Gemini

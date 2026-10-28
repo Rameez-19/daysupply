@@ -109,6 +109,14 @@ const REPORT_STRINGS = {
     'rb.request': 'That sounds like a request for {name}, so nothing was saved. StockPulse works out orders from what is on the shelf: say how many are left, for example "paracetamol ki 40 goli bachi hain".',
     'rb.request.also': 'A request for {name} was not saved: say how many are left instead.',
     'rb.ok': 'OK',
+    'offline.saved.check': 'No network. Saved on this phone; when the network returns it will be read and shown to you to check.',
+    'queue.busy': 'The system is busy. Saved on this phone; it will be read and shown to you to check.',
+    'queue.ready': '{n} reports recorded offline are ready to check.',
+    'queue.check': 'Check now',
+    'queue.from': 'Recorded offline at {time} · {i} of {n}',
+    'queue.failed': 'This report recorded offline could not be read.',
+    'queue.retry': 'Try again',
+    'queue.discard': 'Discard',
     'photo.pack': 'This pack is {name}. What happened to it?',
     'scan.known': 'Scanned: {name}. What happened to it?',
     'scan.new': 'New pack ({code}). Choose what happened, then which medicine it is. StockPulse will remember this pack.',
@@ -210,6 +218,14 @@ const REPORT_STRINGS = {
     'rb.request': 'यह {name} की माँग लगती है, इसलिए कुछ सेव नहीं हुआ। StockPulse शेल्फ़ पर बचे स्टॉक से ऑर्डर तय करता है: बताइए कितनी बची हैं, जैसे "पैरासिटामोल की 40 गोली बची हैं"।',
     'rb.request.also': '{name} की माँग सेव नहीं हुई: इसके बजाय बताइए कितनी बची हैं।',
     'rb.ok': 'ठीक है',
+    'offline.saved.check': 'नेटवर्क नहीं है। फ़ोन में सेव हो गया; नेटवर्क आने पर पढ़कर आपको जाँचने के लिए दिखाया जाएगा।',
+    'queue.busy': 'सिस्टम व्यस्त है। फ़ोन में सेव हो गया; पढ़कर आपको जाँचने के लिए दिखाया जाएगा।',
+    'queue.ready': 'बिना नेटवर्क के दर्ज {n} रिपोर्ट जाँचने के लिए तैयार हैं।',
+    'queue.check': 'अभी जाँचें',
+    'queue.from': 'बिना नेटवर्क के {time} पर दर्ज · {i} / {n}',
+    'queue.failed': 'बिना नेटवर्क के दर्ज यह रिपोर्ट पढ़ी नहीं जा सकी।',
+    'queue.retry': 'फिर कोशिश करें',
+    'queue.discard': 'हटाएँ',
     'photo.pack': 'यह पैकेट {name} का है। इसके साथ क्या हुआ?',
     'scan.known': 'स्कैन हुआ: {name}। इसके साथ क्या हुआ?',
     'scan.new': 'नया पैकेट ({code})। पहले चुनें क्या हुआ, फिर कौन सी दवा है। StockPulse यह पैकेट याद रखेगा।',
@@ -349,6 +365,14 @@ const REPORT_STRINGS = {
     'rb.request': 'ही {name} ची मागणी वाटते, म्हणून काहीही जतन झाले नाही. StockPulse शेल्फवर उरलेल्या साठ्यावरून ऑर्डर ठरवते: किती उरल्या ते सांगा, उदा. "पॅरासिटामॉलच्या 40 गोळ्या उरल्या आहेत".',
     'rb.request.also': '{name} ची मागणी जतन झाली नाही: त्याऐवजी किती उरल्या ते सांगा.',
     'rb.ok': 'ठीक आहे',
+    'offline.saved.check': 'नेटवर्क नाही. फोनवर जतन केले; नेटवर्क आल्यावर वाचून तुम्हाला तपासायला दाखवले जाईल.',
+    'queue.busy': 'प्रणाली व्यस्त आहे. फोनवर जतन केले; वाचून तुम्हाला तपासायला दाखवले जाईल.',
+    'queue.ready': 'नेटवर्कशिवाय नोंदवलेले {n} अहवाल तपासायला तयार आहेत.',
+    'queue.check': 'आता तपासा',
+    'queue.from': 'नेटवर्कशिवाय {time} ला नोंदवले · {i} / {n}',
+    'queue.failed': 'नेटवर्कशिवाय नोंदवलेला हा अहवाल वाचता आला नाही.',
+    'queue.retry': 'पुन्हा प्रयत्न करा',
+    'queue.discard': 'काढून टाका',
     'photo.pack': 'हे पाकीट {name} चे आहे. त्याचे काय झाले?',
     'scan.known': 'स्कॅन झाले: {name}. त्याचे काय झाले?',
     'scan.new': 'नवीन पाकीट ({code}). आधी काय झाले ते निवडा, मग कोणते औषध आहे. StockPulse हे पाकीट लक्षात ठेवेल.',
@@ -488,6 +512,14 @@ const REPORT_STRINGS = {
     'rb.request': 'ఇది {name} కోసం అభ్యర్థనలా ఉంది, అందుకే ఏదీ సేవ్ కాలేదు. షెల్ఫ్‌లో మిగిలిన స్టాక్ నుండి StockPulse ఆర్డర్లు లెక్కిస్తుంది: ఎన్ని మిగిలాయో చెప్పండి, ఉదా. "పారాసిటమాల్ 40 మాత్రలు మిగిలాయి".',
     'rb.request.also': '{name} అభ్యర్థన సేవ్ కాలేదు: బదులుగా ఎన్ని మిగిలాయో చెప్పండి.',
     'rb.ok': 'సరే',
+    'offline.saved.check': 'నెట్‌వర్క్ లేదు. ఫోన్‌లో సేవ్ అయింది; నెట్‌వర్క్ వచ్చాక చదివి మీకు తనిఖీకి చూపిస్తాము.',
+    'queue.busy': 'సిస్టమ్ బిజీగా ఉంది. ఫోన్‌లో సేవ్ అయింది; చదివి మీకు తనిఖీకి చూపిస్తాము.',
+    'queue.ready': 'నెట్‌వర్క్ లేనప్పుడు నమోదైన {n} నివేదికలు తనిఖీకి సిద్ధంగా ఉన్నాయి.',
+    'queue.check': 'ఇప్పుడు తనిఖీ చేయండి',
+    'queue.from': 'నెట్‌వర్క్ లేనప్పుడు {time}కి నమోదైంది · {i} / {n}',
+    'queue.failed': 'నెట్‌వర్క్ లేనప్పుడు నమోదైన ఈ నివేదికను చదవలేకపోయాము.',
+    'queue.retry': 'మళ్ళీ ప్రయత్నించండి',
+    'queue.discard': 'తొలగించండి',
     'photo.pack': 'ఈ ప్యాక్ {name}. దీనికి ఏమైంది?',
     'scan.known': 'స్కాన్ అయింది: {name}. దీనికి ఏమైంది?',
     'scan.new': 'కొత్త ప్యాక్ ({code}). ముందు ఏమైందో ఎంచుకోండి, తర్వాత ఏ మందో ఎంచుకోండి. StockPulse ఈ ప్యాక్‌ను గుర్తుంచుకుంటుంది.',
@@ -627,6 +659,14 @@ const REPORT_STRINGS = {
     'rb.request': 'এটা {name}-এর অনুরোধ মনে হচ্ছে, তাই কিছু সেভ হয়নি। তাকে যা আছে তা থেকে StockPulse অর্ডার ঠিক করে: কতগুলো বাকি আছে বলুন, যেমন "প্যারাসিটামল ৪০টা ট্যাবলেট বাকি আছে"।',
     'rb.request.also': '{name}-এর অনুরোধ সেভ হয়নি: বরং কতগুলো বাকি আছে বলুন।',
     'rb.ok': 'ঠিক আছে',
+    'offline.saved.check': 'নেটওয়ার্ক নেই। ফোনে সেভ হয়েছে; নেটওয়ার্ক ফিরলে পড়ে আপনাকে যাচাই করতে দেখানো হবে।',
+    'queue.busy': 'সিস্টেম ব্যস্ত। ফোনে সেভ হয়েছে; পড়ে আপনাকে যাচাই করতে দেখানো হবে।',
+    'queue.ready': 'নেটওয়ার্ক ছাড়া রেকর্ড করা {n}টি রিপোর্ট যাচাইয়ের জন্য তৈরি।',
+    'queue.check': 'এখন যাচাই করুন',
+    'queue.from': 'নেটওয়ার্ক ছাড়া {time}-এ রেকর্ড করা · {i} / {n}',
+    'queue.failed': 'নেটওয়ার্ক ছাড়া রেকর্ড করা এই রিপোর্টটি পড়া যায়নি।',
+    'queue.retry': 'আবার চেষ্টা করুন',
+    'queue.discard': 'বাদ দিন',
     'photo.pack': 'এই প্যাকটি {name}। এটার কী হয়েছে?',
     'scan.known': 'স্ক্যান হয়েছে: {name}। এটার কী হয়েছে?',
     'scan.new': 'নতুন প্যাক ({code})। আগে কী হয়েছে বেছে নিন, তারপর কোন ওষুধ। StockPulse এই প্যাকটি মনে রাখবে।',
@@ -686,7 +726,7 @@ function setLang(code) {
   // A read-back on screen is re-spoken in the new language, so the worker
   // who switched because they did not follow it hears it again.
   const rb = rq('report-readback');
-  if (rb && !rb.hidden && readbackRows.length) showReadback(readbackRows, readbackSource, readbackTranscript, readbackResourceType);
+  if (rb && !rb.hidden && readbackRows.length) showReadback(readbackRows, readbackSource, readbackTranscript, readbackResourceType, true);
 }
 window.setLang = setLang;
 
@@ -1000,6 +1040,9 @@ let readbackSource = 'tap';
 let readbackTranscript = null;
 let readbackResourceType = 'medicine';
 let readbackBarcode = null;
+// The offline-queue report this read-back belongs to, if any: {id, facility_id, label}.
+let readbackOffline = null;
+let pendingOffline = null;
 
 function rowSentence(r) {
   const name = DEVANAGARI_LANGS.includes(reportLang) && r.hindi_name ? r.hindi_name : (r.item_name || r.local_name || '?');
@@ -1012,20 +1055,30 @@ function rowSentence(r) {
   return `${name}, ${qty} ${unit}, ${ev}${why}`;
 }
 
-function showReadback(rows, source, transcript, resourceType = 'medicine') {
+// `keep` re-draws the same read-back (a row removed, the language changed)
+// without forgetting that it came from a scan or from the offline queue.
+function showReadback(rows, source, transcript, resourceType = 'medicine', keep = false) {
   readbackRows = rows; readbackSource = source; readbackTranscript = transcript;
-  readbackResourceType = resourceType; readbackBarcode = null;
+  readbackResourceType = resourceType;
+  if (!keep) {
+    readbackBarcode = null;
+    // A report from the offline queue owns this read-back; any other caller
+    // clears the link, so confirming something else cannot remove it.
+    readbackOffline = pendingOffline; pendingOffline = null;
+  }
   const host = rq('report-readback');
   if (!host) return;
   const result = rq('capture-result'); if (result) result.classList.add('hidden');
+  const fromQueue = readbackOffline
+    ? `<div class="rb-offline">${escapeHtml(tf('queue.from', readbackOffline.label))}</div>` : '';
   if (!rows.length) {
     host.hidden = false;
-    host.innerHTML = `<div class="rb-title">${t('rb.title')}</div><p class="rb-nothing">${t('rb.nothing')}</p>
-      <div class="rb-actions"><button class="btn btn-secondary" onclick="hideReadback()">${t('rb.no')}</button></div>`;
+    host.innerHTML = `${fromQueue}<div class="rb-title">${t('rb.title')}</div><p class="rb-nothing">${t('rb.nothing')}</p>
+      <div class="rb-actions"><button class="btn btn-secondary" onclick="rejectReadback()">${t('rb.no')}</button></div>`;
     return;
   }
   host.hidden = false;
-  host.innerHTML = `
+  host.innerHTML = `${fromQueue}
     <div class="rb-title">${t('rb.title')}</div>
     ${transcript ? `<div class="rb-transcript">“${escapeHtml(transcript)}”</div>` : ''}
     <ul class="rb-rows">${rows.map((r, i) => `
@@ -1036,7 +1089,7 @@ function showReadback(rows, source, transcript, resourceType = 'medicine') {
       </li>`).join('')}</ul>
     <div class="rb-actions">
       <button class="btn btn-secondary" onclick="speakReadback()">🔊 ${t('rb.listen')}</button>
-      <button class="btn btn-danger" onclick="hideReadback()">${t('rb.no')}</button>
+      <button class="btn btn-danger" onclick="rejectReadback()">${t('rb.no')}</button>
       <button class="btn btn-primary rb-yes" onclick="confirmReadback()">${t('rb.yes')}</button>
     </div>`;
   host.scrollIntoView({ block: 'nearest' });
@@ -1045,8 +1098,18 @@ function showReadback(rows, source, transcript, resourceType = 'medicine') {
 
 function removeReadbackRow(i) {
   readbackRows.splice(i, 1);
-  showReadback(readbackRows, readbackSource, readbackTranscript, readbackResourceType);
+  showReadback(readbackRows, readbackSource, readbackTranscript, readbackResourceType, true);
 }
+
+// "No, start again". For a report from the offline queue this is the
+// worker's answer to it, so it leaves the queue and the next one opens.
+function rejectReadback() {
+  const offline = readbackOffline;
+  readbackOffline = null;
+  hideReadback();
+  if (offline) finishOffline(offline.id, true);
+}
+window.rejectReadback = rejectReadback;
 function hideReadback() {
   const host = rq('report-readback');
   if (host) { host.hidden = true; host.innerHTML = ''; }
@@ -1112,39 +1175,56 @@ async function confirmReadback() {
   const transcript = readbackTranscript;
   const resourceType = readbackResourceType;
   const barcode = readbackBarcode;
+  const offline = readbackOffline;
+  readbackOffline = null;
   const first = readbackRows[0];
   const firstName = first ? (DEVANAGARI_LANGS.includes(reportLang) && first.hindi_name
     ? first.hindi_name : (first.item_name || first.local_name || '')) : '';
   hideReadback();
-  const facility_id = reportFacilityId();
-  if (!navigator.onLine) {
-    queueOffline({ kind: 'rows', facility_id, source, rows, raw_transcript: transcript, resource_type: resourceType });
-    setReportNote(t('offline.saved'));
-    updateOfflineLine();
-    return;
-  }
+  // A report recorded offline belongs to the centre it was recorded for.
+  const facility_id = (offline && offline.facility_id) || reportFacilityId();
+  const item = { kind: 'rows', facility_id, source, rows, raw_transcript: transcript,
+                 resource_type: resourceType, barcode };
+  // The worker has confirmed. If it cannot be sent now, it waits on the phone
+  // and is sent as it is when the network returns.
+  const keepForLater = async () => {
+    await queueOffline(item);
+    setReportNote(t('offline.saved'), 'info');
+    resetTapFlow();
+    if (offline) finishOffline(offline.id, true);
+  };
+  if (!navigator.onLine) { await keepForLater(); return; }
   setReportNote(t('saving'));
   try {
-    const fd = new FormData();
-    fd.append('rows', JSON.stringify(rows));
-    fd.append('facility_id', facility_id);
-    fd.append('source', source);
-    fd.append('resource_type', resourceType);
-    if (transcript) fd.append('raw_transcript', transcript);
-    if (barcode) fd.append('barcode', barcode);
-    const res = await fetch('/api/v1/confirm-note', { method: 'POST', body: fd });
+    const res = await fetch('/api/v1/confirm-note', { method: 'POST', body: confirmForm(item) });
+    if (res.status >= 500) { await keepForLater(); return; }
     const data = await res.json();
     if (!res.ok) { setReportNote((data.detail && (data.detail.reason || data.detail)) || t('error')); return; }
     setReportNote(data.barcode_learned ? tf('scan.taught', { name: firstName }) : '');
     showCaptureResult(data);
-    if (typeof refreshAll === 'function' && source !== 'tap') { /* other views refresh on their own next open */ }
     if (typeof loadReviewQueue === 'function') loadReviewQueue();
-    if (reportMode === 'tap') { tapState = { step: 'what', event_type: null, item: null, qty: '', loss_reason: null }; renderTapStep(); }
+    resetTapFlow();
+    if (offline) finishOffline(offline.id, true);
   } catch (e) {
-    setReportNote(t('error'));
+    await keepForLater();   // the request never reached the server
   }
 }
 window.confirmReadback = confirmReadback;
+
+function resetTapFlow() {
+  if (reportMode === 'tap') { tapState = { step: 'what', event_type: null, item: null, qty: '', loss_reason: null }; renderTapStep(); }
+}
+
+function confirmForm(item) {
+  const fd = new FormData();
+  fd.append('rows', JSON.stringify(item.rows));
+  fd.append('facility_id', item.facility_id);
+  fd.append('source', item.source || 'tap');
+  fd.append('resource_type', item.resource_type || 'medicine');
+  if (item.raw_transcript) fd.append('raw_transcript', item.raw_transcript);
+  if (item.barcode) fd.append('barcode', item.barcode);
+  return fd;
+}
 
 // The server's preview reply becomes read-back rows. Called by app.js after a
 // voice or typed note, and here after a photo.
@@ -1232,6 +1312,62 @@ function setReportNote(text, kind) {
 }
 window.setReportNote = setReportNote;
 
+// ===== Voice, photo and typed reports: read, then checked =====
+// Each is read by Gemini and shown to the worker to check before anything is
+// saved. When that cannot happen now (no network, a request that fails, or a
+// busy system) the report waits on the phone, and the same reading and
+// checking happen when it can. Returns 'shown', 'queued' or 'error'.
+async function sendForReading(item, source, transcript) {
+  item = { ...item, facility_id: item.facility_id || reportFacilityId() };
+  if (!navigator.onLine) { await saveForLater(item, 'offline'); return 'queued'; }
+  setReportNote(t(item.kind === 'photo' ? 'photo.reading' : 'work.busy'), 'busy');
+  let data;
+  try {
+    data = await previewFor(item);
+  } catch (e) {
+    await saveForLater(item, 'offline');   // the request never reached the server
+    return 'queued';
+  }
+  if (data.error && data.retryable) { await saveForLater(item, 'busy'); return 'queued'; }
+  await handlePreviewResponse(data, source, transcript || data.raw_transcript || null);
+  return data.error ? 'error' : 'shown';
+}
+window.sendForReading = sendForReading;
+
+async function saveForLater(item, why) {
+  await queueOffline(item);
+  setReportNote(t(why === 'busy' ? 'queue.busy' : 'offline.saved.check'), 'info');
+}
+
+// The preview call for a voice, photo or typed report. Nothing is written.
+async function previewFor(item) {
+  const fd = new FormData();
+  fd.append('facility_id', item.facility_id);
+  let url;
+  if (item.kind === 'audio') {
+    url = '/api/v1/voice-note';
+    fd.append('preview', 'true');
+    const mime = item.mime || (item.audioBlob && item.audioBlob.type) || 'audio/webm';
+    const ext = /mp4/.test(mime) ? 'm4a' : /ogg/.test(mime) ? 'ogg' : 'webm';
+    fd.append('file', item.audioBlob, 'recording.' + ext);
+  } else if (item.kind === 'photo') {
+    url = '/api/v1/photo-note';
+    fd.append('file', item.blob, 'register.jpg');
+  } else {
+    url = '/api/v1/chat-note';
+    fd.append('preview', 'true');
+    fd.append('message', item.message || '');
+  }
+  const res = await fetch(url, { method: 'POST', body: fd });
+  let data;
+  try { data = await res.json(); } catch (e) { data = {}; }
+  // A server that could not answer is a reason to try later, not to give up.
+  if (res.status >= 500 || (!res.ok && !data.error)) {
+    data = { ...data, error: data.error || `HTTP ${res.status}`, retryable: res.status >= 500 };
+  }
+  return data;
+}
+
 // ===== Photo of the register =====
 async function onPhotoChosen(input) {
   if (!requireCentre()) { input.value = ''; return; }
@@ -1239,17 +1375,9 @@ async function onPhotoChosen(input) {
   if (!file) return;
   const prev = rq('photo-preview');
   if (prev) { prev.src = URL.createObjectURL(file); prev.hidden = false; }
-  setReportNote(t('photo.reading'), 'busy');
   try {
     const small = await shrinkImage(file);
-    const fd = new FormData();
-    fd.append('file', small, 'register.jpg');
-    fd.append('facility_id', reportFacilityId());
-    const res = await fetch('/api/v1/photo-note', { method: 'POST', body: fd });
-    const data = await res.json();
-    handlePreviewResponse(data, 'photo', null);
-  } catch (e) {
-    setReportNote(t('error'), 'error');
+    await sendForReading({ kind: 'photo', blob: small }, 'photo', null);
   } finally {
     input.value = '';
   }
@@ -1334,36 +1462,200 @@ function bedsReadback() {
 }
 window.bedsReadback = bedsReadback;
 
-// ===== Offline =====
-function queueOffline(item) {
-  if (!db) return;
+// ===== The offline queue =====
+// Every report that cannot be sent is kept on this phone (IndexedDB) and,
+// when it can be, goes through the usual flow:
+//
+//   tap, scan, staff, beds  confirmed by the worker before it was kept,
+//                           so it is sent as it is (with a scan's code).
+//   voice, photo, typed     read by Gemini in preview, then shown to the
+//                           worker to check and confirm, exactly as if the
+//                           network had been there.
+//
+// A report leaves the queue only when the server has taken it (rows), or when
+// the worker has confirmed or rejected what was read (voice, photo, typed).
+// It used to be deleted on any 200, including a 200 that carried an error.
+//
+// Item: {id, kind: rows|audio|photo|text, facility_id, created_at,
+//        status: queued|ready|failed, preview?, error?, attempts?}
+const QUEUE_STORE = 'offline-queue';
+function idbDo(mode, fn) {
+  return new Promise((ok, no) => {
+    if (!db) { ok(null); return; }
+    try {
+      const req = fn(db.transaction([QUEUE_STORE], mode).objectStore(QUEUE_STORE));
+      req.onsuccess = () => ok(req.result);
+      req.onerror = () => no(req.error);
+    } catch (e) { no(e); }
+  });
+}
+const queueAll = () => idbDo('readonly', s => s.getAll()).then(r => r || []);
+const queuePut = item => idbDo('readwrite', s => s.put(item));
+const queueDelete = id => idbDo('readwrite', s => s.delete(id));
+const queueAge = i => i.created_at || parseInt(String(i.id).slice(0, 13), 10) || 0;
+
+async function queueOffline(item) {
+  if (!db) return null;
   const id = Date.now().toString() + Math.random().toString(16).slice(2, 6);
-  db.transaction(['offline-queue'], 'readwrite').objectStore('offline-queue').put({ id, ...item });
+  await queuePut({ id, created_at: Date.now(), status: 'queued', attempts: 0, ...item });
+  updateOfflineLine();
+  return id;
 }
 window.queueOffline = queueOffline;
 
-function updateOfflineLine() {
+// Send or read whatever is waiting. One run at a time: two overlapping runs
+// (the "online" event and a page load) used to send the same item twice.
+let queueSyncing = false;
+async function syncOfflineQueue() {
+  if (queueSyncing || !db || !navigator.onLine) return;
+  queueSyncing = true;
+  try {
+    const items = (await queueAll()).sort((a, b) => queueAge(a) - queueAge(b));
+    for (const item of items) {
+      if (item.status === 'ready' || item.status === 'failed') continue;
+      try {
+        if (item.kind === 'rows') {
+          const res = await fetch('/api/v1/confirm-note', { method: 'POST', body: confirmForm(item) });
+          if (res.ok) { await queueDelete(item.id); continue; }
+          if (res.status >= 500) break;                  // try again later
+          item.status = 'failed'; item.error = `HTTP ${res.status}`;
+          await queuePut(item);                          // the worker decides
+        } else {
+          const data = await previewFor(item);
+          if (data.error && data.retryable) {            // busy: keep it, try later
+            item.attempts = (item.attempts || 0) + 1;
+            await queuePut(item);
+            break;
+          }
+          if (data.error) { item.status = 'failed'; item.error = data.error; }
+          else { item.status = 'ready'; item.preview = data; }
+          await queuePut(item);
+        }
+      } catch (e) {
+        break;                                           // the network went again
+      }
+    }
+  } finally {
+    queueSyncing = false;
+    await updateOfflineLine();
+    maybeCheckOffline();
+  }
+}
+window.syncOfflineQueue = syncOfflineQueue;
+
+// The line above the report modes: what is waiting, and a button to check
+// what has been read.
+async function updateOfflineLine() {
   const el = rq('report-offline');
   if (!el) return;
-  const render = (n) => {
-    if (!navigator.onLine) {
-      el.hidden = false;
-      el.innerHTML = `<strong>${t('offline.now')}</strong> ${n ? `${n} ${t('offline.unsent')}` : ''}`;
-    } else if (n) {
-      el.hidden = false;
-      el.innerHTML = `${n} ${t('online.unsent')}`;
-    } else { el.hidden = true; el.innerHTML = ''; }
-  };
-  if (!db) { render(0); return; }
-  try {
-    const req = db.transaction(['offline-queue'], 'readonly').objectStore('offline-queue').count();
-    req.onsuccess = () => render(req.result || 0);
-    req.onerror = () => render(0);
-  } catch (e) { render(0); }
+  let items = [];
+  try { items = await queueAll(); } catch (e) { items = []; }
+  const toCheck = items.filter(i => i.status === 'ready' || i.status === 'failed').length;
+  const waiting = items.length - toCheck;
+  if (!navigator.onLine) {
+    el.hidden = false;
+    el.innerHTML = `<strong>${t('offline.now')}</strong> ${items.length ? `${items.length} ${t('offline.unsent')}` : ''}`;
+  } else if (toCheck) {
+    el.hidden = false;
+    el.innerHTML = `${escapeHtml(tf('queue.ready', { n: toCheck }))}
+      <button class="btn btn-primary btn-sm" onclick="checkNextOffline()">${t('queue.check')}</button>`;
+  } else if (waiting) {
+    el.hidden = false;
+    el.innerHTML = `${waiting} ${t('online.unsent')}`;
+  } else { el.hidden = true; el.innerHTML = ''; }
 }
 window.updateOfflineLine = updateOfflineLine;
-window.addEventListener('online', () => setTimeout(updateOfflineLine, 1500));
+
+// Show the oldest report that is ready to check, as its normal read-back.
+// A run of them counts "1 of 3, 2 of 3, 3 of 3".
+let offlineRun = { done: 0, total: 0 };
+async function checkNextOffline() {
+  const ready = (await queueAll())
+    .filter(i => i.status === 'ready' || i.status === 'failed')
+    .sort((a, b) => queueAge(a) - queueAge(b));
+  const item = ready[0];
+  if (!item) { offlineRun = { done: 0, total: 0 }; await updateOfflineLine(); return; }
+  if (offlineRun.done + ready.length > offlineRun.total) offlineRun.total = offlineRun.done + ready.length;
+  if (typeof switchTab === 'function' && !reportPageOpen()) switchTab('capture-view');
+  const time = new Date(queueAge(item)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const ctx = { id: item.id, facility_id: item.facility_id,
+                label: { time, i: offlineRun.done + 1, n: offlineRun.total } };
+
+  if (item.status === 'failed') {
+    const host = rq('report-readback');
+    if (!host) return;
+    readbackRows = [];
+    host.hidden = false;
+    host.innerHTML = `<div class="rb-offline">${escapeHtml(tf('queue.from', ctx.label))}</div>
+      <p class="rb-nothing">${t('queue.failed')}</p>
+      <div class="rb-actions">
+        <button class="btn btn-secondary" onclick="retryOffline('${escapeHtml(item.id)}')">${t('queue.retry')}</button>
+        <button class="btn btn-danger" onclick="finishOffline('${escapeHtml(item.id)}', true)">${t('queue.discard')}</button>
+      </div>`;
+    host.scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  if (item.kind === 'rows') return;   // rows never need checking
+  const source = { audio: 'voice', photo: 'photo', text: 'chat' }[item.kind] || 'voice';
+  pendingOffline = ctx;
+  await handlePreviewResponse(item.preview || {}, source,
+    item.kind === 'text' ? item.message : ((item.preview || {}).raw_transcript || null));
+  pendingOffline = null;
+  // Nothing to confirm (a request, a pack that opened the tap flow, nothing
+  // recognised): the worker has now seen what was read, so it is done.
+  if (!readbackOffline || readbackOffline.id !== item.id || !readbackRows.length) {
+    if (readbackOffline && readbackOffline.id === item.id) readbackOffline = null;
+    await finishOffline(item.id, false);
+  }
+}
+window.checkNextOffline = checkNextOffline;
+
+async function retryOffline(id) {
+  const item = (await queueAll()).find(i => i.id === id);
+  hideReadback();
+  if (item) { item.status = 'queued'; item.error = null; await queuePut(item); }
+  syncOfflineQueue();
+}
+window.retryOffline = retryOffline;
+
+// A queued report has been dealt with. `next` opens the following one, the
+// way a run of reports would follow each other if the network had been there.
+async function finishOffline(id, next) {
+  await queueDelete(id);
+  offlineRun.done += 1;
+  await updateOfflineLine();
+  if (next) setTimeout(() => maybeCheckOffline(true), 1200);
+}
+window.finishOffline = finishOffline;
+
+function reportPageOpen() {
+  const v = document.getElementById('capture-view');
+  return !!(v && v.classList.contains('active-view'));
+}
+
+// Open the next ready report by itself when the worker is on the Report page
+// and not in the middle of something else; otherwise the line's button waits.
+async function maybeCheckOffline(force) {
+  if (!navigator.onLine || !reportPageOpen()) return;
+  const host = rq('report-readback');
+  if (host && !host.hidden) return;
+  if (!force && reportMode === 'tap' && tapState.step !== 'what') return;
+  if (typeof mediaRecorder !== 'undefined' && mediaRecorder && mediaRecorder.state === 'recording') return;
+  const ready = (await queueAll()).some(i => i.status === 'ready' || i.status === 'failed');
+  if (ready) checkNextOffline();
+}
+
+window.addEventListener('online', () => setTimeout(syncOfflineQueue, 800));
 window.addEventListener('offline', updateOfflineLine);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') syncOfflineQueue();
+});
+// While anything waits, keep trying: a phone can be "online" with no data.
+setInterval(async () => {
+  if (!navigator.onLine || !db) return;
+  const items = await queueAll().catch(() => []);
+  if (items.some(i => !i.status || i.status === 'queued')) syncOfflineQueue();
+}, 60000);
 
 function escapeHtml(s) {
   return String(s === null || s === undefined ? '' : s)
